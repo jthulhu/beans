@@ -1,22 +1,6 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-"""
-Beansobject scripting language
-Here follows the syntax
-
-File ::= Statement *
-Statement ::= Assignement|FunctionDefinition|ClassDefinition|FunctionCall
-FunctionCall ::= VARIABLE LPAR ExpressionsList RPAR
-FunctionDefinition ::= FUNCTION VARIABLE COLON ArgumentList Body
-Body ::= LBRACE Statement * RBRACE
-ClassDefinition ::= (FROM ClassNameList) ? CLASS VARIABLE COLON ArgumentList ClassBody
-ClassBody ::= METHOD VARIABLE COLON ArgumentList Body
-ArgumentList ::= (ARGUMENT (COMMA ARGUMENT) *) ?
-Assignment ::= VARIABLE EQUALS Expression
-ExpressionList ::= (Expression (COMMA Expression) *) ?
-Expression ::= STRING|FLOAT|INT
-"""
 
 __author__ = 'BlackBeans'
 

@@ -32,7 +32,7 @@ from .rawparsers import raw_parsers
 
 class Lexer:
     def __init__(self, flux):
-        self.flux = flux
+        self.flux = list(flux) + ["EOF"]
         self.pos = 0
     def lex(self):
         while True:
@@ -40,6 +40,7 @@ class Lexer:
             for parser in raw_parsers:
                 parsed = parser(self.flux, self.pos)
                 if parsed.check_first():
+                    parsed = parser(self.flux, self.pos)
                     is_good, pos, result = parsed.check_all()
                     if is_good:
                         self.pos = pos
@@ -59,13 +60,12 @@ class Lexer:
 class Parser:
     def __init__(self, lexer):
         self.flux = [lexer.lex()]
-        while self.flux[-1].code != primitives["EOF"]["code"]:
+        while self.flux[-1].id != primitives["EOF"]:
             self.flux.append(lexer.lex())
-        self.flux.append(lexer.lex()) # append also EOF so parser knows where to stop
         self.pos = 0
         self.AST = []
     def parse(self):
-        while self.flux[self.pos].code != primitives["EOF"]["code"]:
+        while self.flux[self.pos].id != primitives["EOF"]:
             is_good, pos, node = StatementTokenParser(self.flux, self.pos).check()
             if not is_good:
                 raise Exception("Token #%s not recognized - %s" % (pos, self.flux[self.pos]))

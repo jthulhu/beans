@@ -23,7 +23,7 @@ __author__ = 'BlackBeans'
 import sys, re
 from .primitives import primitives
 from .tokenparser import StatementTokenParser
-from .ASTnodes import *  # useless for now
+from .astnodes import *
 from .rawparsers import raw_parsers
 
 #############

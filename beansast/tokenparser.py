@@ -1,5 +1,5 @@
 from .primitives import primitives
-from .ASTnodes import *
+from .astnodes import *
 
 class TokenParser:
     def __init__(self, flux, pos):

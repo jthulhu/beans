@@ -7,4 +7,6 @@ ClassDefinition ::= (FROM ClassNameList) ? CLASS VARIABLE COLON ArgumentList Cla
 ClassBody ::= METHOD VARIABLE COLON ArgumentList Body
 ArgumentList ::= (ARGUMENT (COMMA ARGUMENT) *) ?
 ExpressionList ::= (Expression (COMMA Expression) *) ?
-Expression ::= (LPAR STRING|FLOAT|INT|VARIABLE RPAR) |(STRING|FLOAT|INT|VARIABLE)
+SimpleExpression ::= (STRING|FLOAT|INT|VARIABLE)
+Expression ::= SimpleExpression (DOT Expression)?
+

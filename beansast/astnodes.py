@@ -4,7 +4,7 @@ class ASTNode:
         return type(comp) == type(self) and {key: self.__getattribute__(key) for key in dir(self) if not key.startswith("__")} == {key: comp.__getattribute__(key) for key in dir(comp) if not key.startswith("__")}
 
 class FunctionCallNode(ASTNode):
-    def __init__(self, name, arguments, child):
+    def __init__(self, name, arguments):
         self.name = name
         self.arguments = arguments
         self.child = child
@@ -12,7 +12,7 @@ class FunctionCallNode(ASTNode):
         return "FunctionCallNode(%s, %s, %s)" % (self.name, self.arguments, self.child)
 
 class VariableNode(ASTNode):
-    def __init__(self, name, child):
+    def __init__(self, name):
         self.name = name
         self.child = child
     def __repr__(self):
@@ -64,7 +64,7 @@ class ImportNode(ASTNode):
         return "ImportNode(%s, %s)" % (self.root_path, self.importobjs)
 
 class BuiltInType(ASTNode):
-    def __init__(self, value, child):
+    def __init__(self, value):
         self.value = value
         self.child = child
     

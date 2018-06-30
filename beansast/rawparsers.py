@@ -7,6 +7,8 @@ class Token:
         self.value = value
     def __repr__(self):
         return '<Token %s%s>' % (self.repr, (" - %s" % self.value) * int(self.value != None) )
+    def __eq__(self, r):
+        return r.id == self.id and r.value == self.value
     
 
 

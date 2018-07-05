@@ -1,0 +1,27 @@
+Expression ::=
+  NUMBER@value <.>
+ : ID@value <.>
+ : STRING@value <.>
+ : FLOAT@value <.>
+ : LPAR Expression@value RPAR <.>
+ : Expression@var LPAR ExpressionList?@arguments RPAR <. + {"op": "call"}>
+ : Expression@var LBRACKET Expression@argument LBRACKET <. + {"op": "subscription"}>
+ : Expression@father DOT@op Expression@child <.>
+ : (PLUS|MINUS)@op Expression@value <.>
+ : Expression@left DASTERISK@op Expression@right <.>
+ : Expression@left (ASTERISK|SLASH|DSLASH|PERCENTAGE)@op Expression@right <.>
+ : Expression@left (PLUS|MINUS)@op Expression@right <.>
+ : Expression@left (IN|EQ|GT|LT|GE|LE|NE)@op Expression@right <.>
+ : NOT@op Expression@value <.>
+ : AND@op Expression@value <.>
+ : OR@op Expression@value <.>;
+
+ExpressionList ::= Expression@value <{"value": [value]}>
+ : ExpressionList@values COMMA Expression@value <{"value": values["value"] + [value]}>;
+
+Assignment ::= ID@key EQUALS Expression@value <.>;
+FunctionCall ::= Expression@var LPAR ExpressionList?@arguments RPAR <.>;
+
+Statement ::=
+ Assignment
+ :FunctionCall;

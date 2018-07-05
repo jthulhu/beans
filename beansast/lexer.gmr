@@ -1,0 +1,66 @@
+IF ::= if
+ELSE ::= else
+ELIF ::= elif
+WHILE ::= while
+FOR ::= for
+FUNCTION ::= function
+CLASS ::= class
+METHOD ::= method
+MODULE ::= module
+FROM ::= from
+IMPORT ::= import
+DATA ::= data
+SPACENAME ::= spacename
+PACKAGE ::= package
+PUBLIC ::= public
+PRIVATE ::= private
+
+EOF ::= \Z
+STRING ::= "(?P<value>((\\")|[^"])*)"
+CHAR ::= '(?P<value>((\\')|[^'])?)'
+INT ::= (?P<value>\d+\.?)
+FLOAT ::= (?P<value>\d*\.\d+)
+ignore SPACE ::= [\t ]
+ignore EOL ::= $
+ID ::= (?P<name>\w+)
+
+DOT ::= [.]
+
+LPAR ::= \(
+RPAR ::= \)
+LBRACE ::= {
+RBRACE ::= }
+LBRACKET ::= \[
+RBRACKET ::= \]
+
+EQ ::= ==
+GT ::= >
+LT ::= <
+GE ::= >=
+LE ::= <=
+NE ::= !=
+
+IN ::= in
+
+AND ::= and
+OR ::= or
+NOT ::= not
+
+EQUALS ::= =
+
+PLUS ::= \+
+MINUS ::= -
+ASTERISK ::= \*
+DASTERISK ::= \*\*
+DSLASH ::= //
+SLASH ::= /
+PERCENTAGE ::= %
+
+COLON ::= :
+GRAVE ::= `
+DGRAVE ::= ``
+SEMICOLON ::= ;
+COMMA ::= ,
+TILDE ::= ~
+EXCLAMATION ::= !
+QUESTION ::= \?

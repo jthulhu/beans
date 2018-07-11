@@ -23,7 +23,7 @@ class Tokenizer:
         else:
             return False, pos, None
     def __repr__(self):
-        return "<Tokenizer named %s with rule %s %s>" % (self.name, self.rule, "- ignored" * int(self.ignore))
+        return "<Tokenizer named %s with rule %s%s>" % (self.name, self.rule, " - ignored" * int(self.ignore))
 
 class LexerReader:
     def __init__(self, inp):

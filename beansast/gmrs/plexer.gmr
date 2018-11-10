@@ -1,0 +1,18 @@
+
+EOF ::= \Z
+JSON ::= <(?P<value>.*)>
+ignore SPACE ::= [\t ]
+ignore EOL ::= $
+ID ::= (?P<name>\w+)
+
+AT ::= @
+DOT ::= [.]
+
+LPAR ::= \(
+RPAR ::= \)
+LINE ::= |
+
+ASSIGN ::= ::=
+COLON ::= :
+SEMICOLON ::= ;
+

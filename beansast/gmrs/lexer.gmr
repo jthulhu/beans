@@ -55,6 +55,7 @@ DASTERISK ::= \*\*
 DSLASH ::= //
 SLASH ::= /
 PERCENTAGE ::= %
+LINE ::= |
 
 COLON ::= :
 GRAVE ::= `

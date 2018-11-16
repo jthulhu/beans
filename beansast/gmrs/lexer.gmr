@@ -16,13 +16,12 @@ PUBLIC ::= public
 PRIVATE ::= private
 
 EOF ::= \Z
-STRING ::= "(?P<value>((\\")|[^"])*)"
-CHAR ::= '(?P<value>((\\')|[^'])?)'
-INT ::= (?P<value>\d+\.?)
-FLOAT ::= (?P<value>\d*\.\d+)
-ignore SPACE ::= [\t ]
-ignore EOL ::= $
-ID ::= (?P<name>\w+)
+STRING ::= ("|')(?P<value>(((?!(\\|\1)).)|(\\(?!\\).)|(\\\\))*)\1
+INT ::= (?P<value>\d+)
+FLOAT ::= (?P<value>(\d*\.\d+)|(\d+\.\d*))
+ignore SPACE ::= [\t ]+
+ignore EOL ::= \n
+ID ::= (?P<name>\w*[a-zA-Z_]\w*)
 
 DOT ::= [.]
 

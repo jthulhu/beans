@@ -2,7 +2,20 @@
 # -*- coding: utf-8 -*-
 
 import collections
-from . import te
+
+class ParsingError(Exception):
+    pass
+
+class ParsingSyntaxError(ParsingError):
+    def __init__(self, excpected, token):
+        msg = """Syntax error:
+ file %s line %s character %s (token %s)
+ excpected %s and got %s""" % (token.file, token.pos[1], token.pos[0], token.tkpos, excpected, token.name)
+        self.args = (msg,)
+
+from . import te, lxrgmrparser
+
+
 class ASTNode:
     def __init__(self, name, attributes):
         self.name = name
@@ -21,56 +34,37 @@ class ASTNodizer: # also called parser, but to not mess up with names
 
 class ParserReader:
     def __init__(self, inp):
-        self.inp = inp
+        self.inp = inp # beansast.lexer.Lexer self.inp = self.inp
         self.pos = 0
     def read(self):
         nodizers = collections.OrderedDict()
-        maxsize = len(self.inp)
-        self.pos = self.ignore_lines(self.pos)
-        while self.pos < maxsize:
+        while self.inp[self.pos].name != "EOF":
+            
             self.pos, name = self.read_name(self.pos)
-            self.pos = self.ignore_spaces(self.pos)
             self.pos = self.ignore_assignment(self.pos)
-            self.pos = self.ignore_spaces(self.pos)
             self.pos, rule = self.read_rule(self.pos)
-            self.pos = self.ignore_lines(self.pos)
             nodizers[name] = ASTNodizer(name, rule)
         return nodizers
     def read_name(self, pos):
-        result = ""
-        alphanumerics = set([chr(a) for a in range(ord("a"), ord("z") + 1)] + [chr(a) for a in range(ord("A"), ord("Z") + 1)] + [chr(a) for a in range(ord("0"), ord("9") + 1)])
-        while self.inp[pos] in alphanumerics:
-            result += self.inp[pos]
+        if self.inp[pos].name == "ID":
+            name = self.inp[pos]["name"]
             pos += 1
-        return pos, result
-    def ignore_assignment(self, pos):
-        if self.inp[pos:].startswith("::="):
-            return pos+len("::=")
-        raise SyntaxError("syntax is wrong at character %s of line %s" % pos2coords(pos, self.inp))
-    def read_rule(self, pos):
-        rule = ""
-        while self.inp[pos] != ";":
-            rule += self.inp[pos]
-            pos += 1
-        return pos + 1, rule
-    def ignore_spaces(self, pos):
-        maxsize = len(self.inp)
-        while pos < maxsize and self.inp[pos] in {" ", "\t"}:
-            pos += 1
-        return pos
-    def ignore_lines(self, pos):
-        maxsize = len(self.inp)
-        while pos < maxsize and self.inp[pos] in {" ", "\t", "\n"}:
-            pos += 1
-        return pos
-
-def pos2coords(pos, flux):
-    x = 1
-    y = 1
-    for char in flux[:pos]:
-        if char == "\n":
-            y += 1
-            x = 1
         else:
-            x += 1
-    return x, y
+            raise ParsingSyntaxError("ID", self.inp[pos])
+        return pos, name
+    def ignore_assignment(self, pos):
+        if self.inp[pos].name == "ASSIGNMENT":
+            pos += 1
+            return pos
+        raise ParsingSyntaxError("ASSIGNMENT", self.inp[pos])
+    def read_rule(self, pos):
+        rule = []
+        while self.inp[pos].name != "SEMICOLON":
+            if self.inp[pos].name == "EOF":
+                raise ParsingSyntaxError("SEMICOLON", self.inp[pos])
+            rule.append(self.inp[pos])
+            pos += 1
+        eof = lxrgmrparser.Token("EOF", {})
+        eof.pos = rule[-1].pos
+        rule.append(eof)
+        return pos + 1, rule

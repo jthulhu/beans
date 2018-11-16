@@ -1,0 +1,7 @@
+TABULATION ::= \t
+ignore SPACE ::= \s
+ignore NEWLINE ::= \n
+DOT ::= [.]
+ID ::= (?P<name>\w+)
+STRING ::= ("|')(?P<value>(([^\1\\]|((\\\\)*\\[^\\])|(\\\\)*\\\1)*)((\\\\)|(\\)?[^\\]|))?\1
+ignore INT ::= (?P<value>\d+)

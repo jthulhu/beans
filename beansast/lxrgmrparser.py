@@ -3,17 +3,44 @@
 
 import re, collections
 
+class LexingError(Exception):
+    pass
+
+class LexingSyntaxError(LexingError):
+    """Lexing error that happened when you try to lex a file which doesn't correspond to tokens defined"""
+    def __init__(self, file, pos):
+        msg = """SyntaxError:
+ file %s line %s character %s
+ token not understood""" % (file, pos[1], pos[0])
+        self.args = (msg,)
+
+class GrammarSyntaxError(LexingError):
+    """Lexing error that happened when you try to generate tokens from invalid lexer grammar file"""
+    def __init__(self, excpected, pos, file):
+        msg = """GrammarError:
+ file %s line %s character %s
+ excpected %s""" % (file, pos[1], pos[0], excpected)
+        self.args = (msg,)
+        
 class Token:
+    """Standard token class
+needs a name, which will be used by the parser, and attributes, a dict, which will be used to know what there was inside the token"""
     def __init__(self, name, attributes):
         self.name = name
         self.attributes = attributes
     def __repr__(self):
         return "<Token named %s%s>" % (self.name, (" - %s" % str(self.attributes)) * int(bool(self.attributes)))
+    def __getitem__(self, key):
+        return self.attributes[key]
+    def __eq__(self, right):
+        return isinstance(right, type(self)) and right.name == self.name and right.attributes == self.attributes
 
 class Tokenizer:
+    """Initialised with a name, a rule and an ignore flag
+when called, it will match the string at given pos. If match, it will return True, then pos match ends, then Token generated or None if ignore flag was True. If not match, returns False, pos with which it was called, None"""
     def __init__(self, name, rule, ignore=False):
         self.name = name
-        self.rule = re.compile(rule)
+        self.rule = re.compile(rule, re.M)
         self.ignore = ignore
     def __call__(self, flux, pos):
         result = self.rule.match(flux[pos:])
@@ -24,15 +51,26 @@ class Tokenizer:
             return False, pos, None
     def __repr__(self):
         return "<Tokenizer named %s with rule %s%s>" % (self.name, self.rule, " - ignored" * int(self.ignore))
+    def __eq__(self, right):
+        return hasattr(right, "name") and right.name == self.name and hasattr(right, "rule") and right.rule == self.rule and hasattr(right, "ignore") and right.ignore == self.ignore
 
 class LexerReader:
-    def __init__(self, inp):
+    """Reads a grammar file and generates tokenizers from that file. You can precise the filename with the argument file. It will be used when ar error is raised, and is completly indipendent from the actual file reed."""
+    def __init__(self, inp, file="<stdgmr>"):
         self.inp = inp
         self.pos = 0
+        self.file = file
     def read(self):
         tokenizers = collections.OrderedDict()
+        delete = []
+        self.pos = self.ignore_lines(self.pos)
         while self.pos < len(self.inp):
-            self.pos = self.ignore_lines(self.pos)
+            self.pos, del_ = self.read_del(self.pos)
+            if del_:
+                self.pos, name = self.read_name(self.pos)
+                delete.append(name)
+                self.pos = self.ignore_lines(self.pos)
+                continue
             self.pos, ignore = self.read_ignore(self.pos)
             self.pos, name = self.read_name(self.pos)
             self.pos = self.ignore_spaces(self.pos)
@@ -40,8 +78,13 @@ class LexerReader:
             self.pos = self.ignore_spaces(self.pos)
             self.pos, rule = self.read_rule(self.pos)
             tokenizers[name] = Tokenizer(name, rule, ignore)
-        return tokenizers
-            
+            self.pos = self.ignore_lines(self.pos)
+        return tokenizers, delete
+
+    def read_del(self, pos):
+        if self.inp[pos:].startswith("del "):
+            return pos+len("del "), True
+        return pos, False
     def read_ignore(self, pos):
         if self.inp[pos:].startswith("ignore "):
             return pos+len("ignore "), True
@@ -49,14 +92,14 @@ class LexerReader:
             return pos, False
     def read_name(self, pos):
         result = ""
-        while self.inp[pos] not in {" ", "\t"}:
+        while self.inp[pos] not in {" ", "\t", "\n"}:
             result += self.inp[pos]
             pos += 1
         return pos, result
     def ignore_assignment(self, pos):
         if self.inp[pos:].startswith("::="):
             return pos+len("::=")
-        raise SyntaxError("syntax is wrong at character %s of line %s" % pos2coords(pos, self.inp))
+        raise GrammarSyntaxError("::=", pos2coords(pos, self.inp), self.file)
     def read_rule(self, pos):
         maxsize = len(self.inp) # in case it doesn't end with \n
         rule = ''

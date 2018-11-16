@@ -6,6 +6,8 @@ TE: Tokens Expression (tokens' version of re)
 """
 
 import json
+from .psrgmrparser import ParsingSyntaxError
+
 
 def compile(rule):
     return PatternCompile(rule)
@@ -15,65 +17,93 @@ def match(rule, tokens, context):
     return rule.match(tokens, context)
     
 
-alphanumerics = set([chr(a) for a in range(ord("a"), ord("z") + 1)] + [chr(a) for a in range(ord("A"), ord("Z") + 1)] + [chr(a) for a in range(ord("0"), ord("9") + 1)])
 
 class PatternCompile:
     def __init__(self, rule):
-        rules = rule.split("*")
         self.crules = []
-        for rule in rules:
-            self.pos = 0
+        self.pos = 0
+        while rule[self.pos].name != "EOF":
             self.rule = rule
             self.crules.append(self._read_rule())
         
     def _read_rule(self):
-        self._ignore_spaces()
+        self._ignore_colon()
         tokens = []
-        while self.rule[self.pos] != "<":
+        while self.rule[self.pos].name != "LPROXY":
             tokens.append(TokenParser(*self._read_token()))
-            print("",self.pos)
-            self.pos += 1
-            self._ignore_spaces()
-        print(self.rule[self.pos], self.pos)
         proxy = self._read_proxy()
         return Rule(tokens, proxy)
     def _read_token(self):
         name = self._read_id()
         key = self._read_key()
-        optional = self._read_optional()
-        return name, key, optional
+        return name, key
     def _read_proxy(self):
         self.pos += 1
-        proxy = ""
-        print(self.pos)
-        while self.rule[self.pos] != ">":
-            proxy += self.rule[self.pos]
+        proxy = []
+        while self.rule[self.pos].name != "RPROXY":
+            if self.rule[self.pos].name == "EOF":
+                raise ParsingSyntaxError("DOT or ID", self.rule[self.pos])
+            if self.rule[self.pos].name == "DOT":
+                proxy.append(".")
+            elif self.rule[self.pos].name == "ID":
+                key = self.rule[self.pos]["name"]
+                self.pos += 1
+                if not self.rule[self.pos].name == "COLON":
+                    raise ParsingSyntaxError("COLON", self.rule[self.pos])
+                self.pos += 1
+                if not self.rule[self.pos].name == "ID":
+                    raise ParsingSyntaxError("ID", self.rule[self.pos])
+                value = self.rule[self.pos]["name"]
+                proxy.append("%s:%s" % (key, value))
             self.pos += 1
-            print(self.pos)
         self.pos += 1
-        proxy = [a.strip(" ").rstrip(" ") for a in proxy.split("+", 1)]
+        proxy = ",".join(proxy)
         return proxy
     def _read_id(self):
-        id_ = ""
-        while self.rule[self.pos] in alphanumerics:
-            id_ += self.rule[self.pos]
+        id_ = []
+        multi = self.rule[self.pos].name == 'LPAR'
+        if multi:
             self.pos += 1
+        elif self.rule[self.pos].name == "ID":
+            self.pos += 1
+            return self.rule[self.pos - 1]["name"]
+        else:
+            raise ParsingSyntaxError("ID or LPAR", self.rule[self.pos])
+        if self.rule[self.pos].name == "ID":
+            id_.append(self.rule[self.pos]["name"])
+            self.pos += 1
+        else:
+            raise ParsingSyntaxError("ID", self.rule[self.pos])
+        next_ = self.rule[self.pos]
+        while next_.name == "LINE":
+            self.pos += 1
+            next_ = self.rule[self.pos]
+            if next_.name == "ID":
+                id_.append(next_["name"])
+            else:
+                raise ParsingSyntaxError("ID", next_)
+            self.pos += 1
+            next_ = self.rule[self.pos]
+        if not next_.name == "RPAR": raise ParsingSyntaxError("RPAR", next_)
+        self.pos += 1
+            
         return id_
+    
     def _read_key(self):
-        if self.rule[self.pos] == "@":
+        if self.rule[self.pos].name == "AT":
             self.pos += 1
-            key = self._read_id()
+            if self.rule[self.pos].name == "ID":
+                key =  self.rule[self.pos]["name"]
+                self.pos += 1
+            else:
+                raise ParsingSyntaxError("ID", self.rule[self.pos])
             return key
         return None
-    def _read_optional(self):
-        if self.rule[self.pos] == "?":
+    def _ignore_colon(self):
+        if self.rule[self.pos].name == "COLON":
             self.pos += 1
-            return True
-        return False
-    def _ignore_spaces(self):
-        print(self.rule[self.pos])
-        while self.rule[self.pos] in {" ", "\t", "\n"}:
-            self.pos += 1
+        else:
+            raise ParsingSyntaxError("COLON", self.rule[self.pos])
     def match(self, tokens, context):
         for rule in self.crules:
             is_good, pos, result = rule(tokens, 0).check(context)
@@ -81,31 +111,35 @@ class PatternCompile:
                 return result
         return None
     def __repr__(self):
-        return 'te.compile(%s)' % " : ".join([repr(rule) for rule in self.crules])
+        return 'te.compile(%s)' % "\n : ".join([repr(rule) for rule in self.crules])
+    def __getitem__(self, key):
+        return self.crules[key]
 
 
 class TokenParser:
-    def __init__(self, name, key=None, optional=False):
+    def __init__(self, name, key=None):
+        self.multi = isinstance(name, list)
+        if not self.multi:
+            name = [name]
         self.name = name
         self.key = key
-        self.optional = optional
     def __call__(self, flux, pos):
         self.flux = flux
         self.pos = pos
     def check(self, context):
-        is_good, pos, result = context[self.name](flux, pos).check(context)
-        is_good = max(is_good, self.optional) # same as ``is_good or self.optional''
+        for name in self.name:
+            is_good, pos, result = context[name](flux, self.pos).check(context)
+            if is_good: break
         if self.key:
             result = {self.key: result}
         else:
             result = None
         return is_good, pos, result
     def __repr__(self):
-        rpr = self.name
+        rpr = "|".join(self.name)
+        if self.multi: rpr = '(' + rpr + ')'
         if self.key:
             rpr += "@" + self.key
-        if self.optional:
-            rpr += "?"
         return rpr
 
 class Rule:
@@ -124,11 +158,13 @@ class Rule:
             for proxy in self.proxy:
                 vars_.update(evaluate(result, proxy))
         return True, self.pos, vars_
+    
     def __repr__(self):
-        return "<TE Rule %s with proxy <%s>>" % (" ".join([repr(token) for token in self.tokens]), " + ".join(self.proxy))
+        return "<TE Rule %s with proxy <%s>>" % (" ".join([repr(token) for token in self.tokens]), self.proxy)
     
 def evaluate(expr, vars_):
     if vars_ == ".":
         return expr
     else:
-        return eval(vars_, expr)
+        vars_ = vars_.split(":")
+        return {vars_[0]: vars_[1]}

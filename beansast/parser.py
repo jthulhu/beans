@@ -1,10 +1,14 @@
 from .psrgmrparser import ParserReader
+from .lexer import Lexer
 
 class ParserError(Exception):
     pass
 
 class Parser:
-    def __init__(self, grammar):
+    def __init__(self, rgrammar):
+        with open("beansast/gmrs/plexer.gmr") as f:
+            grammar = Lexer(f.read())
+        grammar(rgrammar)
         self.nodizers = ParserReader(grammar).read()
     def __call__(self, flux, pos=0):
         self.flux = flux

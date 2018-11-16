@@ -7,6 +7,7 @@ __author__ = 'BlackBeans'
 import sys, re
 from .lexer import Lexer
 from .parser import Parser
+
 class Reader:
     def __init__(self, flux, grammars):
         self.grammars = grammars

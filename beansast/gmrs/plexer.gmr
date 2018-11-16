@@ -1,8 +1,7 @@
 
 EOF ::= \Z
-JSON ::= <(?P<value>.*)>
 ignore SPACE ::= [\t ]
-ignore EOL ::= $
+ignore EOL ::= \n
 ID ::= (?P<name>\w+)
 
 AT ::= @
@@ -10,9 +9,11 @@ DOT ::= [.]
 
 LPAR ::= \(
 RPAR ::= \)
-LINE ::= |
+LPROXY ::= <
+RPROXY ::= >
+LINE ::= \|
 
-ASSIGN ::= ::=
+ASSIGNMENT ::= ::=
 COLON ::= :
 SEMICOLON ::= ;
-
+COMMA ::= ,

@@ -5,13 +5,20 @@ class LexingError(Exception):
 
 class Lexer:
     """Creates a lexer from a string grammar. You can precise the file name with the argument file. It won't affect the actual grammar string, it will only be used when an error is raised"""
-    def __init__(self, grammar, file="<stdgmr>"):
-        self.tokenizers, self.delete = LexerReader(grammar, file=file).read()
+    def __init__(self, grammar, file="<stdgmr>", helperr=False):
+        self.tokenizers, self.delete = LexerReader(grammar, file=file, helperr=helperr).read()
+        self.file = file
+        self.helperr = helperr
     def __call__(self, flux, pos=0, fn="<stdin>"):
         self.flux = flux
         self._pos = pos
         self.tokens = []
         self.fn = fn
+    def tokenize(self, token):
+        token.file = self.fn
+        token.pos = pos2coords(self._pos, self.flux)
+        token.tkpos = len(self.tokens)
+        return token
     def _lex(self):
         """lex one token. do not use directly, instead ask the n token through lexer[n]"""
         for tokenizer in self.tokenizers.values():
@@ -29,10 +36,7 @@ class Lexer:
             is_good, value = self._lex()
             if not is_good:
                 raise LexingError("Unable to lex char %s at line %s" % pos2coords(self._pos, self.flux))
-            value.file = self.fn
-            value.pos = pos2coords(self._pos, self.flux)
-            value.tkpos = len(self.tokens)
-            self.tokens.append((value, self._pos))
+            self.tokens.append((self.tokenize(value), self._pos))
         while len(self.tokens) - 1 > key:
             self.tokens.pop()
         self._pos = self.tokens[-1][1]
@@ -40,7 +44,7 @@ class Lexer:
 
     def update(self, grammar, file="<stdgmr>"):
         """update the lexer's grammar. same arguments used in the default constructor"""
-        new_tokenizers, dels = LexerReader(grammar, file="<stdgmr>").read()
+        new_tokenizers, dels = LexerReader(grammar, file="<stdgmr>", helperr=self.helperr).read()
         for del_ in dels:
             if del_ in self.tokenizers.keys():
                 del self.tokenizers[del_]
@@ -57,8 +61,8 @@ class Lexer:
     def __eq__(self, r):
         return type(self) == type(r) and hasattr(r, "tokenizers") and r.tokenizers == self.tokenizers and hasattr(r, "_pos") and r._pos == self._pos and hasattr(r, "flux") and r.flux == self.flux
     def __repr__(self):
-        fn = "" if not hasattr(self, "fn") else "of file %s" % self.fn
-        return "<Lexer%s at %s of file %s>" % (" instancied" * int(hasattr(self, "flux")), str(id(self)), fn)
+        fn = "" if not hasattr(self, "fn") else (" instancied of file %s" % self.fn)
+        return "<Lexer%s at %s>" % (fn, hex(id(self)))
 
 
 def pos2coords(pos, flux):

@@ -15,8 +15,29 @@ def compile(rule):
 def match(rule, tokens, context):
     rule = PatternCompile(rule)
     return rule.match(tokens, context)
-    
 
+class ContextProxyElement:
+    def __init__(self, parent, key):
+        self.parent = parent
+        self.key = key
+    def __getattr__(self, name):
+        a = getattr(self.parent[self.key])
+        if type(a) == type(self):
+            raise KeyError(self.key)
+        return a
+
+class ContextProxy:
+    def __init__(self):
+        self.rules = {}
+    def __setitem__(self, key, value):
+        self.rules[key] = value
+    def __getitem__(self, key):
+        if key in self.rules:
+            return self.rules[key]
+        else:
+            return ContextProxyElement(self, key)
+    def __delitem__(self, key):
+        del self.rules[key]
 
 class PatternCompile:
     def __init__(self, rule):
@@ -108,8 +129,8 @@ class PatternCompile:
         for rule in self.crules:
             is_good, pos, result = rule(tokens, 0).check(context)
             if is_good:
-                return result
-        return None
+                return result, pos
+        return None, 0
     def __repr__(self):
         return 'te.compile(%s)' % "\n : ".join([repr(rule) for rule in self.crules])
     def __getitem__(self, key):
@@ -126,15 +147,21 @@ class TokenParser:
     def __call__(self, flux, pos):
         self.flux = flux
         self.pos = pos
-    def check(self, context):
+    def check(self):
+        is_good = False
         for name in self.name:
-            is_good, pos, result = context[name](flux, self.pos).check(context)
-            if is_good: break
+            if self.flux[self.pos].name == name:
+                is_good = True
+                result = self.flux[self.pos].attributes
+                self.pos += 1
+                break
+        if not is_good:
+            return False, self.pos, None
         if self.key:
             result = {self.key: result}
         else:
             result = None
-        return is_good, pos, result
+        return is_good, self.pos, result
     def __repr__(self):
         rpr = "|".join(self.name)
         if self.multi: rpr = '(' + rpr + ')'
@@ -152,11 +179,11 @@ class Rule:
     def check(self, context):
         vars_ = {}
         for token in tokens:
-            is_good, self.pos, result = token(self.flux, self.pos).check(context)
-            if not is_good:
-                return False, self.pos, None
-            for proxy in self.proxy:
-                vars_.update(evaluate(result, proxy))
+            is_good, self.pos, result = token(self.flux, self.pos).check()
+            if is_good:
+                for proxy in self.proxy:
+                    vars_.update(evaluate(result, proxy))
+                return True, self.pos, None
         return True, self.pos, vars_
     
     def __repr__(self):

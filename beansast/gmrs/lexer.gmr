@@ -39,7 +39,9 @@ GE ::= >=
 LE ::= <=
 NE ::= !=
 
+HAS ::= has
 IN ::= in
+IS ::= is
 
 AND ::= and
 OR ::= or
@@ -48,9 +50,13 @@ NOT ::= not
 EQUALS ::= =
 
 PLUS ::= \+
+DPLUS ::= \+\+
 MINUS ::= -
+DMINUS ::= --
 ASTERISK ::= \*
 DASTERISK ::= \*\*
+SQRT ::= \*/
+LOG ::= /\*
 DSLASH ::= //
 SLASH ::= /
 PERCENTAGE ::= %

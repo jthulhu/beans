@@ -2,26 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import re, collections
+from .stderr import Frame, raise_error, GrammarSyntaxError
 
-class LexingError(Exception):
-    pass
-
-class LexingSyntaxError(LexingError):
-    """Lexing error that happened when you try to lex a file which doesn't correspond to tokens defined"""
-    def __init__(self, file, pos):
-        msg = """SyntaxError:
- file %s line %s character %s
- token not understood""" % (file, pos[1], pos[0])
-        self.args = (msg,)
-
-class GrammarSyntaxError(LexingError):
-    """Lexing error that happened when you try to generate tokens from invalid lexer grammar file"""
-    def __init__(self, excpected, pos, file):
-        msg = """GrammarError:
- file %s line %s character %s
- excpected %s""" % (file, pos[1], pos[0], excpected)
-        self.args = (msg,)
-        
 class Token:
     """Standard token class
 needs a name, which will be used by the parser, and attributes, a dict, which will be used to know what there was inside the token"""
@@ -30,10 +12,16 @@ needs a name, which will be used by the parser, and attributes, a dict, which wi
         self.attributes = attributes
     def __repr__(self):
         return "<Token named %s%s>" % (self.name, (" - %s" % str(self.attributes)) * int(bool(self.attributes)))
+    def __str__(self):
+        return self.name
     def __getitem__(self, key):
         return self.attributes[key]
     def __eq__(self, right):
-        return isinstance(right, type(self)) and right.name == self.name and right.attributes == self.attributes
+        # Token == Token means same .name, .attributes
+        # Token == "name" means Token.name = "name"
+        return (isinstance(right, type(self)) and right.name == self.name and right.attributes == self.attributes) or (isinstance(right, str) and right == str(self))
+    def __hash__(self):
+        return hash(self.name)
 
 class Tokenizer:
     """Initialised with a name, a rule and an ignore flag
@@ -56,7 +44,8 @@ when called, it will match the string at given pos. If match, it will return Tru
 
 class LexerReader:
     """Reads a grammar file and generates tokenizers from that file. You can precise the filename with the argument file. It will be used when ar error is raised, and is completly indipendent from the actual file reed."""
-    def __init__(self, inp, file="<stdgmr>"):
+    def __init__(self, inp, file="<stdgmr>", helperr=False):
+        self.helperr = helperr
         self.inp = inp
         self.pos = 0
         self.file = file
@@ -99,7 +88,7 @@ class LexerReader:
     def ignore_assignment(self, pos):
         if self.inp[pos:].startswith("::="):
             return pos+len("::=")
-        raise GrammarSyntaxError("::=", pos2coords(pos, self.inp), self.file)
+        raise_error(GrammarSyntaxError(Frame(self.file, *pos2coords(pos, self.inp)), "::="), helpmsg=self.helperr)
     def read_rule(self, pos):
         maxsize = len(self.inp) # in case it doesn't end with \n
         rule = ''

@@ -1,31 +1,243 @@
-Expression ::=
- : LPAR Expression@value RPAR <.>
- : Expression@var LPAR ExpressionList@arguments RPAR <., op: call>
- : Expression@var LBRACKET Expression@argument LBRACKET <., op: subscription>
- : Expression@father DOT@op Expression@child <.>
- : Expression@left DASTERISK@op Expression@right <.>
- : Expression@left (ASTERISK|SLASH|DSLASH|PERCENTAGE)@op Expression@right <.>
- : Expression@left (PLUS|MINUS)@op Expression@right <.>
- : (PLUS|MINUS)@op Expression@value <.>
- : Expression@left (IN|EQ|GT|LT|GE|LE|NE)@op Expression@right <.>
- : NOT@op Expression@value <.>
- : Expression@left AND@op Expression@right <.>
- : Expression@left OR@op Expression@value <.>
- : NUMBER@value <.>
+% GRAMMAR'S SYNTAX
+% every statement must end with `;'
+%
+% /Metarule statements/
+% a - associativity rule
+% c - class rule
+% f - first rule
+% e - end metarules
+% inside rules and classes, some defaults attributes can be defined
+% with the specifier d
+% inside classes, priority can be set with the specifier p
+% inside classes, shift/reduce conflict rule can be set with
+% specifier sr
+% first statement specify which rules are to be applied to find out
+% ast nodes, or, in other words, should be applied on the call
+% remember that default first rule also applies on metastatements
+% which is requiered for being able to change grammar on the fly
+% (which means, if you change that statement, be sure of what you do
+% because you shouldn't be doing it)
+%
+% /Rules/
+% Rules follow a simplified version of BNF
+% Basically place a terminal or non-terminals one after the other
+% A non-terminal may be composed of many rules; split them with `:' (COLON)
+% put an `;' (SEMICOLON) at the end of a non-terminal definition
+% after a terminal or non-terminal in a rule, you may specify it's
+% key so it can be stored after the parsing with `@' + key
+%   - Example ::= : TERMINAL NonTerminal@key <>;
+% put the modifiers before the non-terminal name in the non-terminal definition
+%   - d<> Example ::= : TERMINAL <>;
+% specify the class after the name of the non-terminal
+%   - Example[exampleclass] ::= : TERMINAL <>;
+%
+% /Other/
+% % - Comment
+% d<proxy> - default specifier
+% p[/*TOKENS*/]/*PRIORITY*/ - priority specifier
+% sr[/*shift|reduce*/]
+
+
+% OPERATOR PRECENDENCE
+%  - this rules inside the expression class -
+% DOT
+% POW, SQRT, LOG
+% MUL, DIV, MOD
+% ADD, MIN
+% IN, HAS, IS, EQ, GT, GE, LT, LE, NE
+% NOT
+% AND
+% OR
+% ASSIGNMENT
+
+
+
+
+
+
+%%%%%%%%%%%%%%%%%%%
+%% ASSOCIATIVITY %%
+%%%%%%%%%%%%%%%%%%%
+% This command sets associativity for operators
+% when a shift/reduce conflict happends, associativity is the first
+% critirea which is look for (check if the lookahead token has a rule defined), and overwrites classes' rules
+% Associativity take place when the same rule asks both for a reduce and a shifting, and the lookahead token is an operator
+
+% a[/*TOKENS*/]/*right|left|nonassoc*/;
+
+% standard binary operators priority
+%  * notice assignement operator is an operator
+%    assignement is an expression
+%  * notice most bitwise operators are not presents
+%    they are not defined
+a[DOT]right;
+a[DASTERISK]left;
+a[ASTERISK, SLASH, PERCENTAGE]left;
+a[PLUS, MINUS]left;
+a[IN, IS, EQ, GT, GE, LT, LE, NE, HAS]left;
+a[NOT]left;
+a[AND]left;
+a[OR]left;
+a[EQUALS]right;
+
+%%%%%%%%%%%%%
+%% CLASSES %%
+%%%%%%%%%%%%%
+% This command creates a new class
+% Each class has head rule, which is considered as set of rules more as a rule in itself, and will lead to a common ASTNode
+% Each class requires gives some default attributes for every node created by a rule in its class
+% This attributes are used because class will turn into a common ASTNode, so to ease the parsing of the AST we put a signature (like functions)
+% Moreover, an attribute can be required to proceed compilation, which means the default value cannot be used.
+% This also allows certains rules to be contextually illegal, within a context-free language
+% As an example, we can see that expressions can be used as statements, but we won't allow expressions that are not actually statements (which means purely functional expression, with no procedural aspects, cannot be statements, as they would result in giving their return value in no context frame)
+% An other aspect of classes is that they define custom shift/reduce conflicts resolve rules. The default is, here shift, but you could force to reduce instead (but this is highly unrecommended, unless you know what you do)
+% Finally if a rule of a classhead is compound of only one rule, bound to that class, the key @$ is allowed, and means "inherit every attribute". This is useful to build a lot of subrules without creating tons of useless subASTNodes (eg expression rule).
+
+% c[/*CLASS*/]/*Rule*/ /*:specifier*/*;
+% create a class to define attribute inheritance and
+% shift/reduce conflicts resolution rules
+
+c[expression]Expression
+ : sr[shift]
+ : d<op: "{None}">
+ : p[DOT] 10
+ : p[POW, SQRT, LOG] 9
+ : p[MUL, DIV, MOD] 8
+ : p[ADD, MIN] 7
+ : p[IN, HAS, IS, EQ, GT, GE, LT, LE, NE] 6
+ : p[NOT] 5
+ : p[AND] 4
+ : p[OR] 3
+ : p[EQUALS] 2
+;
+c[statement]Statement
+ : sr[shift]
+ : d<>
+;
+
+%%%%%%%%%%%
+%% FIRST %%
+%%%%%%%%%%%
+% This command indicated which are the rules the compiler should try look for.
+
+% f[/*priority*/:/*uniqueness*/]/*Rule*/ :should it be interpreted when reduced to the only element of the stack (removes it from the stack) - can be True or False - removing this from the metarule set can cause problems :what should the compiler do after they reduced the stack to one of this rule - 0 means continue and allowed to finish with any number, 1 means continue and allowed to finish with one, 2 means stop and allowed to finish with one, 3 means stop and ignore the rest of the input (for languages who require to be in shared input);
+
+% Metastatement should always have the lowest priority (which means it's the first to be executed) and should always be unique (because if there could be a doubt, it's a bad language; if there are no doubts, no needs to look somewhere else)
+
+f[0:True]Metastatement
+ : True
+ : 0
+;
+f[10:False]Statement
+ : False
+ : 0
+;
+
+%%%%%%%%%
+%% END %%
+%%%%%%%%%
+% This command ends the metacommands section and starts the grammar
+% (close to the Backus-Naur Form -- BNF) with non-terminals rules
+
+% e[];
+
+% No particural notes for this command as it is very self-explanatory
+
+e[]
+;
+
+FuncionCall[expression] ::=
+ : Expression@value LPAR ExpressionList@arguments RPAR <., op: "call">
+;
+
+Subscription[expression] ::=
+ : Expression@value LBRACKET Slice@arguments RBRACKET <., op: "subscription">
+;
+
+BuiltinTypes[expression] ::=
  : ID@value <.>
  : STRING@value <.>
- : FLOAT@value <.>;
+ : INT@value <.>
+ : FLOAT@value <.>
+;
 
+BoolExpression[expression] ::=
+ : (NOT|EXCLAMATION) Expression@value <., op: "not">
+ : Expression@left AND Expression@right <., op: "and", value: "computation">
+ : Expression@left OR Expression@right <., op: "or">
+ : Expression@left EQ Expression@right <., op: "eq">
+ : Expression@left IS Expression@right <., op: "is">
+ : Expression@left HAS Expression@right <., op: "has">
+ : Expression@left IN Expression@right <., op: "in">
+ : Expression@left GT Expression@right <., op: "gt">
+ : Expression@left GE Expression@right <., op: "ge">
+ : Expression@left LT Expression@right <., op: "lt">
+ : Expression@left LE Expression@right <., op: "le">
+;
+
+AttributeReference[expression] ::=
+ : Expression@father DOT Expression@child <., op: "dot">
+;
+
+Slice ::=
+ : Expression@min COLON Expression@max COLON Expression@step <.>
+ : Expression@min COLON Expression@max <.>
+ : Expression@max COLON <.>
+;
+
+
+MathExpression[expression] ::=
+ : Expression@left DASTERISK Expression@right <., op: "pow">
+ : PLUS Expression@value <., op: "plus">
+ : MINUS Expression@value <., op: "minus">
+ : TILDE Expression@value <., op: "tilde">
+ : DPLUS Expression@value <., op: "dplus", p: 1>
+ : DMINUS Expression@value <., op: "dminus", p: 1>
+ : Expression@value DPLUS <., op: "dplus", p: 2>
+ : Expression@value DMINUS <., op: "dminus", p: 2>
+ : Expression@left ASTERISK Expression@right <., op: "mul">
+ : Expression@left SLASH Expression@right <., op: "div">
+ : Expression@left DSLASH Expression@rigth <., op: "ediv">
+ : Expression@left PERCENTAGE Expression@right <., op: "mod">
+ : Expression@left SQRT Expression@right <., op: "sqrt">
+ : Expression@left LOG Expression@right <., op: "log">
+;
+
+Expression[statement] ::=
+ : LPAR Expression@$ RPAR <.>
+ : Assignment@$ <.>
+ : FunctionCall@$ <.>
+% : Subscription@$ <.>
+ : MathExpression@$ <.>
+ : BoolExpression@$ <.>
+ : AttributeReference@$ <.>
+ : BuiltinTypes@$ <.>
+;
+
+
+StatementList ::=
+ : StatementList@values Statement@value <values: {values + [value]}>
+ : Statement@value <values: {[value]}>
+;
 
 ExpressionList ::=
- : <.>
+ : ExpressionList@values COMMA Expression@value <.>
  : Expression@value <.>
- : ExpressionList@values COMMA Expression@value <.>;
+ : <>
+;
 
-Assignment ::=
- : ID@key EQUALS Expression@value <.>;
+d<op: assignment>
+Assignment[expression] ::=
+ : Assignment@key EQUALS Expression@value <.>
+ : ID@key EQUALS Expression@value <.>
+;
+
+
+While[statement] ::=
+ : Expression@bool LBRACE StatementList@instructions RBRACE <.>
+;
 
 Statement ::=
- : Assignment@value <.>
- : Expression@value <.>
+ : Expression@$ SEMICOLON <.>
+ : While@$ SEMICOLON <.>
 ;

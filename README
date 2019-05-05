@@ -11,6 +11,6 @@ and adapts to different type of compilation different syntaxes require. It may h
 /!\ Warning: Beans is still in pre-release and all its features may not be done or fully operational yet. /!\
 
 Actually, Beans is written in Python 3. To use it, just download or clone the project and import the beans/beansast directory
-inside your program or in the console, even if this library doesn't have proper grammars file yet.
+inside your program or in the console.
 
 This project is maintained by TheBlackBeans.

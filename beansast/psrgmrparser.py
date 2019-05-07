@@ -12,11 +12,18 @@ class ASTNode:
         self.attributes = attributes
     def __repr__(self):
         return "<ASTNode named %s%s>" % (self.name, (" - %s" % str(self.attributes)) * int(bool(self.attributes)))
+    def __str__(self):
+        return self.name
+    def __hash__(self):
+        return str(self)
+    def __eq__(self, right):
+        return (isinstance(right, type(self)) and right.name == self.name and right.attributes == self.attributes) or (isinstance(right, str) and right == str(self))
 
 class ASTNodizer: # also called parser, but to not mess up with names
-    def __init__(self, name, rule):
+    def __init__(self, name, rule, class_):
         self.name = name
-        self.rule = te.compile(rule)
+        self.rule = rule
+        self.class_ = class_
     def __call__(self, flux, pos):
         result, pos2 = self.rule.match(flux[pos:])
         pos += pos2
@@ -33,23 +40,33 @@ class ASTTokenNodizer(ASTNodizer):
     def __init__(self, name):
         self.name = name
     def __call__(self, flux, pos):
-        if flux[pos].name == self.name:
+        if flux[pos] == self.name:
             return True, flux[pos].attributes
 
 class ParserReader:
     def __init__(self, inp, helperr=False):
         self.helperr = helperr
         self.inp = inp # beansast.lexer.Lexer self.inp = self.inp
-        self.pos = 0
     def read(self):
         nodizers = collections.OrderedDict()
-        while self.inp[self.pos].name != "EOF":
+        pos = 0
+        pos, metastmts = self.read_metastmts(pos)
+        with open("beansast/gmrs/plexer-r.gmr") as f:
+            self.inp.update(f.read(), "beansast/gmrs/plexer-r.gmr")
             
-            self.pos, name = self.read_name(self.pos)
-            self.pos, _ = self.read_sgl_token(self.pos, "ASSIGNMENT")
-            self.pos, rule = self.read_rule(self.pos)
-            nodizers[name] = ASTNodizer(name, rule)
-        return nodizers
+        while self.inp[pos] != "EOF":
+            pos, name = self.read_name(pos)
+            if self.inp[pos] == "LBRACKET":
+                pos += 1
+                pos, tok = self.read_sgl_token(pos, "ID")
+                class_ = tok["value"]
+                pos, _ = self.read_sgl_token(pos, "RBRACKET")
+            else:
+                class_ = None
+            pos, _ = self.read_sgl_token(pos, "ASSIGNMENT")
+            pos, rule = self.read_rule(pos)
+            nodizers[name] = ASTNodizer(name, rule, class_)
+        return metastmts, nodizers
     def read_sgl_token(self, pos, token):
         if type(token) == set:
             if not self.inp[pos] in token:
@@ -64,23 +81,82 @@ class ParserReader:
             else:
                 return pos + 1, self.inp[pos]
     def read_metastmt(self, pos):
-        _, tok = self.read_sgl_token(self.pos, {"ASSOC", "CLASS", "FIRST", "END"})
+        _, tok = self.read_sgl_token(pos, {"ASSOC", "CLASS", "FIRST", "END"})
         if tok == "END":
             pos = self.read_end(pos)
-            return pos, ("end", None)
+            args = ("end", None)
         elif tok == "ASSOC":
             pos, assoc_rules = self.read_assoc(pos)
-            return pos, ("assoc", assoc_rules)
+            args = ("assoc", assoc_rules)
         elif tok == "CLASS":
             pos, cls_rules = self.read_class(pos)
-            return pos, ("class", cls_rules)
+            args = ("class", cls_rules)
         elif tok == "FIRST":
             pos, first_rules = self.read_first(pos)
-            return pos, ("first", first_rules)
+            args = ("first", first_rules)
+        pos, _ = self.read_sgl_token(pos, "SEMICOLON")
+        return pos, args
     def read_class(self, pos):
-        return pos, None
+        pos, _ = self.read_sgl_token(pos, "CLASS")
+        pos, _ = self.read_sgl_token(pos, "LBRACKET")
+        pos, name = self.read_sgl_token(pos, "ID")
+        name = name["value"]
+        pos, _ = self.read_sgl_token(pos, "RBRACKET")
+        pos, head_rule = self.read_sgl_token(pos, "ID")
+        head_rule = head_rule["value"]
+        instructions = {"sr": "shift", "d": {}, "p": {}}
+        while self.inp[pos] == "COLON":
+            pos += 1
+            pos, (key, value) = self.read_class_instruction(pos)
+            if key == "sr":
+                instructions[key] = value
+            else:
+                instructions[key].update(value)
+        return pos, (name, head_rule, instructions)
+    def read_class_instruction(self, pos):
+        _, tok = self.read_sgl_token(pos, {"SHIFTREDUCE", "PRIORITY", "DEFAULT"})
+        if tok == "SHIFTREDUCE":
+            pos, res = self.read_shiftreduce(pos)
+            args = ("sr", res)
+        elif tok == "PRIORITY":
+            pos, res = self.read_priority(pos)
+            args = ("p", res)
+        elif tok == "DEFAULT":
+            pos, res = self.read_default(pos)
+            args = ("d", res)
+        else:
+            # wtf...
+            raise RuntimeError("This should not happen")
+        return pos, args
+    def read_first_instruction(self, pos):
+        pos, tok = self.read_sgl_token(pos, {"META", "SINGLE"})
+        if tok == "META":
+            pos, tok = self.read_sgl_token(pos, "BOOL")
+            tok = {"True": True, "False": False}[tok["value"]]
+            return pos, ("meta", tok)
+        elif tok == "SINGLE":
+            pos, tok = self.read_sgl_token(pos, "INT")
+            tok = int(tok["value"])
+            return pos, ("single", tok)
+        else:
+            # wtf...
+            raise RuntimeError("This should not happen")
     def read_first(self, pos):
-        return pos, None
+        attributes = {"priority": None, "single": 0, "meta": False}
+        pos, _ = self.read_sgl_token(pos, "FIRST")
+        pos, _ = self.read_sgl_token(pos, "LBRACKET")
+        pos, tok = self.read_sgl_token(pos, "INT")
+        attributes["priority"] = int(tok["value"])
+        pos, _ = self.read_sgl_token(pos, "RBRACKET")
+        pos, tok = self.read_sgl_token(pos, "ID")
+        root_token = tok["value"]
+        
+        while self.inp[pos] == "COLON":
+            pos += 1
+            pos, (key, value) = self.read_first_instruction(pos)
+            attributes[key] = value
+    
+        return pos, (root_token, attributes)
     def read_end(self, pos):
         pos, _ = self.read_sgl_token(pos, "END")
         pos, _ = self.read_sgl_token(pos, "LBRACKET")
@@ -103,10 +179,24 @@ class ParserReader:
 
     def read_metastmts(self, pos):
         pos, (stmt, args) = self.read_metastmt(pos)
+        metastmts = {
+            "assoc": {},
+            "class": {},
+            "first": []
+        }
         while stmt != "end":
-            # compute stmts
+            if stmt == "assoc":
+                metastmts[stmt].update(args)
+            elif stmt == "class":
+                metastmts[stmt][args[0]] = args[1:3]
+            elif stmt == "first":
+                metastmts[stmt].append(args)
+            else:
+                # wtf...
+                raise RuntimeError("This should not happen")
             pos, (stmt, args) = self.read_metastmt(pos)
-        return pos, None
+        metastmts["first"].sort(key=lambda x: x[0])
+        return pos, metastmts
     def read_tokens(self, pos):
         tokens = []
         pos, _ = self.read_sgl_token(pos, "LBRACKET")
@@ -132,11 +222,11 @@ class ParserReader:
             pos += 1
             return pos, {}
         result = {}
-        pos, (key, value) = self.read_proxy_element(self, pos)
+        pos, (key, value) = self.read_proxy_element(pos)
         result[key] = value
         while self.inp[pos] == "COMMA":
             pos += 1
-            pos, (key, value) = self.read_proxy_element(self, pos)
+            pos, (key, value) = self.read_proxy_element(pos)
             result[key] = value
         pos, _ = self.read_sgl_token(pos, "RPROXY")
         return pos, result
@@ -148,7 +238,7 @@ class ParserReader:
         pos, _ = self.read_sgl_token(pos, "PRIORITY")
         pos, tokens = self.read_tokens(pos)
         pos, tok = self.read_sgl_token(pos, "INT")
-        priority = tok["value"]
+        priority = int(tok["value"])
         return pos, {token: priority for token in tokens}
     def read_shiftreduce(self, pos):
         pos, _ = self.read_sgl_token(pos, "SHIFTREDUCE")

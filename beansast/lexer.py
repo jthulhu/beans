@@ -30,12 +30,16 @@ class Lexer:
                 return is_good, result
         return False, None
     def __getitem__(self, key):
+        if key == -1:
+            self._pos = 0
+            self.tokens = []
+            return None
         if key < 0:
-            raise ValueError("Flux doesn't accept negative key.")
+            raise ValueError("Flux doesn't accept negative key. (-1 to reset)")
         while len(self.tokens) - 1 < key:
             is_good, value = self._lex()
             if not is_good:
-                raise LexingError("Unable to lex char %s at line %s" % pos2coords(self._pos, self.flux))
+                raise LexingError("Unable to lex char %s at line %s of file %s" % (*pos2coords(self._pos, self.flux), self.fn))
             self.tokens.append((self.tokenize(value), self._pos))
         while len(self.tokens) - 1 > key:
             self.tokens.pop()
@@ -44,11 +48,12 @@ class Lexer:
 
     def update(self, grammar, file="<stdgmr>"):
         """update the lexer's grammar. same arguments used in the default constructor"""
-        new_tokenizers, dels = LexerReader(grammar, file="<stdgmr>", helperr=self.helperr).read()
+        new_tokenizers, dels = LexerReader(grammar, file=file, helperr=self.helperr).read()
         for del_ in dels:
             if del_ in self.tokenizers.keys():
                 del self.tokenizers[del_]
         self.tokenizers.update(new_tokenizers)
+        self.file = file
     def copy(self):
         return Lexer._paste(self.tokenizers, self.flux, self._pos)
     @classmethod

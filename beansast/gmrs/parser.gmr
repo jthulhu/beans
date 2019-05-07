@@ -93,12 +93,13 @@ a[EQUALS]right;
 % An other aspect of classes is that they define custom shift/reduce conflicts resolve rules. The default is, here shift, but you could force to reduce instead (but this is highly unrecommended, unless you know what you do)
 % Finally if a rule of a classhead is compound of only one rule, bound to that class, the key @$ is allowed, and means "inherit every attribute". This is useful to build a lot of subrules without creating tons of useless subASTNodes (eg expression rule).
 
+% default is : sr[shift]
+
 % c[/*CLASS*/]/*Rule*/ /*:specifier*/*;
 % create a class to define attribute inheritance and
 % shift/reduce conflicts resolution rules
 
 c[expression]Expression
- : sr[shift]
  : d<op: "{None}">
  : p[DOT] 10
  : p[POW, SQRT, LOG] 9
@@ -111,8 +112,6 @@ c[expression]Expression
  : p[EQUALS] 2
 ;
 c[statement]Statement
- : sr[shift]
- : d<>
 ;
 
 %%%%%%%%%%%
@@ -120,17 +119,15 @@ c[statement]Statement
 %%%%%%%%%%%
 % This command indicated which are the rules the compiler should try look for.
 
-% f[/*priority*/:/*uniqueness*/]/*Rule*/ :should it be interpreted when reduced to the only element of the stack (removes it from the stack) - can be True or False - removing this from the metarule set can cause problems :what should the compiler do after they reduced the stack to one of this rule - 0 means continue and allowed to finish with any number, 1 means continue and allowed to finish with one, 2 means stop and allowed to finish with one, 3 means stop and ignore the rest of the input (for languages who require to be in shared input);
+% f[/*priority*/]/*Rule*/ :is a metastatement (helpful to define custom metastatements) :what should the compiler do after they reduced the stack to one of this rule - 0 means continue and allowed to finish 2with any number, 1 means continue and allowed to finish with one, 2 means stop and allowed to finish with one, 3 means stop and ignore the rest of the input (for languages who require to be in shared input);
+% default is : meta False : single 0
 
 % Metastatement should always have the lowest priority (which means it's the first to be executed) and should always be unique (because if there could be a doubt, it's a bad language; if there are no doubts, no needs to look somewhere else)
 
-f[0:True]Metastatement
- : True
- : 0
+f[0]Metastatement
+ : meta True
 ;
-f[10:False]Statement
- : False
- : 0
+f[10]Statement
 ;
 
 %%%%%%%%%
@@ -138,6 +135,9 @@ f[10:False]Statement
 %%%%%%%%%
 % This command ends the metacommands section and starts the grammar
 % (close to the Backus-Naur Form -- BNF) with non-terminals rules
+% Note that after this, the lexer's grammar will change:
+% metastaments' keywords will disapear, and comments will be
+% (* comment *)
 
 % e[];
 
@@ -207,7 +207,7 @@ Expression[statement] ::=
  : LPAR Expression@$ RPAR <.>
  : Assignment@$ <.>
  : FunctionCall@$ <.>
-% : Subscription@$ <.>
+ (*: Subscription@$ <.>*)
  : MathExpression@$ <.>
  : BoolExpression@$ <.>
  : AttributeReference@$ <.>
@@ -216,8 +216,8 @@ Expression[statement] ::=
 
 
 StatementList ::=
- : StatementList@values Statement@value <values: {values + [value]}>
- : Statement@value <values: {[value]}>
+ : StatementList@values Statement@value <values: "{values + [value]}">
+ : Statement@value <values: "{[value]}">
 ;
 
 ExpressionList ::=
@@ -226,7 +226,6 @@ ExpressionList ::=
  : <>
 ;
 
-d<op: assignment>
 Assignment[expression] ::=
  : Assignment@key EQUALS Expression@value <.>
  : ID@key EQUALS Expression@value <.>

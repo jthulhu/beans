@@ -1,0 +1,25 @@
+ignore COMMENT ::= \(\*([^*]|(\*(?!\))))*\*\)
+
+del ASSOC
+del CLASS
+del FIRST
+del END
+del DEFAULT
+del SHIFTREDUCE
+del LEFT
+del RIGHT
+del NONA
+del SHIFT
+del REDUCE
+del PRIORITY
+del META
+del SINGLE
+
+AT ::= @
+DOLAR ::= \$
+DOT ::= [.]
+LBRACE ::= {
+RBRACE ::= }
+LPAR ::= \(
+RPAR ::= \)
+LINE ::= \|

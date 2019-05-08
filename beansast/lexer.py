@@ -1,5 +1,5 @@
 from .lxrgmrparser import LexerReader
-
+from .stderr import raise_error, LexingSyntaxError, Frame
 class LexingError(Exception):
     pass
 
@@ -16,7 +16,7 @@ class Lexer:
         self.fn = fn
     def tokenize(self, token):
         token.file = self.fn
-        token.pos = pos2coords(self._pos, self.flux)
+        token.pos = pos2coords(self._pos, self.flux)[:-1]
         token.tkpos = len(self.tokens)
         return token
     def _lex(self):
@@ -39,7 +39,7 @@ class Lexer:
         while len(self.tokens) - 1 < key:
             is_good, value = self._lex()
             if not is_good:
-                raise LexingError("Unable to lex char %s at line %s of file %s" % (*pos2coords(self._pos, self.flux), self.fn))
+                raise raise_error(LexingSyntaxError(Frame(self.fn, *pos2coords(self._pos, self.flux))))
             self.tokens.append((self.tokenize(value), self._pos))
         while len(self.tokens) - 1 > key:
             self.tokens.pop()
@@ -78,4 +78,4 @@ def pos2coords(pos, flux):
             x = 1
         else:
             x += 1
-    return x, y
+    return y, x

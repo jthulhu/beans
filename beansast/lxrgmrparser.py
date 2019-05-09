@@ -22,6 +22,8 @@ needs a name, which will be used by the parser, and attributes, a dict, which wi
         return (isinstance(right, type(self)) and right.name == self.name and right.attributes == self.attributes) or (isinstance(right, str) and right == str(self))
     def __hash__(self):
         return hash(self.name)
+    def __bool__(self):
+        return True
 
 class Tokenizer:
     """Initialised with a name, a rule and an ignore flag
@@ -109,11 +111,11 @@ class LexerReader:
 
 def pos2coords(pos, flux):
     y = 1
-    x = 1
+    x = 0
     for char in flux[:pos]:
         if char == '\n':
             y += 1
-            x = 1
+            x = 0
         else:
             x += 1
     return x, y

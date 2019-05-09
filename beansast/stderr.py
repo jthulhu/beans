@@ -26,7 +26,7 @@ class Error:
 class ParsingSyntaxError(Error):
     errtype = "Syntax error"
     helpmsg = "You tried to parse a file which doesn't respect the grammar rules."
-    errmsg_mask = "excpected {} and got {}"
+    errmsg_mask = "expected {} and got {}"
 
 class LexingSyntaxError(Error):
     errtype = "Lexing syntax error"
@@ -36,7 +36,7 @@ class LexingSyntaxError(Error):
 class GrammarSyntaxError(Error):
     errtype = "Grammar syntax error"
     helpmsg = "You tried to generate tokens from an invalid lexer grammar file."
-    errmsg_mask = "excpected {}"
+    errmsg_mask = "expected {}"
 
 class Frame:
     def __init__(self, file_, line, char):

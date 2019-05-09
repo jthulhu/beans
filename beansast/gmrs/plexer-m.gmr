@@ -17,6 +17,7 @@ REDUCE ::= reduce(?!\w)
 PRIORITY ::= p(rior(ity)?)?(?!\w)
 META ::= m(eta)?(?!\w)
 SINGLE ::= si(ng(le)?)?(?!\w)
+UNIQUE ::= u(niq(ue)?)?(?!\w)
 
 INT ::= (?P<value>\d+)
 STRING ::= ("|')(?P<value>(((?!(\\|\1)).)|(\\(?!\\).)|(\\\\))*)\1

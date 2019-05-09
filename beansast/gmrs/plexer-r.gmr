@@ -16,7 +16,6 @@ del META
 del SINGLE
 
 AT ::= @
-DOLAR ::= \$
 DOT ::= [.]
 LBRACE ::= {
 RBRACE ::= }

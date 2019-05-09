@@ -16,7 +16,7 @@ class Lexer:
         self.fn = fn
     def tokenize(self, token):
         token.file = self.fn
-        token.pos = pos2coords(self._pos, self.flux)[:-1]
+        token.pos = pos2coords(self._pos, self.flux)[::-1]
         token.tkpos = len(self.tokens)
         return token
     def _lex(self):

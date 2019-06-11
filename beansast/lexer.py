@@ -1,5 +1,5 @@
 from .lxrgmrparser import LexerReader
-from .stderr import raise_error, LexingSyntaxError, Frame
+from .stderr import *
 class LexingError(Exception):
     pass
 

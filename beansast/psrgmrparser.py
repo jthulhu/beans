@@ -2,50 +2,53 @@
 # -*- coding: utf-8 -*-
 
 import collections
-from .stderr import raise_error, ParsingSyntaxError, token_to_frame
+from .stderr import *
 from . import lxrgmrparser
 
 class Rule:
     def __init__(self, tokens, proxy):
         self.tokens = tokens
         self.proxy = proxy
+    def __getitem__(self, key):
+        return self.tokens[key]
+    def __repr__(self):
+        return ": " + " ".join(repr_token(token) for token in self.tokens) + " <" + ", ".join(str(key) + ": " + str(value) for key, value in self.proxy.items()) + ">"
+    def __len__(self):
+        return len(self.tokens)
 
+def repr_token(token):
+    res = token[0]
+    if token[1]:
+        res += "@" + token[1]
+    return res
+    
 class ASTNode:
-    def __init__(self, name, attributes):
+    def __init__(self, name, attributes, pos, file):
         self.name = name
         self.attributes = attributes
+        self.pos = pos
+        self.file = file
     def __repr__(self):
         return "<ASTNode named %s%s>" % (self.name, (" - %s" % str(self.attributes)) * int(bool(self.attributes)))
     def __str__(self):
         return self.name
     def __hash__(self):
-        return str(self)
+        return hash(str(self) + str(attributes))
     def __eq__(self, right):
-        return (isinstance(right, type(self)) and right.name == self.name and right.attributes == self.attributes) or (isinstance(right, str) and right == str(self))
+        return (isinstance(right, type(self)) and right.name == self.name) or (isinstance(right, str) and right == str(self))
 
 class ASTNodizer: # also called parser, but to not mess up with names
     def __init__(self, name, rule, class_):
         self.name = name
         self.rule = rule
         self.class_ = class_
-    def __call__(self, flux, pos):
-        result, pos2 = self.rule.match(flux[pos:])
-        pos += pos2
-        if result:
-            return True, pos, result
-        return False, pos, None
+    def __getitem__(self, key):
+        return self.rule[key]
+    def __len__(self):
+        return len(self.rule)
     def __repr__(self):
-        return "<ASTNodizer named %s with rule %s>" % (self.name, self.rule)
+        return "<ASTNodizer named %s with rule %s>" % (self.name, " ".join(repr(rule) for rule in self.rule))
 
-class ASTTokenNodizer(ASTNodizer):
-    # ASTNodizer but to compile simple tokens e.g. ID is a token
-    # so it will have an ASTTokenNodizer bound, so references
-    # to ID in other rules will corrispond to an ASTNodizer
-    def __init__(self, name):
-        self.name = name
-    def __call__(self, flux, pos):
-        if flux[pos] == self.name:
-            return True, flux[pos].attributes
 
 class ParserReader:
     def __init__(self, inp, helperr=False):
@@ -90,6 +93,21 @@ class ParserReader:
         tok = self.ahead_sgl_token(token)
         if tok: return tok
         else: self.err_toks(token)
+    def read_sgl_token_typed(self, token):
+        tok = self.read_sgl_token(token)
+        if tok == "INT":
+            if tok["value"].endswith("inf"):
+                return float(tok["value"])
+            return int(tok["value"])
+        elif tok == "BOOL":
+            return {"True": True, "False": False}[tok["value"]]
+        elif tok == "STRING":
+            return tok["value"]
+        elif tok == "FLOAT":
+            return float(tok["value"])
+        else:
+            return tok
+            
     def read_metastmt(self):
         tok = self.aheadf_sgl_token({"ASSOC", "CLASS", "FIRST", "END"})
         if tok == "END":
@@ -117,7 +135,7 @@ class ParserReader:
         self.read_sgl_token("RBRACKET")
         head_rule = self.read_sgl_token("ID")
         head_rule = head_rule["value"]
-        instructions = {"sr": "shift", "d": {}, "p": {}}
+        instructions = {"sr": "shift", "d": collections.OrderedDict(), "p": {}}
         while self.ahead_sgl_token("COLON"):
             (key, value) = self.read_class_instruction()
             if key == "sr":
@@ -143,16 +161,13 @@ class ParserReader:
     def read_first_instruction(self):
         tok = self.read_sgl_token({"META", "SINGLE", "UNIQUE"})
         if tok == "META":
-            tok = self.read_sgl_token("BOOL")
-            tok = {"True": True, "False": False}[tok["value"]]
+            tok = self.read_sgl_token_typed("BOOL")
             return ("meta", tok)
         elif tok == "SINGLE":
-            tok = self.read_sgl_token("INT")
-            tok = int(tok["value"])
+            tok = self.read_sgl_token_typed("INT")
             return ("single", tok)
         elif tok == "UNIQUE":
-            tok = self.read_sgl_token("BOOL")
-            tok = {"True": True, "False": False}[tok["value"]]
+            tok = self.read_sgl_token_typed("BOOL")
             return ("unique", tok)
         else:
             # wtf...
@@ -161,8 +176,8 @@ class ParserReader:
         attributes = {"priority": None, "single": 0, "meta": False, "unique": False}
         self.read_sgl_token("FIRST")
         self.read_sgl_token("LBRACKET")
-        tok = self.read_sgl_token("INT")
-        attributes["priority"] = int(tok["value"])
+        tok = self.read_sgl_token_typed("INT")
+        attributes["priority"] = tok
         self.read_sgl_token("RBRACKET")
         tok = self.read_sgl_token("ID")
         root_token = tok["value"]
@@ -225,15 +240,14 @@ class ParserReader:
         tok = self.read_sgl_token("ID")
         key = tok["value"]
         self.read_sgl_token("COLON")
-        tok = self.read_sgl_token({"STRING", "INT", "FLOAT"})
-        value = tok["value"]
+        value = self.read_sgl_token_typed({"STRING", "INT", "FLOAT"})
         return (key, value)
         
     def read_proxy(self):
         self.read_sgl_token("LPROXY")
         if self.ahead_sgl_token("RPROXY"):
-            return {}
-        result = {}
+            return collections.OrderedDict()
+        result = collections.OrderedDict()
         (key, value) = self.read_proxy_element()
         result[key] = value
         while self.ahead_sgl_token("COMMA"):
@@ -248,8 +262,8 @@ class ParserReader:
     def read_priority(self):
         self.read_sgl_token("PRIORITY")
         tokens = self.read_tokens()
-        tok = self.read_sgl_token("INT")
-        priority = int(tok["value"])
+        tok = self.read_sgl_token_typed("INT")
+        priority = tok
         return {token: priority for token in tokens}
     def read_shiftreduce(self):
         self.read_sgl_token("SHIFTREDUCE")
@@ -265,12 +279,17 @@ class ParserReader:
     def read_rule_token(self):
         token = self.read_sgl_token("ID")
         token = token["value"]
+        if self.ahead_sgl_token("DOT"):
+            origin = self.read_sgl_token("ID")
+            origin = origin["value"]
+        else:
+            origin = None
         if self.ahead_sgl_token("AT"):
             key = self.read_sgl_token("ID")
             key = key["value"]
         else:
             key = None
-        return (token, key)
+        return (token, origin, key)
     def read_rule(self):
         tokens = []
         while self.ahead_sgl_token("ID", step=False):

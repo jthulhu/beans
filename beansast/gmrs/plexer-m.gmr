@@ -19,9 +19,9 @@ META ::= m(eta)?(?!\w)
 SINGLE ::= si(ng(le)?)?(?!\w)
 UNIQUE ::= u(niq(ue)?)?(?!\w)
 
-INT ::= (?P<value>\d+)
+INT ::= (?P<value>[+-]?(\d+|(inf)))
 STRING ::= ("|')(?P<value>(((?!(\\|\1)).)|(\\(?!\\).)|(\\\\))*)\1
-FLOAT ::= (?P<value>(\d*\.\d+)|(\d+\.\d*))
+FLOAT ::= (?P<value>[+-]?((\d*\.\d+)|(\d+\.\d*)|(inf)))
 BOOL ::= (?P<value>True|False)
 ID ::= (?P<value>\w+)
 

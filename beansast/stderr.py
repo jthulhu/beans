@@ -1,19 +1,22 @@
 # -*- coding: utf-8 -*-
-
+from .color import *
 import sys
 
 __all__ = [
     "raise_error",
     "ParsingSyntaxError",
+    "GrammarIdentityError",
+    "NoPathSyntaxError",
+    "TooManyPathSyntaxError",
     "LexingSyntaxError",
     "GrammarSyntaxError",
     "Frame",
     "token_to_frame"
 ]
 
-error_format = """Fatal error - {errno:d}.
- @{line}:{char} in {file}
- {errtype}: {errmsg}{helpmsg}"""
+error_format = """%sFatal error%s - {errno:d}.
+ @%s{line}:{char}%s in %s{file}%s
+ %s{errtype}%s: {errmsg}{helpmsg}""" % (FATAL, ENDC, BOLD, ENDC, BOLD, ENDC, BOLD, ENDC)
 
 class Error:
     errtype = "Default root error"
@@ -28,11 +31,27 @@ class ParsingSyntaxError(Error):
     helpmsg = "You tried to parse a file which doesn't respect the grammar rules."
     errmsg_mask = "expected {} and got {}"
 
+class NoPathSyntaxError(Error):
+    errtype = "Syntax error"
+    helpmsg = "You tried to parse a file which cannot be parsed in anyway with the given rules (reach a `first' rule)."
+    errmsg_mask = "cannot reach the first rule"
+
+class TooManyPathSyntaxError(Error):
+    errtype = "Syntax error"
+    helpmsg = "Your grammar is too ambiguous or your input doesn't follow your grammar, but the `first' rules has been reached too many times and the parser cannot decide which one is the best (or how to merge them)."
+    errmsg_mask = "first rule reached multiple times"
+    
+class GrammarIdentityError(Error):
+    errtype = "Grammar syntax-time error"
+    helpmsg = "This error is a grammar error found during the syntax-parsing time. It occurs when you a rule has @this key but this key is not his only one."
+    errmsg_mask = "Multiple key found and @this withing them"
+    
 class LexingSyntaxError(Error):
     errtype = "Lexing syntax error"
     helpmsg = "You tried to lex a file which doesn't correspond to the defined tokens."
     errmsg_mask = "token not understood"
 
+    
 class GrammarSyntaxError(Error):
     errtype = "Grammar syntax error"
     helpmsg = "You tried to generate tokens from an invalid lexer grammar file."
@@ -44,6 +63,7 @@ class Frame:
         self.line = line
         self.char = char
 
+        
 def token_to_frame(token):
     return Frame(token.file, token.pos[1], token.pos[0])
         
@@ -61,5 +81,4 @@ def raise_error(error=None, errno=1, helpmsg=False):
         print(error_format.format(**format_frame))
     else:
         print("Fatal error")
-    #sys.exit(errno)
-    raise 
+    sys.exit(errno)

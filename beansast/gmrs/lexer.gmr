@@ -14,6 +14,7 @@ SPACENAME ::= spacename
 PACKAGE ::= package
 PUBLIC ::= public
 PRIVATE ::= private
+RETURN ::= return
 
 EOF ::= \Z
 STRING ::= ("|')(?P<value>(((?!(\\|\1)).)|(\\(?!\\).)|(\\\\))*)\1
@@ -21,6 +22,8 @@ INT ::= (?P<value>\d+)
 FLOAT ::= (?P<value>(\d*\.\d+)|(\d+\.\d*))
 ignore SPACE ::= [\t ]+
 ignore EOL ::= \n
+TRUE ::= true
+FALSE ::= false
 ID ::= (?P<name>\w*[a-zA-Z_]\w*)
 
 DOT ::= [.]
@@ -60,7 +63,7 @@ LOG ::= /\*
 DSLASH ::= //
 SLASH ::= /
 PERCENTAGE ::= %
-LINE ::= |
+LINE ::= \|
 
 COLON ::= :
 GRAVE ::= `

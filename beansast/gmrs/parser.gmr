@@ -100,7 +100,7 @@ a[EQUALS]right;
 % shift/reduce conflicts resolution rules
 
 c[expression]Expression
- : d<op: "{None}">
+ : d<op: "[None]", values: "[None]", value: "[None]">
  : p[DOT] 10
  : p[POW, SQRT, LOG] 9
  : p[MUL, DIV, MOD] 8
@@ -111,7 +111,9 @@ c[expression]Expression
  : p[OR] 3
  : p[EQUALS] 2
 ;
+
 c[statement]Statement
+ : d<s: "[None]">
 ;
 
 %%%%%%%%%%%
@@ -124,11 +126,11 @@ c[statement]Statement
 
 % Metastatement should always have the lowest priority (which means it's the first to be executed) and should always be unique (because if there could be a doubt, it's a bad language; if there are no doubts, no needs to look somewhere else)
 
-f[0]Metastatement
+f[-inf]Metastatement
  : meta True
  : unique True
 ;
-f[10]Statement
+f[0]Statement
 ;
 
 %%%%%%%%%
@@ -147,8 +149,13 @@ f[10]Statement
 e[]
 ;
 
-FuncionCall[expression] ::=
+Metastatement ::=
+ : META <>
+;
+
+FunctionCall[expression] ::=
  : Expression@value LPAR ExpressionList@arguments RPAR <op: "call">
+ : Expression@value LPAR RPAR <op: "call">
 ;
 
 Subscription[expression] ::=
@@ -156,10 +163,12 @@ Subscription[expression] ::=
 ;
 
 BuiltinTypes[expression] ::=
- : ID@value <>
- : STRING@value <>
- : INT@value <>
- : FLOAT@value <>
+ : ID.name@value <type: "id", op: "builtin">
+ : STRING.value@value <type: "string", op: "builtin">
+ : INT.value@value <type: "int", op: "builtin">
+ : FLOAT.value@value <type: "float", op: "builtin">
+ : TRUE <type: "true", op: "builtin">
+ : FALSE <type: "false", op: "builtin">
 ;
 
 BoolExpression[expression] ::=
@@ -193,16 +202,18 @@ MathExpression[expression] ::=
  : PLUS Expression@value <op: "plus">
  : MINUS Expression@value <op: "minus">
  : TILDE Expression@value <op: "tilde">
- : DPLUS Expression@value <op: "dplus", p: 1>
- : DMINUS Expression@value <op: "dminus", p: 1>
- : Expression@value DPLUS <op: "dplus", p: 2>
- : Expression@value DMINUS <op: "dminus", p: 2>
+ : DPLUS Expression@value <op: "dplus", p: "1">
+ : DMINUS Expression@value <op: "dminus", p: "1">
+ : Expression@value DPLUS <op: "dplus", p: "2">
+ : Expression@value DMINUS <op: "dminus", p: "2">
  : Expression@left ASTERISK Expression@right <op: "mul">
  : Expression@left SLASH Expression@right <op: "div">
  : Expression@left DSLASH Expression@rigth <op: "ediv">
  : Expression@left PERCENTAGE Expression@right <op: "mod">
  : Expression@left SQRT Expression@right <op: "sqrt">
  : Expression@left LOG Expression@right <op: "log">
+ : Expression@left PLUS Expression@right <op: "add">
+ : Expression@left MINUS Expression@right <op: "sub">
 ;
 
 Expression[statement] ::=
@@ -214,31 +225,54 @@ Expression[statement] ::=
  : BoolExpression@this <>
  : AttributeReference@this <>
  : BuiltinTypes@this <>
+ : Frame@this <>
 ;
 
 
 StatementList ::=
- : StatementList@values Statement@value <values: "{values + [value]}">
- : Statement@value <values: "{[value]}">
+ : StatementList@values Statement@value <>
+ : Statement@value <>
 ;
 
 ExpressionList ::=
  : ExpressionList@values COMMA Expression@value <>
- : Expression@value <>
- : <>
+ : Expression@value <values: "[None]">
+;
+
+IdList ::=
+ : IdList@values COMMA ID@value <>
+ : ID@value <values: "[None]">
 ;
 
 Assignment[expression] ::=
- : Assignment@key EQUALS Expression@value <>
- : ID@key EQUALS Expression@value <>
+ : Assignment@key EQUALS Expression@value <op: "assig">
+ : ID@key EQUALS Expression@value <op: "assig">
 ;
 
+Frame[expression] ::=
+ : LPAR IdList@args RPAR LBRACE StatementList@instructions RBRACE <op: "frame">
+ : LPAR RPAR LBRACE StatementList@instructions RBRACE <op: "frame", args: "[None]">
+;
+
+If[statement] ::=
+ : Expression@bool COLON LBRACE StatementList@instructions RBRACE <>
+;
 
 While[statement] ::=
  : Expression@bool LBRACE StatementList@instructions RBRACE <>
 ;
 
+Return[statement] ::=
+ : RETURN Expression@arg <s: "return">
+;
+
+Statements[statement] ::=
+ : Expression@this <s: "expr">
+ : While@this <s: "while">
+ : If@this <s: "if">
+ : Return@this <s: "return">
+;
+
 Statement ::=
- : Expression@this SEMICOLON <>
- : While@this SEMICOLON <>
+ : Statements@this SEMICOLON <>
 ;

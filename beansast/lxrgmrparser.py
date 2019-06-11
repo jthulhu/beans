@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import re, collections
-from .stderr import Frame, raise_error, GrammarSyntaxError
+from .stderr import *
 
 class Token:
     """Standard token class

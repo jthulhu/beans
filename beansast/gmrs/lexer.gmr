@@ -18,13 +18,12 @@ RETURN ::= return
 
 EOF ::= \Z
 STRING ::= ("|')(?P<value>(((?!(\\|\1)).)|(\\(?!\\).)|(\\\\))*)\1
-INT ::= (?P<value>\d+)
 FLOAT ::= (?P<value>(\d*\.\d+)|(\d+\.\d*))
+INT ::= (?P<value>\d+)
 ignore SPACE ::= [\t ]+
 ignore EOL ::= \n
 TRUE ::= true
 FALSE ::= false
-ID ::= (?P<name>\w*[a-zA-Z_]\w*)
 
 DOT ::= [.]
 
@@ -33,14 +32,11 @@ RPAR ::= \)
 LBRACE ::= {
 RBRACE ::= }
 LBRACKET ::= \[
-RBRACKET ::= \]
-
-EQ ::= ==
-GT ::= >
-LT ::= <
-GE ::= >=
-LE ::= <=
-NE ::= !=
+RBRACKET ::= ]
+LBRACEU ::= {\|
+RBRACEU ::= \|}
+LBRACKETU ::= \[\|
+RBRACKETU ::= \|]
 
 HAS ::= has
 IN ::= in
@@ -48,22 +44,34 @@ IS ::= is
 
 AND ::= and
 OR ::= or
+XOR ::= xor
 NOT ::= not
 
-EQUALS ::= =
-
-PLUS ::= \+
+RSHIFT ::= >>
+LSHIFT ::= <<
 DPLUS ::= \+\+
-MINUS ::= -
+PLUS ::= \+
 DMINUS ::= --
-ASTERISK ::= \*
-DASTERISK ::= \*\*
+MINUS ::= -
 SQRT ::= \*/
 LOG ::= /\*
+DASTERISK ::= \*\*
+ASTERISK ::= \*
 DSLASH ::= //
 SLASH ::= /
 PERCENTAGE ::= %
 LINE ::= \|
+AMPERSAND ::= &
+CIRCUMFLEX ::= \^
+
+EQ ::= ==
+GE ::= >=
+LE ::= <=
+GT ::= >
+LT ::= <
+NE ::= !=
+
+EQUALS ::= =
 
 COLON ::= :
 GRAVE ::= `
@@ -73,3 +81,5 @@ COMMA ::= ,
 TILDE ::= ~
 EXCLAMATION ::= !
 QUESTION ::= \?
+
+ID ::= (?P<name>\w*[a-zA-Z_]\w*)

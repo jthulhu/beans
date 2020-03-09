@@ -2,7 +2,6 @@
 % every statement must end with `;'
 %
 % /Metarule statements/
-% a - associativity rule
 % c - class rule
 % f - first rule
 % e - end metarules
@@ -11,6 +10,7 @@
 % inside classes, priority can be set with the specifier p
 % inside classes, shift/reduce conflict rule can be set with
 % specifier sr
+% inside classes, associativity can be set with the specifier a
 % first statement specify which rules are to be applied to find out
 % ast nodes, or, in other words, should be applied on the call
 % remember that default first rule also applies on metastatements
@@ -60,25 +60,18 @@
 %%%%%%%%%%%%%%%%%%%
 % This command sets associativity for operators
 % when a shift/reduce conflict happends, associativity is the first
-% critirea which is look for (check if the lookahead token has a rule defined), and overwrites classes' rules
-% Associativity take place when the same rule asks both for a reduce and a shifting, and the lookahead token is an operator
+% critirea which is look for (check if the lookahead token has a rule defined), and are class-defined
+% Associativity take place when the question of merging two solutions that require rules within the same class
 
-% a[/*TOKENS*/]/*right|left|nonassoc*/;
+% : a[/*operators*/]/*right|left|nonassoc*/
 
 % standard binary operators priority
 %  * notice assignement operator is an operator
 %    assignement is an expression
 %  * notice most bitwise operators are not presents
 %    they are not defined
-a[DOT]right;
-a[DASTERISK]left;
-a[ASTERISK, SLASH, PERCENTAGE]left;
-a[PLUS, MINUS]left;
-a[IN, IS, EQ, GT, GE, LT, LE, NE, HAS]left;
-a[NOT]left;
-a[AND]left;
-a[OR]left;
-a[EQUALS]right;
+%  * default is a[op] left
+
 
 %%%%%%%%%%%%%
 %% CLASSES %%
@@ -100,20 +93,30 @@ a[EQUALS]right;
 % shift/reduce conflicts resolution rules
 
 c[expression]Expression
- : d<op: "[None]", values: "[None]", value: "[None]">
- : p[DOT] 10
- : p[POW, SQRT, LOG] 9
- : p[MUL, DIV, MOD] 8
- : p[ADD, MIN] 7
- : p[IN, HAS, IS, EQ, GT, GE, LT, LE, NE] 6
- : p[NOT] 5
- : p[AND] 4
- : p[OR] 3
- : p[EQUALS] 2
+ : d<priority public op: "[None]", public value: "[None]", private opprior: 1>
+ : p[call, subscription, dot] 16
+ : a[dot] right
+ : p[tilde, dplus, dminus, pointer, reference, not, plus, minus] 15
+ : p[pow, sqrt, log] 14
+ : p[mul, div, ediv, mod] 13
+ : p[add, sub] 12
+ : p[rshift, lshift] 11
+ : p[ge, le, gt, lt] 10
+ : p[eq, ne] 9
+ : p[is] 8
+ : p[has, in] 7
+ : p[band] 6
+ : p[bxor] 5
+ : p[bor] 4
+ : p[and] 3
+ : p[xor] 2
+ : p[or] 1
+ : p[assig] 0
+ : a[assig] right
 ;
 
 c[statement]Statement
- : d<s: "[None]">
+ : d<public s: "[None]">
 ;
 
 %%%%%%%%%%%
@@ -176,7 +179,9 @@ BoolExpression[expression] ::=
  : NOT Expression@value <op: "not">
  : Expression@left AND Expression@right <op: "and", value: "computation">
  : Expression@left OR Expression@right <op: "or">
+ : Expression@left XOR Expression@right <op: "xor">
  : Expression@left EQ Expression@right <op: "eq">
+ : Expresionn@left NE Expression@right <op: "ne">
  : Expression@left IS Expression@right <op: "is">
  : Expression@left HAS Expression@right <op: "has">
  : Expression@left IN Expression@right <op: "in">
@@ -196,16 +201,15 @@ Slice ::=
  : Expression@max COLON <>
 ;
 
-
 MathExpression[expression] ::=
  : Expression@left DASTERISK Expression@right <op: "pow">
- : PLUS Expression@value <op: "plus">
+ (*: PLUS Expression@value <op: "plus">*)
  : MINUS Expression@value <op: "minus">
  : TILDE Expression@value <op: "tilde">
- : DPLUS Expression@value <op: "dplus", p: "1">
- : DMINUS Expression@value <op: "dminus", p: "1">
- : Expression@value DPLUS <op: "dplus", p: "2">
- : Expression@value DMINUS <op: "dminus", p: "2">
+ : DPLUS Expression@value <op: "dplus", opprior: "1">
+ : DMINUS Expression@value <op: "dminus", opprior: "1">
+ : Expression@value DPLUS <op: "dplus", opprior: "2">
+ : Expression@value DMINUS <op: "dminus", opprior: "2">
  : Expression@left ASTERISK Expression@right <op: "mul">
  : Expression@left SLASH Expression@right <op: "div">
  : Expression@left DSLASH Expression@rigth <op: "ediv">
@@ -214,6 +218,11 @@ MathExpression[expression] ::=
  : Expression@left LOG Expression@right <op: "log">
  : Expression@left PLUS Expression@right <op: "add">
  : Expression@left MINUS Expression@right <op: "sub">
+ : Expression@left RSHIFT Expression@right <op: "rshift">
+ : Expression@left LSHIFT Expression@right <op: "lshift">
+ : Expression@left AMPERSAND Expression@right <op: "band">
+ : Expression@left CIRCUMFLEX Expression@right <op: "bxor">
+ : Expression@left LINE Expression@right <op: "bor">
 ;
 
 Expression[statement] ::=
@@ -230,24 +239,23 @@ Expression[statement] ::=
 
 
 StatementList ::=
- : StatementList@values Statement@value <>
- : Statement@value <>
+ : StatementList.value@value Statement@_value <[value]: _value>
+ : Statement@_value <[value]: _value>
 ;
 
 ExpressionList ::=
- : ExpressionList@values COMMA Expression@value <>
- : Expression@value <values: "[None]">
+ : ExpressionList.value@value COMMA Expression@_value <[value]: _value>
+ : Expression@_value <[value]: _value>
 ;
 
 IdList ::=
- : IdList@values COMMA ID@value <>
- : ID@value <values: "[None]">
+ : IdList.value@value COMMA ID@_value <[value]: _value>
+ : ID@_value <[value]: _value>
 ;
 
-Assignment[expression] ::=
- : Assignment@key EQUALS Expression@value <op: "assig">
- : ID@key EQUALS Expression@value <op: "assig">
-;
+(*Assignment[expression] ::=
+ : ID.name@key EQUALS Expression@value <op: "assig">
+;*)
 
 Frame[expression] ::=
  : LPAR IdList@args RPAR LBRACE StatementList@instructions RBRACE <op: "frame">
@@ -255,7 +263,8 @@ Frame[expression] ::=
 ;
 
 If[statement] ::=
- : Expression@bool COLON LBRACE StatementList@instructions RBRACE <>
+ : Expression@bool COLON LBRACE StatementList@then RBRACE <else: "[None]">
+ : Expression@bool COLON LBRACE StatementList@then RBRACE LBRACE StatementList@else RBRACE<>
 ;
 
 While[statement] ::=

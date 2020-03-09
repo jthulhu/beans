@@ -18,6 +18,8 @@ PRIORITY ::= p(rior(ity)?)?(?!\w)
 META ::= m(eta)?(?!\w)
 SINGLE ::= si(ng(le)?)?(?!\w)
 UNIQUE ::= u(niq(ue)?)?(?!\w)
+PUBLIC ::= pub(lic)?(?!\w)
+PRIVATE ::= priv(ate)?(?!\w)
 
 INT ::= (?P<value>[+-]?(\d+|(inf)))
 STRING ::= ("|')(?P<value>(((?!(\\|\1)).)|(\\(?!\\).)|(\\\\))*)\1

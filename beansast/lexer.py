@@ -9,11 +9,17 @@ class Lexer:
         self.tokenizers, self.delete = LexerReader(grammar, file=file, helperr=helperr).read()
         self.file = file
         self.helperr = helperr
+        self.flux = None
     def __call__(self, flux, pos=0, fn="<stdin>"):
         self.flux = flux
         self._pos = pos
         self.tokens = []
         self.fn = fn
+    def debug_read_tokens(self):
+        if self.flux:
+            i = 0
+            while self[i] != "EOF":
+                i+=1
     def tokenize(self, token):
         token.file = self.fn
         token.pos = pos2coords(self._pos, self.flux)[::-1]

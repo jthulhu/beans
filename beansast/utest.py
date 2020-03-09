@@ -2,7 +2,7 @@ from unittest import TestCase
 import unittest
 
 # tested libraries
-from . import lxrgmrparser, lexer, psrgmrparser, parser
+from . import lxrgmrparser, lexer, psrgmrparser, parser, ShellAST
 
 # libraries used to recreate result of test, to be compared with
 # the actual result of test
@@ -167,6 +167,184 @@ class TestPsrgmrparser(TestCase):
 
 class TestParser(TestCase):
     pass
+
+class TestExpressions(TestCase):
+    def test_raw_exprs(self):
+        with open("beansast/tests/test_exprs.bns") as f:
+            instructions = f.readlines()
+        shell = ShellAST
+        node = psrgmrparser.ASTNode
+        d = OrderedDict
+        results = [
+            [node("Statement", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "string"), ("s", "expr"))), "TEST", "TEST")],
+            [node("Statement", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id"), ("s", "expr"))), "TEST", "TEST")],
+            [node("Statement", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id"), ("s", "expr"))), "TEST", "TEST")],
+            [node("Statement", d((("op", "builtin"), ("value", "6"), ("opprior", 1), ("type", "int"), ("s", "expr"))), "TEST", "TEST")],
+            [node("Statement", d((("op", "builtin"), ("value", "6"), ("opprior", 1), ("type", "float"), ("s", "expr"))), "TEST", "TEST")],
+            [node("Statement", d((("op", "builtin"), ("value", ".6"), ("opprior", 1), ("type", "float"), ("s", "expr"))), "TEST", "TEST")],
+            [node("Statement", d((("op", "builtin"), ("value", "6.6"), ("opprior", 1), ("type", "float"), ("s", "expr"))), "TEST", "TEST")],
+            [node("Statement", d((("op", "builtin"), ("opprior", 1), ("type", "true"), ("s", "expr"))), "TEST", "TEST")],
+            [node("Statement", d((("op", "builtin"), ("opprior", 1), ("type", "false"), ("s", "expr"))), "TEST", "TEST")],
+            [node("Statement", d((("op", "not"),
+                                  ("value",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("opprior", 1), ("type", "string"), ("s", "expr"))), "TEST", "TEST")],
+            [node("Statement", d((("op", "not"),
+                                  ("value",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("opprior", 1), ("type", "string"), ("s", "expr"))), "TEST", "TEST")],
+            [node("Statement", d((("op", "and"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+             [node("Statement", d((("op", "or"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                   ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+              [node("Statement", d((("op", "xor"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                   ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+               [node("Statement", d((("op", "eq"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                   ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+                [node("Statement", d((("op", "ne"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                   ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+                 [node("Statement", d((("op", "is"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                   ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+                  [node("Statement", d((("op", "has"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+                   [node("Statement", d((("op", "in"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+                    [node("Statement", d((("op", "gt"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+                     [node("Statement", d((("op", "ge"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+                      [node("Statement", d((("op", "lt"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+                       [node("Statement", d((("op", "le"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+                        [node("Statement", d((("op", "dot"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+                         [node("Statement", d((("op", "call"),
+                                  ("value",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                               ("opprior", 1), ("s", "expr"))), "TEST", "TEST")],
+                      [node("Statement", d((("op", "pow"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                   ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+                       [node("Statement", d((("op", "plus"),
+                                  ("value",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("opprior", 1), ("s", "expr"))), "TEST", "TEST")],
+                       [node("Statement", d((("op", "minus"),
+                                  ("value",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("opprior", 1), ("s", "expr"))), "TEST", "TEST")],
+                       [node("Statement", d((("op", "tilde"),
+                                  ("value",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("opprior", 1), ("s", "expr"))), "TEST", "TEST")],
+                       [node("Statement", d((("op", "dplus"),
+                                  ("value",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("opprior", 1), ("s", "expr"))), "TEST", "TEST")],
+                       [node("Statement", d((("op", "dminus"),
+                                  ("value",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("opprior", 1), ("s", "expr"))), "TEST", "TEST")],
+                       [node("Statement", d((("op", "dplus"),
+                                  ("value",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("opprior", 2), ("s", "expr"))), "TEST", "TEST")],
+                       [node("Statement", d((("op", "dminus"),
+                                  ("value",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                  ("opprior", 2), ("s", "expr"))), "TEST", "TEST")],
+                       [node("Statement", d((("op", "mul"), ("value", "computation"), ("opprior", 1)
+                                  ("left",
+                                   node("Expression", d((("op", "builtin"), ("value", "a"), ("opprior", 1), ("type", "id")))),
+                                   ("right",
+                                   node("Expression", d((("op", "builtin"), ("value", "b"), ("opprior", 1), ("type", "id"))))
+                                  ),
+                                   ("type", "string"), ("s", "expr"))), "TEST", "TEST"))],
+                        # 33
+                       
+        ]
+            
+        
 
 tests = unittest.TestSuite()
 tests.addTest(TestLxrgmrparser("test_token"))

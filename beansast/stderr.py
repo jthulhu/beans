@@ -4,6 +4,7 @@ import sys
 
 __all__ = [
     "raise_error",
+    "raise_warning",
     "ParsingSyntaxError",
     "GrammarIdentityError",
     "NoPathSyntaxError",
@@ -12,12 +13,20 @@ __all__ = [
     "LexingSyntaxError",
     "GrammarSyntaxError",
     "Frame",
-    "token_to_frame"
+    "token_to_frame",
+    "GrammarAmbiguityError"
 ]
 
 error_format = """%sFatal error%s - {errno:d}.
  @%s{line}:{char}%s in %s{file}%s
- %s{errtype}%s: {errmsg}{helpmsg}""" % (FATAL, ENDC, BOLD, ENDC, BOLD, ENDC, BOLD, ENDC)
+ %s{errtype}%s: {errmsg}{helpmsg}
+""" % (FATAL, ENDC, BOLD, ENDC, BOLD, ENDC, BOLD, ENDC)
+
+warning_format = """%sWarning%s - {errno:d}.
+ @%s{line}:{char}%s in %s{file}%s
+ %s{errtype}%s: {errmsg}{helpmsg}
+""" % (WARNING, ENDC, BOLD, ENDC, BOLD, ENDC, BOLD, ENDC)
+
 
 class Error:
     errtype = "Default root error"
@@ -32,6 +41,11 @@ class ParsingSyntaxError(Error):
     helpmsg = "You tried to parse a file which doesn't respect the grammar rules."
     errmsg_mask = "expected {} and got {}"
 
+class GrammarMultipleRuleEndWarning(Error):
+    errtype = "Grammar error"
+    helpmsg = "Multiple reduction procedure may be reached by a single rule, which required either backtracking or explicit disambiguation with order relation or lookahead/context-sensitive rules"
+    errmsg_mask = "Your grammar may cause ambihuousities because {}"
+    
 class GrammarAmbiguityError(Error):
     errtype = "Grammar error"
     helpmsg = "You tried to define a grammar which is ambiguous, in the sense that multiple lexer object could have been generated or that some attribute has been defined more than once."
@@ -77,9 +91,24 @@ class Frame:
         
 def token_to_frame(token):
     return Frame(token.file, token.pos[1], token.pos[0])
-        
+
+def raise_warning(error=None, errno=1, helpmsg=False, debugger=None):
+    if error != None:
+        format_frame = {
+            "errno": errno,
+            "file": error.frame.file,
+            "line": error.frame.line,
+            "char": error.frame.char,
+            "errtype": error.errtype,
+            "errmsg": error.errmsg,
+            "helpmsg": ("\n\n -> Tip: " + error.helpmsg) if (helpmsg and hasattr(error, "helpmsg")) else ""
+        }
+        print(warning_format.format(**format_frame))
+    else:
+        print("Warning")
+
 def raise_error(error=None, errno=1, helpmsg=False, debugger=None):
-    if error:
+    if error != None:
         format_frame = {
             "errno": errno,
             "file": error.frame.file,

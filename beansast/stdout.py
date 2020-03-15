@@ -21,6 +21,15 @@ def print_times(t1, t2, t3, t4):
     print(" - initialise parse time: %ss (%s%%)" % (t3, normalize(t3,total)))
     print(" - parse time: %ss (%s%%)" % (t4, normalize(t4, total)))
 
+def print_trie_node(node, offset=0, name="Node"): 
+    print("  "*offset + "%s: " % name + (repr(node.rules) if node.rules != [] else ""))
+    for key, node in node.children.items():
+        print_trie_node(node, offset+1,name=str(key))
+    
+def print_trie(trie):
+    print("Trie:")
+    print_trie_node(trie.root_node)
+    
 def print_tree(tree, show_private=False):
     print("Abstract Syntax Tree:")
     for node in tree:

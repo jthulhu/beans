@@ -1,9 +1,47 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-import collections
+import collections, bisect, itertools
 from .stderr import *
 from . import lxrgmrparser
+from bininterface import *
+import gzip
+
+proxy = OrderedDict(
+    String(),
+    Struct(
+        String(),
+        Bool(),
+        Int(),
+        String()
+    )
+)
+
+rule_token = Struct(
+    String(),
+    String(),
+    Bool(),
+    String()
+)
+
+rule = Struct(
+    String(),
+    List(rule_token),
+    proxy
+)
+
+trie_node = Struct(
+    List(rule),
+    Int(),
+    Dict(
+        rule_token,
+        Int()
+    )
+)
+
+trie = List(
+    trie_node
+)
 
 FLAGS = {
     "PRIVATE": 0b00,
@@ -11,30 +49,13 @@ FLAGS = {
     "PRIORITY": 0b10
 }
 
-class Rule:
-    def __init__(self, tokens, proxy):
-        self.tokens = tokens
-        self.proxy = proxy
-        self.class_ = None
-    def __getitem__(self, key):
-        return self.tokens[key]
-    def __repr__(self):
-        return ": " + " ".join(repr_token(token) for token in self.tokens) + " <" + ", ".join(str(key) + ": " + str(value[0]) for key, value in self.proxy.items()) + ">"
-    def __len__(self):
-        return len(self.tokens)
-    def __contains__(self, token):
-        return token in tuple(name for name, _, _ in self.tokens)
-    def __bool__(self):
-        return bool(self.tokens)
-    def set_class(self, class_):
-        self.class_ = class_
+class UUIDGen:
+    def __init__(self):
+        self.index = -1
+    def __next__(self):
+        self.index += 1
+        return self.index
 
-def repr_token(token):
-    res = token[0]
-    if token[1]:
-        res += "@" + token[1]
-    return res
-    
 class ASTNode:
     def __init__(self, name, attributes, pos, file):
         self.name = name
@@ -53,10 +74,9 @@ class ASTNode:
         return (isinstance(right, type(self)) and right.name == self.name and right.attributes == self.attributes) or (isinstance(right, str) and right == str(self))
 
 class ASTNodizer: # also called parser, but to not mess up with names
-    def __init__(self, name, rule, class_):
+    def __init__(self, name, rule):
         self.name = name
         self.rule = rule
-        self.class_ = class_
     def __getitem__(self, key):
         return self.rule[key]
     def __len__(self):
@@ -65,17 +85,146 @@ class ASTNodizer: # also called parser, but to not mess up with names
         return "<ASTNodizer named %s with rule %s>" % (self.name, " ".join(repr(rule) for rule in self.rule))
 
 
+    
+class Proxy:
+    def __init__(self):
+        self.elements = collections.OrderedDict()
+    def add_entry(self, key, value, list_append, flags, type):
+        self.elements[key] = (value, list_append, flags, type)
+    def __getitem__(self, key):
+        return self.elements[key]
+    def compile(self):
+        return self.elements
+    def items(self):
+        return self.elements.items()
+    @classmethod
+    def load(cls, elements):
+        proxy = cls()
+        proxy.elements = elements
+        return proxy
+    
+class RuleToken:
+    def __init__(self, name, attribute, is_append, key, frame):
+        self.name = name
+        self.attribute = attribute
+        self.is_append = is_append
+        self.key = key
+        self.frame = frame
+    def __repr__(self):
+        string = self.name
+        if self.attribute:
+            string += "." + self.attribute
+        return string
+    def __repr__(self):
+        return self.name
+    def __eq__(self, right):
+        return self.name == right.name
+    def __hash__(self):
+        return hash(self.name)
+    def compile(self):
+        return (self.name, self.attribute, self.is_append, self.key)
+
+class Rule:
+    def __init__(self, name, tokens, proxy):
+        self.name = name
+        self.tokens = tokens
+        self.proxy = proxy
+        self.class_ = None
+    @classmethod
+    def load(cls, name, tokens, proxy):
+        tokens = tuple(RuleToken(*token,None) for token in tokens)
+        proxy = Proxy.load(proxy)
+        return cls(name, tokens, proxy)
+    def __getitem__(self, key):
+        return self.tokens[key]
+    def __repr__(self):
+        return ": " + " ".join(repr(token) for token in self.tokens) + " <" + ", ".join(("[" if value[1] else "") + str(key) + ("]" if value[1] else "") + ": " + str(value[0]) for key, value in self.proxy.items()) + "> " + self.name
+    def __len__(self):
+        return len(self.tokens)
+    def __contains__(self, token):
+        return token in self.tokens
+    def __bool__(self):
+        return bool(self.tokens)
+    def set_class(self, class_):
+        self.class_ = class_
+    def compile(self):
+        return (self.name, tuple(token.compile() for token in self.tokens), self.proxy.compile())
+    
+class TrieNode:
+    @classmethod
+    def load(cls, rules, id, children, idgen=None, helpmsg=False):
+        node = cls(id, idgen, helpmsg)
+        node.rules = [Rule.load(*rule) for rule in rules]
+        node.children = {RuleToken(*key,None): value for key, value in children.items()}
+        return node
+    def __init__(self, id, idgen, helpmsg=False):
+        self.rules = []
+        self.id = id
+        self.idgen = idgen
+        self.children = {}
+        self.helpmsg = helpmsg
+    def __getitem__(self, key):
+        return self.children[key]
+    def __setitem__(self, key, value):
+        if len(key) == 0:
+            if len(self.rules) > 0:
+                raise_warning(error=GrammarAmbiguityError(value.tokens[0].frame, "two rules have the same reduction procedure"), helpmsg=self.helpmsg)
+            self.rules.append(value)
+        else:
+            if key[0] not in self:
+                self.children[key[0]] = TrieNode(next(self.idgen), self.idgen, self.helpmsg)
+            self.children[key[0]][key[1:]] = value
+    def __contains__(self, key):
+        return key in self.children
+    def compile(self):
+        return (tuple(rule.compile() for rule in self.rules), self.id, {key.compile(): value.id for key, value in self.children.items()})
+
+class Trie:
+    def compile(self):
+        result = []
+        todo = [self.root_node]
+        while len(todo) > 0:
+            current = todo.pop()
+            for children in current.children.values():
+                todo.append(children)
+            result.append(current.compile())
+        
+        return gzip.compress(trie.write(tuple(result)))
+    @classmethod
+    def from_compilation(cls, raw, helpmsg=False):
+        pos, nodes = trie.read(gzip.decompress(raw))
+        return cls.load(nodes,helpmsg)
+    @classmethod
+    def load(cls, nodes, helpmsg=False):
+        inodes = {}
+        for args in nodes:
+            node = TrieNode.load(*args, helpmsg=helpmsg)
+            inodes[node.id] = node
+        for node in inodes.values():
+            for key in list(node.children.keys()):
+                node.children[key] = inodes[node.children[key]]
+        trie = cls(helpmsg)
+        trie.root_node = inodes[0]
+        return trie
+    def __init__(self, helpmsg):
+        self.idgen = UUIDGen()
+        self.root_node = TrieNode(next(self.idgen), self.idgen, helpmsg)
+        self.helpmsg = helpmsg
+    def add_rule(self, tokens, reduction):
+        self.root_node[tokens] = reduction
+
 class ParserReader:
     def __init__(self, inp, helperr=False):
-        self.helperr = helperr
+        self.helpmsg = helperr
         self.inp = inp # beansast.lexer.Lexer self.inp = self.inp
+    def compile(self, trie):
+        pass
     def read(self):
-        nodizers = collections.OrderedDict()
+        trie = Trie(self.helpmsg)
         self.pos = 0
         metastmts = self.read_metastmts()
         with open("beansast/gmrs/plexer-r.gmr") as f:
             self.inp.update(f.read(), "beansast/gmrs/plexer-r.gmr")
-            
         while not self.ahead_sgl_token("EOF"):
             name = self.read_name()
             if self.ahead_sgl_token("LBRACKET"):
@@ -86,13 +235,14 @@ class ParserReader:
             else:
                 class_ = None
             self.read_sgl_token("ASSIGNMENT")
-            rules = self.read_rules()
+            rules = self.read_rules(name)
             self.read_sgl_token("SEMICOLON")
             if class_:
                 for rule in rules:
                     rule.set_class(class_)
-            nodizers[name] = ASTNodizer(name, rules, class_)
-        return metastmts, nodizers
+            for rule in rules:
+                trie.add_rule(rule.tokens[::-1], rule)
+        return trie
     def aheadf_sgl_token(self, token):
         tok = self.ahead_sgl_token(token, step=False)
         if not tok: self.err_toks(token)
@@ -107,7 +257,7 @@ class ParserReader:
     def err_toks(self, token):
         last = (" or " + token.pop()) if type(token) == set else ""
         sent = (", ".join(token) if type(token) == set else token) + last
-        raise_error(ParsingSyntaxError(token_to_frame(self.inp[self.pos]), sent, self.inp[self.pos]), helpmsg=self.helperr)
+        raise_error(ParsingSyntaxError(token_to_frame(self.inp[self.pos]), sent, self.inp[self.pos]), helpmsg=self.helpmsg)
     def read_sgl_token(self, token):
         tok = self.ahead_sgl_token(token)
         if tok: return tok
@@ -163,7 +313,7 @@ class ParserReader:
         for key, value in instructions["d"].items():
             if bool(value[2] & FLAGS["PRIORITY"]):
                 if instructions["pop"] != None:
-                    raise_error(GrammarAmbiguityError(token_to_frame(self.inp[self.pos]), "multiple priority attribute have been defined for class %s" % name), helpmsg=self.helperr)
+                    raise_error(GrammarAmbiguityError(token_to_frame(self.inp[self.pos]), "multiple priority attribute have been defined for class %s" % name), helpmsg=self.helpmsg)
                 else:
                     instructions["pop"] = key
         return (name, head_rule, instructions)
@@ -295,14 +445,14 @@ class ParserReader:
         
     def read_proxy(self):
         self.read_sgl_token("LPROXY")
+        result = Proxy()
         if self.ahead_sgl_token("RPROXY"):
-            return collections.OrderedDict()
-        result = collections.OrderedDict()
+            return result
         ((list_append, key, flags), (value, type_)) = self.read_proxy_element()
-        result[key] = (value, list_append, flags, type_)
+        result.add_entry(key, value, list_append, flags, type_)
         while self.ahead_sgl_token("COMMA"):
             ((list_append, key, flags), (value, type_)) = self.read_proxy_element()
-            result[key] = (value, list_append, flags, type_)
+            result.add_entry(key, value, list_append, flags, type_)
         self.read_sgl_token("RPROXY")
         return result
     def read_default(self):
@@ -328,28 +478,31 @@ class ParserReader:
         return name
     def read_rule_token(self):
         token = self.read_sgl_token("ID")
-        token = token["value"]
+        token_frame = token_to_frame(token)
+        name = token["value"]
         if self.ahead_sgl_token("DOT"):
             origin = self.read_sgl_token("ID")
             origin = origin["value"]
         else:
-            origin = None
+            origin = ""
         if self.ahead_sgl_token("AT"):
             list_append, key, flags = self.read_key()
         else:
-            list_append = None
-            key = None
-        return (token, origin, (list_append, key))
-    def read_rule(self):
+            list_append = False
+            key = ""
+        return RuleToken(name, origin, list_append, key, token_frame)
+    def read_rule(self, name):
         tokens = []
         while self.ahead_sgl_token("ID", step=False):
             token = self.read_rule_token()
             tokens.append(token)
         proxy = self.read_proxy()
-        return Rule(tokens, proxy)
-    def read_rules(self):
+        return Rule(name, tokens, proxy)
+    def read_rules(self, name):
         rules = []
         while self.ahead_sgl_token("COLON"):
-            rule = self.read_rule()
+            rule = self.read_rule(name)
             rules.append(rule)
         return rules
+
+from .stdout import *

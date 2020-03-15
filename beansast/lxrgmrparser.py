@@ -3,13 +3,17 @@
 
 import re, collections
 from .stderr import *
+from .stdloc import Location
 
 class Token:
     """Standard token class
 needs a name, which will be used by the parser, and attributes, a dict, which will be used to know what there was inside the token"""
-    def __init__(self, name, attributes):
+    def __init__(self, name, attributes, location=None):
         self.name = name
         self.attributes = attributes
+        if location == None:
+            location = Location("<unknown>", "?", "?")
+        self.location = location
     def __repr__(self):
         return "<Token named %s%s>" % (self.name, (" - %s" % str(self.attributes)) * int(bool(self.attributes)))
     def __str__(self):
@@ -32,11 +36,11 @@ when called, it will match the string at given pos. If match, it will return Tru
         self.name = name
         self.rule = re.compile(rule, re.M)
         self.ignore = ignore
-    def __call__(self, flux, pos):
+    def __call__(self, flux, pos, location=None):
         result = self.rule.match(flux[pos:])
         if result:
             if self.ignore: return True, pos + result.end(), None
-            return True, pos + result.end(), Token(self.name, result.groupdict())
+            return True, pos + result.end(), Token(self.name, result.groupdict(), location)
         else:
             return False, pos, None
     def __repr__(self):

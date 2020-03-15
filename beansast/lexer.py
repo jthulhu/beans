@@ -1,4 +1,5 @@
 from .lxrgmrparser import LexerReader
+from .stdloc import Location
 from .stderr import *
 class LexingError(Exception):
     pass
@@ -28,7 +29,7 @@ class Lexer:
     def _lex(self):
         """lex one token. do not use directly, instead ask the n token through lexer[n]"""
         for tokenizer in self.tokenizers.values():
-            is_good, pos, result = tokenizer(self.flux, self._pos)
+            is_good, pos, result = tokenizer(self.flux, self._pos, Location(self.fn, *pos2coords(self._pos, self.flux)))
             if is_good:
                 self._pos = pos
                 if not result:

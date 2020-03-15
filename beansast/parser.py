@@ -47,7 +47,7 @@ class Parser:
         with open("beansast/gmrs/plexer-m.gmr") as f:
             grammar = Lexer(f.read(), file="beansast/gmrs/plexer.gmr", helperr=helperr)
         grammar(rgrammar, fn=fn)
-        self.metastmts, self.nodizers = ParserReader(grammar, helperr=helperr).read()
+        self.nodizers = ParserReader(grammar, helperr=helperr).read()
     def __call__(self, flux, pos=-1):
         self.flux = flux
         self.file = flux.fn
@@ -190,6 +190,7 @@ class Parser:
                         action = "shift"
                     else:
                         continue
+                    
                     if action == "reduce":
                         if rule.class_ and self.metastmts["class"][rule.class_][1]["pop"]:
                             rule_priority = args[self.metastmts["class"][rule.class_][1]["pop"]]
@@ -204,6 +205,10 @@ class Parser:
                                 class_decision[rule.class_] = (rule_priority, "shift", rule)
                         else:
                             possibilities["shift"] = True
+                    if action == "reduce":
+                        possibilities["reduce"].append((offset, (name, args)))
+                    else:
+                        possibilities["shift"] = True
         for _, decision, args in class_decision.values():
             if decision == "shift":
                 possibilities["shift"] = True
@@ -213,9 +218,8 @@ class Parser:
         if possibilities["shift"]: size += 1
         return possibilities
     def update(self, grammar):
-        nmetastmts, nnodizers = ParserReader(grammar, helperr=helperr).read()
+        nnodizers = ParserReader(grammar, helperr=helperr).read()
         self.nodizers.update(nnodizers)
-        self.metastmts.update(nmetastmts)
     def __eq__(self, r):
         return type(self) == type(r) and hasattr(r, "nodizers") and r.nodizers == self.nodizers and hasattr(r, "pos") and hasattr(r, "flux") and self.flux == r.flux
     def __repr__(self):

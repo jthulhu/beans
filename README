@@ -14,3 +14,6 @@ Actually, Beans is written in Python 3. To use it, just download or clone the pr
 inside your program or in the console.
 
 This project is maintained by TheBlackBeans.
+
+Requirements:
+ * nuts

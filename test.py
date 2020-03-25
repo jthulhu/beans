@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 from beansast import psrgmrparser, lexer
-from bininterface import *
+from carrot import *
 
 proxy = OrderedDict(
     String(),                # key

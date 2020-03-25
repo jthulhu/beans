@@ -4,7 +4,7 @@
 import collections, bisect, itertools
 from .stderr import *
 from . import lxrgmrparser
-from bininterface import *
+from carrot import *
 import gzip
 
 proxy = OrderedDict(

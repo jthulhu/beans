@@ -43,8 +43,5 @@ with open("beansast/gmrs/plexer-m.gmr") as f:
 with open("beansast/gmrs/parser.gmr") as f:    
     grammar(f.read(), fn="beansast/gmrs/parser.gmr")
 
-a = psrgmrparser.ParserReader(grammar,helperr=True)
+a = psrgmrparser.ParserReader(grammar)
 nodizers = a.read()    
-
-with open("parser.bo", "wb") as f:
-    f.write(nodizers.compile())

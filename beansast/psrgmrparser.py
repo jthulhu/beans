@@ -1,11 +1,10 @@
 #!/usr/bin/python3
 # -*- coding: utf-8 -*-
 
-import collections, bisect, itertools
+import collections, bisect, itertools, gzip, os
 from .stderr import *
 from . import lxrgmrparser
 from carrot import *
-import gzip
 
 proxy = OrderedDict(
     String(),
@@ -27,7 +26,8 @@ rule_token = Struct(
 rule = Struct(
     String(),
     List(rule_token),
-    proxy
+    proxy,
+    Int()
 )
 
 trie_node = Struct(
@@ -44,9 +44,9 @@ trie = List(
 )
 
 FLAGS = {
-    "PRIVATE": 0b00,
-    "PUBLIC": 0b01,
-    "PRIORITY": 0b10
+    "PRIVATE": 0 << 0,
+    "PUBLIC": 1 << 0,
+    "PRIORITY": 1 << 1
 }
 
 class UUIDGen:
@@ -125,16 +125,17 @@ class RuleToken:
         return (self.name, self.attribute, self.is_append, self.key)
 
 class Rule:
-    def __init__(self, name, tokens, proxy):
+    def __init__(self, name, tokens, proxy, priority):
         self.name = name
         self.tokens = tokens
         self.proxy = proxy
         self.class_ = None
+        self.priority = priority
     @classmethod
-    def load(cls, name, tokens, proxy):
+    def load(cls, name, tokens, proxy, priority):
         tokens = tuple(RuleToken(*token,None) for token in tokens)
         proxy = Proxy.load(proxy)
-        return cls(name, tokens, proxy)
+        return cls(name, tokens, proxy, priority)
     def __getitem__(self, key):
         return self.tokens[key]
     def __repr__(self):
@@ -148,7 +149,7 @@ class Rule:
     def set_class(self, class_):
         self.class_ = class_
     def compile(self):
-        return (self.name, tuple(token.compile() for token in self.tokens), self.proxy.compile())
+        return (self.name, tuple(token.compile() for token in self.tokens), self.proxy.compile(), self.priority)
     
 class TrieNode:
     @classmethod
@@ -180,6 +181,15 @@ class TrieNode:
         return (tuple(rule.compile() for rule in self.rules), self.id, {key.compile(): value.id for key, value in self.children.items()})
 
 class Trie:
+    def find_children(self):
+        children = []
+        todo = [self.root_node]
+        while len(todo) > 0:
+            current = todo.pop()
+            for child in current.children.values():
+                todo.append(child)
+            children.append(current)
+        return children
     def compile(self):
         result = []
         todo = [self.root_node]
@@ -217,9 +227,21 @@ class ParserReader:
     def __init__(self, inp, helperr=False):
         self.helpmsg = helperr
         self.inp = inp # beansast.lexer.Lexer self.inp = self.inp
+        self.file = inp.fn
+        if self.file.endswith(".gmr"):
+            self.ofile = self.file[:-3] + "bo"
+        else:
+            self.ofile = self.file + ".bo"
     def compile(self, trie):
-        pass
+        with open(self.ofile, "wb") as f:
+            f.write(trie.compile())
     def read(self):
+        try:
+            if os.path.getmtime(self.file) < os.path.getmtime(self.ofile):
+                with open(self.ofile, 'rb') as f:
+                    return Trie.from_compilation(f.read())
+        except FileNotFoundError:
+            pass
         trie = Trie(self.helpmsg)
         self.pos = 0
         metastmts = self.read_metastmts()
@@ -242,6 +264,7 @@ class ParserReader:
                     rule.set_class(class_)
             for rule in rules:
                 trie.add_rule(rule.tokens[::-1], rule)
+        self.compile(trie)
         return trie
     def aheadf_sgl_token(self, token):
         tok = self.ahead_sgl_token(token, step=False)
@@ -497,7 +520,11 @@ class ParserReader:
             token = self.read_rule_token()
             tokens.append(token)
         proxy = self.read_proxy()
-        return Rule(name, tokens, proxy)
+        priority = self.read_prior()
+        return Rule(name, tokens, proxy, priority)
+    def read_prior(self):
+        priority = self.ahead_sgl_token("INT")
+        return int(priority["value"]) if priority != None else 0
     def read_rules(self, name):
         rules = []
         while self.ahead_sgl_token("COLON"):

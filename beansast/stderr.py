@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from .color import *
+from color import *
 import sys
 
 __all__ = [

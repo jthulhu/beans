@@ -1,5 +1,5 @@
 from .psrgmrparser import ASTNode
-from .color import *
+from color import *
 
 def normalize(t, total):
     return int(round(t/total*100, 0))

@@ -228,6 +228,7 @@ class ParserReader:
         self.helpmsg = helperr
         self.inp = inp # beansast.lexer.Lexer self.inp = self.inp
         self.file = inp.fn
+        self.compile = bool(self.file)
         if self.file.endswith(".gmr"):
             self.ofile = self.file[:-3] + "bo"
         else:

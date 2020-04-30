@@ -103,7 +103,7 @@
 
 % Metastatement should always have the lowest priority (which means it's the first to be executed) and should always be unique (because if there could be a doubt, it's a bad language; if there are no doubts, no needs to look somewhere else)
 
-f[0]Statement
+f[0]Expression
 ;
 
 %%%%%%%%%
@@ -123,50 +123,26 @@ e[]
 ;
 
 BuiltinTypes ::=
- : ID.name@value <type: "id", op: "builtin">
- : STRING.value@value <type: "string", op: "builtin">
  : INT.value@value <type: "int", op: "builtin">
- : FLOAT.value@value <type: "float", op: "builtin">
- : TRUE <type: "true", op: "builtin">
- : FALSE <type: "false", op: "builtin">
 ;
 
-MathExpression ::=
- : Expression@left ASTERISK Expression@right <op: "mul"> 1
- : Expression@left PLUS Expression@right <op: "add">
+Atom ::=
+ : BuiltinTypes@this <>
+ : LPAR Expression@this RPAR <>
+;
+
+Sum ::=
+ : Sum@left PLUS Product@right <op: "add">
+ : Sum@left MINUS Product@right <op: "sub">
+ : Product@this <>
+;
+
+Product ::=
+ : Product@left ASTERISK Atom@right <op: "mul">
+ : Product@left SLASH Atom@right <op: "div">
+ : Atom@this <>
 ;
 
 Expression ::=
- : LPAR Expression@this RPAR <>
- : Assignment@this <>
- : MathExpression@this <>
- : BuiltinTypes@this <>
-;
-
-StatementList ::=
- : StatementList.value@value Statement@_value <[value]: _value>
- : Statement@_value <[value]: _value>
-;
-
-ExpressionList ::=
- : ExpressionList.value@value COMMA Expression@_value <[value]: _value>
- : Expression@_value <[value]: _value>
-;
-
-IdList ::=
- : IdList.value@value COMMA ID@_value <[value]: _value>
- : ID@_value <[value]: _value>
-;
-
-Return ::=
- : RETURN Expression@arg <s: "return">
-;
-
-Statements ::=
- : Expression@this <s: "expr">
- : Return@this <s: "return">
-;
-
-Statement ::=
- : Statements@this SEMICOLON <>
+ : Sum@this <>
 ;

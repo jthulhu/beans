@@ -15,6 +15,8 @@ class ASTNode:
         return self.attributes[key]
     def __setitem__(self, key, value):
         self.attributes[key] = value
+    def __contains__(self, key):
+        return key in self.attributes
 
 #################
 ### STATE SET ###

@@ -103,7 +103,7 @@
 
 % Metastatement should always have the lowest priority (which means it's the first to be executed) and should always be unique (because if there could be a doubt, it's a bad language; if there are no doubts, no needs to look somewhere else)
 
-f[0]Expression
+f[0]Statement
 ;
 
 %%%%%%%%%
@@ -122,8 +122,14 @@ f[0]Expression
 e[]
 ;
 
+Assignment ::=
+ : ID.name@key EQUALS Expression@value <>
+;
+
 BuiltinTypes ::=
  : INT.value@value <type: "int", op: "builtin">
+ : STRING.value@value <type: "string", op: "builtin">
+ : ID.name@value <type: "id", op: "builtin">
 ;
 
 Atom ::=
@@ -145,4 +151,9 @@ Product ::=
 
 Expression ::=
  : Sum@this <>
+;
+
+Statement ::=
+ : Expression@this SEMICOLON <s: 'eval'>
+ : Assignment@this SEMICOLON <s: 'assign'>
 ;

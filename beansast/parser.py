@@ -1,228 +1,247 @@
-import queue
-from collections import OrderedDict
-from .psrgmrparser import ParserReader, ASTNode, FLAGS
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+
 from .lexer import Lexer
-from .stderr import *
-from .stdout import print_tree
+from .psrgmrparser import ParserReader
+from .state import *
 
-class ParserError(BaseException):
-    pass
+class ASTNode:
+    def __init__(self, name, **kwargs):
+        self.name = name
+        self.attributes = kwargs
+    def items(self):
+        return self.attributes.items()
+    def __getitem__(self, key):
+        return self.attributes[key]
+    def __setitem__(self, key, value):
+        self.attributes[key] = value
 
-class Path:
-    def __init__(self, parser):
-        self.parser = parser
+#################
+### STATE SET ###
+#################
 
-class ASTNodeAttribute:
-    def __init__(self, value, flags, type_):
-        self._value = value
-        self._public = bool(FLAGS["PUBLIC"] & flags)
-        self._private = not self._public
-        self._priority = bool(FLAGS["PRIORITY"] & flags)
-        self._flags = flags
-        self._type_ = type_
-    def __getattr__(self, attr):
-        return getattr(self._value, attr)
-    def __str__(self):
-        return "ASTNodeAttributes(%s, %s, %s)" % (str(self._value), bin(self._flags), str(self._type_))
+class DynamicSet:
+    def __init__(self):
+        self._set = []
+        self._hash_table = {}
+        self._size = 0
+    def __len__(self):
+        return self._size
     def __repr__(self):
-        return repr(self._value)
+        return '{%s}' % ', '.join(repr(i) for i in self._set)
+    def __getitem__(self, key):
+        return self._set[key]
+    def add(self, item):
+        h = hash(item)
+        if h in self._hash_table:
+            for i in self._hash_table[h]:
+                if self._set[i] == item:
+                    return
+        else:
+            self._hash_table[h] = set()
+        self._hash_table[h].add(len(self._set))
+        self._set.append(item)
+        self._size += 1
+    def __contains__(self, item):
+        h = hash(item)
+        if h not in self._hash_table:
+            return False
+        for i in self._hash_table[h]:
+            if self._set[i] == item:
+                return True
+        return False
+    def __iter__(self):
+        return DSIterator(self)
+
+class DSIterator:
+    def __init__(self, ds):
+        self._ds = ds
+        self._pos = 0
+    def __next__(self):
+        if self._pos < len(self._ds):
+            self._pos += 1
+            return self._ds[self._pos-1]
+        else:
+            raise StopIteration()
+
+####################
+## EARLEY PARSING ##
+####################
+
+class EarleyItem:
+    def __init__(self, rule_id, dot, start):
+        self.rule_id = rule_id
+        self.dot = dot
+        self.start = start
+    def __hash__(self):
+        return hash((self.rule_id,self.dot,self.start))
     def __eq__(self, right):
-        return self._value == right
-    def __ge__(self, right):
-        return self._value >= right
-    def __gt__(self, right):
-        return self._value > right
-    def __ne__(self, right):
-        return self._value != right
-    def __le__(self, right):
-        return self._value <= right
-    def __lt__(self, right):
-        return self._value < right
-    def __bool__(self):
-        return bool(self._value)
-        
+        return self.rule_id == right.rule_id and self.dot == right.dot and self.start == right.start
+
+class FinalEarleyItem:
+    def __init__(self, rule_id, end):
+        self.rule_id = rule_id
+        self.end = end
+    def __hash__(self):
+        return hash((self.rule_id, self.end))
+    def __eq__(self, right):
+        return self.rule_id == right.rule_id and self.end == right.end
+    
+####################
+### MAIN CLASSES ###
+####################
+    
 class Parser:
-    def __init__(self, rgrammar, fn="<stdin>", helperr=False):
-        self.helperr = helperr
-        with open("beansast/gmrs/plexer-m.gmr") as f:
-            grammar = Lexer(f.read(), file="beansast/gmrs/plexer.gmr", helperr=helperr)
-        grammar(rgrammar, fn=fn)
-        self.nodizers = ParserReader(grammar, helperr=helperr).read()
-    def __call__(self, flux, pos=-1):
-        self.flux = flux
-        self.file = flux.fn
-    def shift(self, stack, pos, id_):
-        time = pos+1
-        stack = stack.copy()
-        stack.append(self.flux[time])
-        self.min_id += 1
-        return stack
-    def reduce(self, stack, offset, name, args, pos, id_):
-        stack = stack.copy()
-        self.min_id += 1
-        removed_tokens = []
-        for i in range(offset):
-            removed_tokens.append(stack.pop())
-        if removed_tokens:
-            frame = token_to_frame(removed_tokens[0])
-            pos = (frame.char, frame.line)
-            file = frame.file
-        else:
-            pos = "?"
-            file = "?"
-        new = ASTNode(name, args, pos, file)
-        stack.append(new)
-        return stack
+    def __init__(self, grammar, gmrfile='beansast/gmrs/parser.gmr'):
+        self.rawgrammar = grammar
+        self.gmrfile = gmrfile
+        self.compute_grammar()
+    def compute_grammar(self):
+        with open(PLEXERM_GRAMMAR) as f:
+            self.lexedgrammar = Lexer(f.read(),file=PLEXERM_GRAMMAR)
+        self.lexedgrammar(self.rawgrammar,fn=self.gmrfile)
+        self.grammar = ParserReader(self.lexedgrammar).read()
+    def __call__(self, input, file="<stdin>"):
+        self.file = file
+        self.input = input
     def parse(self):
-        stacks = queue.LifoQueue()
-        stacks.put_nowait((-1, []))
-        done = []
-        solutions = []
-        self.min_id = 0
-        while not stacks.empty():
-            pos, next_ = stacks.get_nowait()
-            next_id = self.min_id
-            is_solution = False
-            if len(next_) == 1 and self.flux[pos+1] == "EOF":
-                is_solution = True
-            done.append(next_)
-            possibilities = self.extend_stack(next_, pos)
-            if possibilities["shift"]:
-                stacks.put_nowait((pos+1, self.shift(next_, pos, next_id)))
-            for offset, (name, args) in possibilities["reduce"]:
-                stacks.put_nowait((pos, self.reduce(next_, offset, name, args, pos, next_id)))
-            if is_solution and next_[0] in (key for key, _ in self.metastmts["first"]):
-                solutions.append(next_)
-        if len(solutions) == 0:
-            raise_error(NoPathSyntaxError(Frame(self.file, "*", "*")))
-        elif len(solutions) > 1:
-            for solution in solutions:
-                print_tree(solution)
-            raise_error(TooManyPathSyntaxError(Frame(self.file, "*", "*")))
-        else:
-            return solutions[0]
-    def compute_typed_value(self, value, args, type_):
-        if type_ == "string":
-            return value.format(**args)
-        elif type_ == "id":
-            return args[value]
-        else:
-            return value
-    def extend_stack(self, stack, pos):
-        time = pos+1
-        possibilities = {
-            "shift": False,
-            "reduce" : []
-        }
-        class_decision = {}
-        for offset in range(len(stack)+1):
-            for name, nodizer in self.nodizers.items():
-                for rule in nodizer:
-                    if offset == 0:
-                        back_view = []
+        S = [DynamicSet()]
+        for axiom in self.grammar.axioms:
+            for rule in self.grammar.query_rules(axiom):
+                S[0].add(EarleyItem(rule, 0, 0))
+        i = 0
+        reach_end = True
+        while i == 0 or self.input[i-1] != 'EOF':
+            if len(S[i]) == 0:
+                reach_end = False
+                break
+            S.append(DynamicSet())
+            for item in S[i]:
+                rule = self.grammar[item.rule_id]
+                if item.dot < len(rule):
+                    if rule[item.dot] in self.grammar:
+                        # Prediction
+                        for rule_id in self.grammar.query_rules(rule[item.dot].name):
+                           S[i].add(EarleyItem(rule_id, 0, i))
+                        if rule[item.dot].name in self.grammar.nullables:
+                            S[i].add(EarleyItem(item.rule_id, item.dot+1,i))
                     else:
-                        back_view = stack[-offset:]
-                    if len(back_view) > len(rule):
-                        continue
-                    is_possible = True
-                    args = OrderedDict()
-                    if nodizer.class_ and nodizer.class_ in self.metastmts["class"]:
-                        flags_inheirit = {}
-                        for key, (value, list_append, flags, type_) in self.metastmts["class"][nodizer.class_][1]["d"].items():
-                            
-                            if list_append:
-                                if key not in args:
-                                    args[key] = []
-                                args[key].append(ASTNodeAttribute(self.compute_typed_value(value, args, type_), flags, type_))
-                            else:
-                                args[key] = ASTNodeAttribute(self.compute_typed_value(value, args, type_), flags, type_)
-                            flags_inheirit[key] = flags
-                    for (token, origin, (list_append, key)), real_tok in zip(rule, back_view):
-                        if token != real_tok:
-                            is_possible = False
-                            break
-                        if key:
-                            if origin:
-                                new = real_tok[origin]
-                            else:
-                                new = real_tok
-                            if real_tok == "ID":
-                                type_ = "id"
-                            elif real_tok == "STRING":
-                                type_ = "string"
-                            elif real_tok == "INT":
-                                type_ = "int"
-                            elif real_tok == "FLOAT":
-                                type_ = "float"
-                            else:
-                                type_ = "astnode"
-                            if key in flags_inheirit:
-                                flags = flags_inheirit[key]
-                            else:
-                                flags = 0b01
-                            args[key] = ASTNodeAttribute(new, flags, type_)
-                    if not is_possible:
-                        continue
-                    if len(back_view) == len(rule):
-                        if "this" in args:
-                            if len(args) > 1:
-                                #raise_error(GrammarIdentityError(token_to_frame(self.flux[pos])), helpmsg=self.helperr)
-                                pass
-                            real_tok = args["this"]
-                            args = real_tok.attributes.copy()
-                        for key, (value, list_append, flags, type_) in rule.proxy.items():
-                            if key in flags_inheirit:
-                                flags = flags_inheirit[key]
-                            else:
-                                flags = 0b01
-                            if list_append:
-                                if key not in args:
-                                    args[key] = []
-                                args[key].append(ASTNodeAttribute(self.compute_typed_value(value, args, type_), flags, type_))
-                            else:
-                                args[key] = ASTNodeAttribute(self.compute_typed_value(value, args, type_), flags, type_)
-                    for key in [key for key in args.keys()]:
-                        if key.startswith("_"):
-                            del args[key]
-                    if len(back_view) == len(rule):
-                        action = "reduce"
-                    elif rule[len(back_view)][0] == self.flux[time]:
-                        action = "shift"
-                    else:
-                        continue
-                    
-                    if action == "reduce":
-                        if rule.class_ and self.metastmts["class"][rule.class_][1]["pop"]:
-                            rule_priority = args[self.metastmts["class"][rule.class_][1]["pop"]]
-                            if rule.class_ not in class_decision or class_decision[rule.class_][0] < rule_priority:
-                                class_decision[rule.class_] = (rule_priority, "reduce", (offset, (name, args)))
-                        else:
-                            possibilities["reduce"].append((offset, (name, args)))
-                    elif action == "shift":
-                        if rule.class_ and self.metastmts["class"][rule.class_][1]["pop"]:
-                            rule_priority = args[self.metastmts["class"][rule.class_][1]["pop"]]
-                            if rule.class_ not in class_decision or class_decision[rule.class_][0] < rule_priority:
-                                class_decision[rule.class_] = (rule_priority, "shift", rule)
-                        else:
-                            possibilities["shift"] = True
-                    if action == "reduce":
-                        possibilities["reduce"].append((offset, (name, args)))
-                    else:
-                        possibilities["shift"] = True
-        for _, decision, args in class_decision.values():
-            if decision == "shift":
-                possibilities["shift"] = True
+                        # Scan
+                        if rule[item.dot] == self.input[i]:
+                            S[i+1].add(EarleyItem(item.rule_id, item.dot+1, item.start))
+                else:
+                    # Completition
+                    j = item.start
+                    for item2 in S[j]:
+                        rule2 = self.grammar[item2.rule_id]
+                        if item2.dot == len(rule2):
+                            continue
+                        if rule2[item2.dot].name == rule.name:
+                            S[i].add(EarleyItem(item2.rule_id, item2.dot+1, item2.start))
+            i += 1
+        if len(S.pop()) != 0:
+            # Some rule parsed AFTER the end of the input
+            #  weird...
+            print('Hum... weird... is there a rule containing EOF?')
+        if not reach_end:
+            # Could not parse the entire input!
+            return (False, S)
+        return (True, S)
+
+class ASTBuilder:
+    LEXER_GRAMMAR = "beansast/gmrs/lexer.gmr"
+    PARSER_GRAMMAR = "beansast/gmrs/parser.gmr"
+    def __init__(self):
+        with open(self.LEXER_GRAMMAR) as f:
+            self.lexer_grammar = f.read()
+        with open(self.PARSER_GRAMMAR) as f:
+            self.parser_grammar = f.read()
+        self.lexer = Lexer(self.lexer_grammar, file=self.LEXER_GRAMMAR)
+        self.parser = Parser(self.parser_grammar, gmrfile=self.PARSER_GRAMMAR)
+    def _get_reversed_S(self):
+        ended, S = self.parser.parse()
+        rS = [DynamicSet() for i in range(len(S))]
+        for i, state_set in enumerate(S):
+            for item in state_set:
+                if item.dot < len(self.parser.grammar[item.rule_id]):
+                    continue
+                j = item.start
+                rS[j].add(FinalEarleyItem(item.rule_id, i))
+        return ended, rS
+    def _is_good_item(self, item, size):
+        rule = self.parser.grammar[item.rule_id]
+        return rule.name in self.parser.grammar.axioms and item.end == size
+    def search_item(self, start, item, S, grammar, input):
+        rule = grammar[item.rule_id]
+        todo = [(0, start, [])]
+        done = set()
+        while len(todo) > 0:
+            depth, curpos, items = todo.pop()
+            # items: (start, token/item, isnonterminal)
+            if curpos == item.end and depth == len(rule):
+                # win
+                break
+            if depth >= len(rule):
+                continue
+            curtoken = rule[depth].name
+            if curtoken in grammar.nonterminals:
+                for item2 in S[curpos]:
+                    rule2 =  grammar[item2.rule_id]
+                    if rule2.name == curtoken and item2.end <= item.end and (depth+1,item2.end) not in done:
+                        todo.append((depth+1, item2.end, items + [(curpos, item2, True)]))
+                        done.add((depth+1,item2.end))
             else:
-                possibilities["reduce"].append(args)
-        size = len(possibilities["reduce"])
-        if possibilities["shift"]: size += 1
-        return possibilities
-    def update(self, grammar):
-        nnodizers = ParserReader(grammar, helperr=helperr).read()
-        self.nodizers.update(nnodizers)
-    def __eq__(self, r):
-        return type(self) == type(r) and hasattr(r, "nodizers") and r.nodizers == self.nodizers and hasattr(r, "pos") and hasattr(r, "flux") and self.flux == r.flux
-    def __repr__(self):
-        fn = "" if not hasattr(self, "file") else (" instancied of file %s" % self.file)
-        return "<Parser%s at %s>" % (fn, hex(id(self)))
+                if input[curpos].name == curtoken and (depth+1,curpos+1) not in done:
+                    todo.append((depth+1, curpos+1, items + [(curpos, input[curpos], False)]))
+                    done.add((depth+1,curpos+1))
+        else:
+            return False
+        nodeattributes = {}
+        for i, (start, item, isnonterminal) in enumerate(items):
+            t = rule[i]
+            if t.key == '':
+                continue
+            key = t.key
+            if isnonterminal:
+                node = self.search_item(start, item, S, grammar, input)
+            else:
+                node = item
+            if t.attribute != '':
+                value = node[t.attribute]
+            else:
+                value = node
+            if key == 'this':
+                for k, v in value.items():
+                    nodeattributes[k] = v
+            else:
+                nodeattributes[key] = value
+            for key, (value, type) in rule.proxy.items():
+                if type == 'string':
+                    nodeattributes[key] = value
+                elif type == 'float':
+                    nodeattributes[key] = float(value)
+                elif type == 'int':
+                    nodeattributes[key] = int(value)
+                elif type == 'id':
+                    nodeattributes[key] = eval(value, nodeattributes)
+        node = ASTNode(rule.name, **nodeattributes)
+        return node
             
+    def get_ast(self, input, input_file="<stdin>"):
+        self.lexer(input, fn=input_file)
+        self.parser(self.lexer)
+        ended, S = self._get_reversed_S()
+        if not ended:
+            # Handling error
+            raise SyntaxError('Could not understand token %s' % len(S))
+        if len(S) == 0:
+            # Empty AST
+            #  weird...
+            print('Should not happen... weird...')
+            return None
+        for item in S[0]:
+            if self._is_good_item(item, len(S)-1):
+                return self.search_item(0, item, S, self.parser.grammar, self.parser.input)
+        else:
+            # Handling error
+            raise SyntaxError('Input was not understood')

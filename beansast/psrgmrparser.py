@@ -5,49 +5,40 @@ import collections, bisect, itertools, gzip, os
 from .stderr import *
 from . import lxrgmrparser
 from carrot import *
+from textwrap import dedent
 
-proxy = OrderedDict(
-    String(),
-    Struct(
-        String(),
-        Bool(),
-        Int(),
-        String()
+proxy = OrderedDict(  # elements:
+    String(),         #  key
+    Struct(           #  entry:
+        String(),     #   value
+        String()      #   type
     )
 )
 
+axiom = String()
+
+nonterminal = String()
+
+nullable = String()
+
 rule_token = Struct(
-    String(),
-    String(),
-    Bool(),
-    String()
+    String(),         # name
+    String(),         # attribute
+    String()          # key
 )
 
 rule = Struct(
-    String(),
-    List(rule_token),
-    proxy,
-    Int()
+    String(),         # name
+    List(rule_token), # tokens: token
+    proxy             # proxy
 )
 
-trie_node = Struct(
-    List(rule),
-    Int(),
-    Dict(
-        rule_token,
-        Int()
-    )
+grammar = Struct(
+    List(axiom),      # axioms: axiom
+    List(rule),       # rules: rule
+    List(nonterminal),# nontermianls: nonterminal
+    List(nullable)    # nullables: nullable
 )
-
-trie = List(
-    trie_node
-)
-
-FLAGS = {
-    "PRIVATE": 0 << 0,
-    "PUBLIC": 1 << 0,
-    "PRIORITY": 1 << 1
-}
 
 class UUIDGen:
     def __init__(self):
@@ -56,41 +47,11 @@ class UUIDGen:
         self.index += 1
         return self.index
 
-class ASTNode:
-    def __init__(self, name, attributes, pos, file):
-        self.name = name
-        self.attributes = attributes
-        self.pos = pos
-        self.file = file
-    def __repr__(self):
-        return "<ASTNode named %s%s>" % (self.name, (" - %s" % str(self.attributes)) * int(bool(self.attributes)))
-    def __getitem__(self, key):
-        return self.attributes[key]
-    def __str__(self):
-        return self.name
-    def __hash__(self):
-        return hash(str(self) + str(attributes))
-    def __eq__(self, right):
-        return (isinstance(right, type(self)) and right.name == self.name and right.attributes == self.attributes) or (isinstance(right, str) and right == str(self))
-
-class ASTNodizer: # also called parser, but to not mess up with names
-    def __init__(self, name, rule):
-        self.name = name
-        self.rule = rule
-    def __getitem__(self, key):
-        return self.rule[key]
-    def __len__(self):
-        return len(self.rule)
-    def __repr__(self):
-        return "<ASTNodizer named %s with rule %s>" % (self.name, " ".join(repr(rule) for rule in self.rule))
-
-
-    
 class Proxy:
     def __init__(self):
         self.elements = collections.OrderedDict()
-    def add_entry(self, key, value, list_append, flags, type):
-        self.elements[key] = (value, list_append, flags, type)
+    def add_entry(self, key, value, type):
+        self.elements[key] = (value, type)
     def __getitem__(self, key):
         return self.elements[key]
     def compile(self):
@@ -102,18 +63,19 @@ class Proxy:
         proxy = cls()
         proxy.elements = elements
         return proxy
-    
+
 class RuleToken:
-    def __init__(self, name, attribute, is_append, key, frame):
+    def __init__(self, name, attribute, key, frame):
         self.name = name
         self.attribute = attribute
-        self.is_append = is_append
         self.key = key
         self.frame = frame
     def __repr__(self):
         string = self.name
         if self.attribute:
             string += "." + self.attribute
+        if self.key:
+            string += "@" + self.key
         return string
     def __repr__(self):
         return self.name
@@ -122,151 +84,172 @@ class RuleToken:
     def __hash__(self):
         return hash(self.name)
     def compile(self):
-        return (self.name, self.attribute, self.is_append, self.key)
+        return (self.name, self.attribute, self.key)
 
 class Rule:
-    def __init__(self, name, tokens, proxy, priority):
+    def __init__(self, name, tokens, proxy):
         self.name = name
         self.tokens = tokens
         self.proxy = proxy
-        self.class_ = None
-        self.priority = priority
     @classmethod
-    def load(cls, name, tokens, proxy, priority):
+    def load(cls, name, tokens, proxy):
         tokens = tuple(RuleToken(*token,None) for token in tokens)
         proxy = Proxy.load(proxy)
-        return cls(name, tokens, proxy, priority)
+        return cls(name, tokens, proxy)
+    def __len__(self):
+        return len(self.tokens)
+    def __iter__(self):
+        return iter(self.tokens)
     def __getitem__(self, key):
         return self.tokens[key]
     def __repr__(self):
-        return ": " + " ".join(repr(token) for token in self.tokens) + " <" + ", ".join(("[" if value[1] else "") + str(key) + ("]" if value[1] else "") + ": " + str(value[0]) for key, value in self.proxy.items()) + "> " + self.name
+        return "{name} -> {tokens} <{proxy}>".format(
+            tokens=" ".join(repr(token) for token in self.tokens),
+            proxy=", ".join(("[" if value[1] else "") + str(key) + ("]" if value[1] else "") + ": " + str(value[0]) for key, value in self.proxy.items()),
+            name=self.name
+        )
     def __len__(self):
         return len(self.tokens)
     def __contains__(self, token):
         return token in self.tokens
     def __bool__(self):
         return bool(self.tokens)
-    def set_class(self, class_):
-        self.class_ = class_
     def compile(self):
-        return (self.name, tuple(token.compile() for token in self.tokens), self.proxy.compile(), self.priority)
-    
-class TrieNode:
-    @classmethod
-    def load(cls, rules, id, children, idgen=None, helpmsg=False):
-        node = cls(id, idgen, helpmsg)
-        node.rules = [Rule.load(*rule) for rule in rules]
-        node.children = {RuleToken(*key,None): value for key, value in children.items()}
-        return node
-    def __init__(self, id, idgen, helpmsg=False):
-        self.rules = []
-        self.id = id
-        self.idgen = idgen
-        self.children = {}
-        self.helpmsg = helpmsg
-    def __getitem__(self, key):
-        return self.children[key]
-    def __setitem__(self, key, value):
-        if len(key) == 0:
-            if len(self.rules) > 0:
-                raise_warning(error=GrammarAmbiguityError(value.tokens[0].frame, "two rules have the same reduction procedure"), helpmsg=self.helpmsg)
-            self.rules.append(value)
-        else:
-            if key[0] not in self:
-                self.children[key[0]] = TrieNode(next(self.idgen), self.idgen, self.helpmsg)
-            self.children[key[0]][key[1:]] = value
-    def __contains__(self, key):
-        return key in self.children
-    def compile(self):
-        return (tuple(rule.compile() for rule in self.rules), self.id, {key.compile(): value.id for key, value in self.children.items()})
+        return (self.name, tuple(token.compile() for token in self.tokens), self.proxy.compile())
 
-class Trie:
-    def find_children(self):
-        children = []
-        todo = [self.root_node]
-        while len(todo) > 0:
-            current = todo.pop()
-            for child in current.children.values():
-                todo.append(child)
-            children.append(current)
-        return children
-    def compile(self):
-        result = []
-        todo = [self.root_node]
-        while len(todo) > 0:
-            current = todo.pop()
-            for children in current.children.values():
-                todo.append(children)
-            result.append(current.compile())
-        
-        return gzip.compress(trie.write(tuple(result)))
+class Grammar:
+    dedent("""\
+    Grammar(helpmsg=False) === G:=(NT, A, R)
+     * represents a grammar without terminals
+     * NT represents the non-ternimals
+     * A the axioms (note that there may be multiple axioms)
+     * R the production rules
+
+    t in G := t in NT
+    G[i]   := R[i]
+    """)
+    def __init__(self, helpmsg=False):
+        self.axioms = []
+        self.rules = []
+        self.helpmsg = helpmsg
+        self._indexes = {}
+        self.nonterminals = set()
+        self.nullables = set()
+    def _is_rule_nullable(self, rule):
+        for token in rule:
+            if token.name not in self.nullables:
+                return False
+        return True
+    def verify_nullables(self):
+        # build children
+        children = {}
+        for n in self.nullables:
+            for rule_id in self.query_rules(n):
+                if self._is_rule_nullable(self[rule_id]):
+                    if n not in children:
+                        children[n] = set()
+                    for token in self[rule_id]:
+                        children[n].add(token.name)
+        for n in self.nullables:
+            done = []
+            todo = [n]
+            while len(todo) > 0:
+                current = todo.pop()
+                if current in done:
+                    return (False, done + [current])
+                done.append(current)
+                for child in children[current]:
+                    todo.append(child)
+        return (True,[])
+    def compute_nullables(self):
+        edited = True
+        while edited:
+            edited = False
+            for rule in self.rules:
+                if rule.name in self.nullables:
+                    continue
+                if self._is_rule_nullable(rule):
+                    edited = True
+                    self.nullables.add(rule.name)
+                    
+    def add_axiom(self, axiom):
+        self.axioms.append(axiom)
+    def add_nonterminal(self, nonterminal):
+        self.nonterminals.add(nonterminal)
+    def _get_rules(self, name):
+        for rule_id in self.query_rules(name):
+            yield self[rule_id]
+    def query_rules(self, name):
+        indexes = self._indexes.get(name, set())
+        for i in indexes:
+            yield i
+    def add_rule(self, rule):
+        if rule.name not in self._indexes:
+            self._indexes[rule.name] = set()
+        self._indexes[rule.name].add(len(self.rules))
+        self.rules.append(rule)
     @classmethod
     def from_compilation(cls, raw, helpmsg=False):
-        pos, nodes = trie.read(gzip.decompress(raw))
-        return cls.load(nodes,helpmsg)
+        pos, (axioms, rules, nonterminals, nullables) = grammar.read(gzip.decompress(raw))
+        return cls.load(axioms, rules, nonterminals, nullables, helpmsg=helpmsg)
     @classmethod
-    def load(cls, nodes, helpmsg=False):
-        inodes = {}
-        for args in nodes:
-            node = TrieNode.load(*args, helpmsg=helpmsg)
-            inodes[node.id] = node
-        for node in inodes.values():
-            for key in list(node.children.keys()):
-                node.children[key] = inodes[node.children[key]]
-        trie = cls(helpmsg)
-        trie.root_node = inodes[0]
-        return trie
-    def __init__(self, helpmsg):
-        self.idgen = UUIDGen()
-        self.root_node = TrieNode(next(self.idgen), self.idgen, helpmsg)
-        self.helpmsg = helpmsg
-    def add_rule(self, tokens, reduction):
-        self.root_node[tokens] = reduction
+    def load(cls, axioms, rules, nonterminals, nullables, helpmsg=False):
+        rules = [Rule.load(*rule) for rule in rules]
+        self = cls(helpmsg)
+        self.axioms = axioms
+        for rule in rules:
+            self.add_rule(rule)
+        self.nonterminals = set(nonterminals)
+        self.nullables = set(nullables)
+        return self
+    def compile(self):
+        return gzip.compress(grammar.write((tuple(axiom for axiom in self.axioms), tuple(rule.compile() for rule in self.rules), self.nonterminals, self.nullables)))
+    def __getitem__(self, key):
+        return self.rules[key]
+    def __contains__(self, token):
+        return token.name in self.nonterminals
 
 class ParserReader:
     def __init__(self, inp, helperr=False):
         self.helpmsg = helperr
         self.inp = inp # beansast.lexer.Lexer self.inp = self.inp
         self.file = inp.fn
-        self.compile = bool(self.file)
+        self._compile = bool(self.file)
         if self.file.endswith(".gmr"):
             self.ofile = self.file[:-3] + "bo"
         else:
             self.ofile = self.file + ".bo"
-    def compile(self, trie):
+    def compile(self, grammar):
         with open(self.ofile, "wb") as f:
-            f.write(trie.compile())
+            f.write(grammar.compile())
     def read(self):
         try:
             if os.path.getmtime(self.file) < os.path.getmtime(self.ofile):
                 with open(self.ofile, 'rb') as f:
-                    return Trie.from_compilation(f.read())
+                    return Grammar.from_compilation(f.read())
         except FileNotFoundError:
             pass
-        trie = Trie(self.helpmsg)
+        grammar = Grammar(self.helpmsg)
         self.pos = 0
         metastmts = self.read_metastmts()
         with open("beansast/gmrs/plexer-r.gmr") as f:
             self.inp.update(f.read(), "beansast/gmrs/plexer-r.gmr")
         while not self.ahead_sgl_token("EOF"):
             name = self.read_name()
-            if self.ahead_sgl_token("LBRACKET"):
-                class_ = self.read_sgl_token_typed("ID")
-                if class_ not in metastmts["class"]:
-                    raise_error(GrammarClassError(token_to_frame(self.inp[self.pos-1]), class_))
-                self.read_sgl_token("RBRACKET")
-            else:
-                class_ = None
             self.read_sgl_token("ASSIGNMENT")
             rules = self.read_rules(name)
             self.read_sgl_token("SEMICOLON")
-            if class_:
-                for rule in rules:
-                    rule.set_class(class_)
+            grammar.add_nonterminal(name)
             for rule in rules:
-                trie.add_rule(rule.tokens[::-1], rule)
-        self.compile(trie)
-        return trie
+                grammar.add_rule(rule)
+        for token, _ in metastmts["first"]:
+            grammar.add_axiom(token)
+        grammar.compute_nullables()
+        correct, stack = grammar.verify_nullables()
+        if not correct:
+            raise SyntaxError('Grammar is bottomless (%s)' % (' -> '.join(stack)))
+        self.compile(grammar)
+        return grammar
     def aheadf_sgl_token(self, token):
         tok = self.ahead_sgl_token(token, step=False)
         if not tok: self.err_toks(token)
@@ -304,13 +287,10 @@ class ParserReader:
             return tok
             
     def read_metastmt(self):
-        tok = self.aheadf_sgl_token({"ASSOC", "CLASS", "FIRST", "END"})
+        tok = self.aheadf_sgl_token({"FIRST", "END"})
         if tok == "END":
             self.read_end()
             args = ("end", None)
-        elif tok == "CLASS":
-            cls_rules = self.read_class()
-            args = ("class", cls_rules)
         elif tok == "FIRST":
             first_rules = self.read_first()
             args = ("first", first_rules)
@@ -318,46 +298,6 @@ class ParserReader:
             # wtf...
             raise RuntimeError("This should not happen")
         self.read_sgl_token("SEMICOLON")
-        return args
-    def read_class(self):
-        self.read_sgl_token("CLASS")
-        self.read_sgl_token("LBRACKET")
-        name = self.read_sgl_token("ID")
-        name = name["value"]
-        self.read_sgl_token("RBRACKET")
-        head_rule = self.read_sgl_token("ID")
-        head_rule = head_rule["value"]
-        instructions = {"sr": "shift", "d": collections.OrderedDict(), "p": {}, "a": {}, "pop": None}
-        while self.ahead_sgl_token("COLON"):
-            (key, value) = self.read_class_instruction()
-            if key == "sr":
-                instructions[key] = value
-            else:
-                instructions[key].update(value)
-        for key, value in instructions["d"].items():
-            if bool(value[2] & FLAGS["PRIORITY"]):
-                if instructions["pop"] != None:
-                    raise_error(GrammarAmbiguityError(token_to_frame(self.inp[self.pos]), "multiple priority attribute have been defined for class %s" % name), helpmsg=self.helpmsg)
-                else:
-                    instructions["pop"] = key
-        return (name, head_rule, instructions)
-    def read_class_instruction(self):
-        tok = self.aheadf_sgl_token({"SHIFTREDUCE", "PRIORITY", "DEFAULT", "ASSOC"})
-        if tok == "SHIFTREDUCE":
-            res = self.read_shiftreduce()
-            args = ("sr", res)
-        elif tok == "PRIORITY":
-            res = self.read_priority()
-            args = ("p", res)
-        elif tok == "DEFAULT":
-            res = self.read_default()
-            args = ("d", res)
-        elif tok == "ASSOC":
-            assoc_rules = self.read_assoc()
-            args = ("a", assoc_rules)
-        else:
-            # wtf...
-            raise RuntimeError("This should not happen")
         return args
     def read_first_instruction(self):
         tok = self.read_sgl_token({"META", "SINGLE", "UNIQUE"})
@@ -392,31 +332,13 @@ class ParserReader:
         self.read_sgl_token("END")
         self.read_sgl_token("LBRACKET")
         self.read_sgl_token("RBRACKET")
-    def read_assoc(self):
-        self.read_sgl_token("ASSOC")
-        tokens = self.read_tokens()
-        tok = self.read_sgl_token({"RIGHT", "LEFT", "NONA"})
-        if tok == "RIGHT":
-            assoc = "right"
-        elif tok == "LEFT":
-            assoc = "left"
-        elif tok == "NONA":
-            assoc = "nona"
-        else:
-            # wtf...
-            raise RuntimeError("This should not happen...")
-        return {token: assoc for token in tokens}
-
     def read_metastmts(self):
         stmt, args = self.read_metastmt()
         metastmts = {
-            "class": {},
             "first": []
         }
         while stmt != "end":
-            if stmt == "class":
-                metastmts[stmt][args[0]] = args[1:3]
-            elif stmt == "first":
+            if stmt == "first":
                 metastmts[stmt].append(args)
             else:
                 # wtf...
@@ -434,26 +356,11 @@ class ParserReader:
             tokens.append(tok["value"])
         self.read_sgl_token("RBRACKET")
         return tokens
-    def read_flags(self):
-        flags = 0
-        tok = self.ahead_sgl_token(set(FLAGS.keys()))
-        while tok:
-            flags |= FLAGS[str(tok)]
-            tok = self.ahead_sgl_token(set(FLAGS.keys()))
-        return flags
     def read_key(self):
-        list_append = False
-        flags = self.read_flags()
-        tok  = self.ahead_sgl_token("LBRACKET")
-        if tok:
-            list_append = True
-            key = self.read_sgl_token_typed("ID")
-            self.read_sgl_token("RBRACKET")
-        else:
-            key = self.read_sgl_token_typed("ID")
-        return list_append, key, flags
+        key = self.read_sgl_token_typed("ID")
+        return key
     def read_proxy_element(self):
-        list_append, key, flags = self.read_key()
+        key= self.read_key()
         self.read_sgl_token("COLON")
         if self.ahead_sgl_token("ID", step=False):
             type_ = "id"
@@ -465,37 +372,20 @@ class ParserReader:
             type_ = "float"
 
         value = self.read_sgl_token_typed({"STRING", "INT", "FLOAT", "ID"})
-        return ((list_append, key, flags), (value, type_))
+        return (key), (value, type_)
         
     def read_proxy(self):
         self.read_sgl_token("LPROXY")
         result = Proxy()
         if self.ahead_sgl_token("RPROXY"):
             return result
-        ((list_append, key, flags), (value, type_)) = self.read_proxy_element()
-        result.add_entry(key, value, list_append, flags, type_)
+        (key, (value, type_)) = self.read_proxy_element()
+        result.add_entry(key, value, type_)
         while self.ahead_sgl_token("COMMA"):
-            ((list_append, key, flags), (value, type_)) = self.read_proxy_element()
-            result.add_entry(key, value, list_append, flags, type_)
+            (key, (value, type_)) = self.read_proxy_element()
+            result.add_entry(key, value, type_)
         self.read_sgl_token("RPROXY")
         return result
-    def read_default(self):
-        self.read_sgl_token("DEFAULT")
-        defaults = self.read_proxy()
-        return defaults
-    def read_priority(self):
-        self.read_sgl_token("PRIORITY")
-        tokens = self.read_tokens()
-        tok = self.read_sgl_token_typed("INT")
-        priority = tok
-        return {token: priority for token in tokens}
-    def read_shiftreduce(self):
-        self.read_sgl_token("SHIFTREDUCE")
-        self.read_sgl_token("LBRACKET")
-        tok = self.read_sgl_token({"SHIFT", "REDUCE"})
-        rule = "reduce" if tok == "REDUCE" else "shift"
-        self.read_sgl_token("RBRACKET")
-        return rule
     def read_name(self):
         tok = self.read_sgl_token("ID")
         name = tok["value"]
@@ -510,22 +400,17 @@ class ParserReader:
         else:
             origin = ""
         if self.ahead_sgl_token("AT"):
-            list_append, key, flags = self.read_key()
+            key = self.read_key()
         else:
-            list_append = False
             key = ""
-        return RuleToken(name, origin, list_append, key, token_frame)
+        return RuleToken(name, origin, key, token_frame)
     def read_rule(self, name):
         tokens = []
         while self.ahead_sgl_token("ID", step=False):
             token = self.read_rule_token()
             tokens.append(token)
         proxy = self.read_proxy()
-        priority = self.read_prior()
-        return Rule(name, tokens, proxy, priority)
-    def read_prior(self):
-        priority = self.ahead_sgl_token("INT")
-        return int(priority["value"]) if priority != None else 0
+        return Rule(name, tokens, proxy)
     def read_rules(self, name):
         rules = []
         while self.ahead_sgl_token("COLON"):

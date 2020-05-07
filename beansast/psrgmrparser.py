@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import collections, bisect, itertools, gzip, os
-from .stderr import *
+from stderr import *
 from . import lxrgmrparser
 from carrot import *
 from textwrap import dedent
@@ -105,7 +105,7 @@ class Rule:
     def __repr__(self):
         return "{name} -> {tokens} <{proxy}>".format(
             tokens=" ".join(repr(token) for token in self.tokens),
-            proxy=", ".join(("[" if value[1] else "") + str(key) + ("]" if value[1] else "") + ": " + str(value[0]) for key, value in self.proxy.items()),
+            proxy=", ".join(str(key) + ": " + str(value[0]) for key, value in self.proxy.items()),
             name=self.name
         )
     def __len__(self):
@@ -264,7 +264,7 @@ class ParserReader:
     def err_toks(self, token):
         last = (" or " + token.pop()) if type(token) == set else ""
         sent = (", ".join(token) if type(token) == set else token) + last
-        raise_error(ParsingSyntaxError(token_to_frame(self.inp[self.pos]), sent, self.inp[self.pos]), helpmsg=self.helpmsg)
+        raise_error(ParsingSyntaxError(token_to_frame(self.inp[self.pos]), sent), helpmsg=self.helpmsg)
     def read_sgl_token(self, token):
         tok = self.ahead_sgl_token(token)
         if tok: return tok
@@ -370,8 +370,10 @@ class ParserReader:
             type_ = "int"
         elif self.ahead_sgl_token("FLOAT", step=False):
             type_ = "float"
+        elif self.ahead_sgl_token("BOOL", step=False):
+            type_ = "bool"
 
-        value = self.read_sgl_token_typed({"STRING", "INT", "FLOAT", "ID"})
+        value = self.read_sgl_token({"STRING", "INT", "FLOAT", "ID", "BOOL"})["value"]
         return (key), (value, type_)
         
     def read_proxy(self):
@@ -418,4 +420,4 @@ class ParserReader:
             rules.append(rule)
         return rules
 
-from .stdout import *
+from stdout import *

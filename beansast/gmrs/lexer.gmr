@@ -1,20 +1,20 @@
-IF ::= if
-ELSE ::= else
-ELIF ::= elif
-WHILE ::= while
-FOR ::= for
-FUNCTION ::= function
-CLASS ::= class
-METHOD ::= method
-MODULE ::= module
-FROM ::= from
-IMPORT ::= import
-DATA ::= data
-SPACENAME ::= spacename
-PACKAGE ::= package
-PUBLIC ::= public
-PRIVATE ::= private
-RETURN ::= return
+IF ::= if(?![a-zA-Z_])
+ELSE ::= else(?![a-zA-Z_])
+ELIF ::= elif(?![a-zA-Z_])
+WHILE ::= while(?![a-zA-Z_])
+FOR ::= for(?![a-zA-Z_])
+FUNCTION ::= function(?![a-zA-Z_])
+CLASS ::= class(?![a-zA-Z_])
+METHOD ::= method(?![a-zA-Z_])
+MODULE ::= module(?![a-zA-Z_])
+FROM ::= from(?![a-zA-Z_])
+IMPORT ::= import(?![a-zA-Z_])
+DATA ::= data(?![a-zA-Z_])
+SPACENAME ::= spacename(?![a-zA-Z_])
+PACKAGE ::= package(?![a-zA-Z_])
+PUBLIC ::= public(?![a-zA-Z_])
+PRIVATE ::= private(?![a-zA-Z_])
+RETURN ::= return(?![a-zA-Z_])
 
 EOF ::= \Z
 STRING ::= ("|')(?P<value>(((?!(\\|\1)).)|(\\(?!\\).)|(\\\\))*)\1
@@ -22,6 +22,7 @@ FLOAT ::= (?P<value>(\d*\.\d+)|(\d+\.\d*))
 INT ::= (?P<value>\d+)
 ignore SPACE ::= [\t ]+
 ignore EOL ::= \n
+ignore COMMENT ::= #[^\n]*
 TRUE ::= true
 FALSE ::= false
 
@@ -38,14 +39,14 @@ RBRACEU ::= \|}
 LBRACKETU ::= \[\|
 RBRACKETU ::= \|]
 
-HAS ::= has
-IN ::= in
-IS ::= is
+HAS ::= has(?![a-zA-Z_])
+IN ::= in(?![a-zA-Z_])
+IS ::= is(?![a-zA-Z_])
 
-AND ::= and
-OR ::= or
-XOR ::= xor
-NOT ::= not
+AND ::= and(?![a-zA-Z_])
+OR ::= or(?![a-zA-Z_])
+XOR ::= xor(?![a-zA-Z_])
+NOT ::= not(?![a-zA-Z_])
 
 RSHIFT ::= >>
 LSHIFT ::= <<
@@ -62,6 +63,7 @@ SLASH ::= /
 PERCENTAGE ::= %
 LINE ::= \|
 AMPERSAND ::= &
+TILDE ::= ~
 CIRCUMFLEX ::= \^
 
 EQ ::= ==

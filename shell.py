@@ -2,7 +2,6 @@
 
 from beansexe import executer
 from beansast import ASTBuilder
-from beansast.stdout import print_tree
 from color import *
 from sys import exit
 
@@ -23,8 +22,8 @@ def prompt():
 inp = prompt()
 while inp not in {"q", "e", "quit", "exit"}:
     try:
-        for result in ex.exec(shell.get_ast(inp)):
-            print(result)
+        for type, result in ex.exec(shell.get_ast(inp)):
+            print(type.repr(result))
     except SystemExit:
         pass
     inp = prompt()

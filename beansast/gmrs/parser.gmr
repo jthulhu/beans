@@ -103,7 +103,7 @@
 
 % Metastatement should always have the lowest priority (which means it's the first to be executed) and should always be unique (because if there could be a doubt, it's a bad language; if there are no doubts, no needs to look somewhere else)
 
-f[0]Statement
+f[0]StatementList
 ;
 
 %%%%%%%%%
@@ -122,19 +122,49 @@ f[0]Statement
 e[]
 ;
 
+IfStatement ::=
+ : IF Expression@test Statement@then <haselse: False>
+ : IF Expression@test Statement@then ELSE Statement@else <haselse: True>
+;
+
+WhileStatement ::=
+ : WHILE Expression@test Statement@do <>
+;
+
+Declaration ::=
+ : ID.name@type ID.name@key <>
+;
+
 Assignment ::=
- : ID.name@key EQUALS Expression@value <>
+ : ID.name@key EQUALS Expression@value <type: "[None]">
+ : ID.name@type ID.name@key EQUALS Expression@value <>
 ;
 
 BuiltinTypes ::=
  : INT.value@value <type: "int", op: "builtin">
  : STRING.value@value <type: "string", op: "builtin">
  : ID.name@value <type: "id", op: "builtin">
+ : TRUE <type: "true", op: "builtin">
+ : FALSE <type: "false", op: "builtin">
 ;
 
 Atom ::=
  : BuiltinTypes@this <>
  : LPAR Expression@this RPAR <>
+;
+
+Equality ::=
+ : Equality@left EQ Comparison@right <op: "eq">
+ : Equality@left NE Comparison@right <op: "ne">
+ : Comparison@this <>
+;
+
+Comparison ::=
+ : Comparison@left GE Sum@right <op: "ge">
+ : Comparison@left GT Sum@right <op: "gt">
+ : Comparison@left LE Sum@right <op: "le">
+ : Comparison@left LT Sum@right <op: "lt">
+ : Sum@this <>
 ;
 
 Sum ::=
@@ -144,16 +174,40 @@ Sum ::=
 ;
 
 Product ::=
- : Product@left ASTERISK Atom@right <op: "mul">
- : Product@left SLASH Atom@right <op: "div">
+ : Product@left ASTERISK Unary@right <op: "mul">
+ : Product@left SLASH Unary@right <op: "div">
+ : Product@left DSLASH Unary@right <op: "tdiv">
+ : Product@left PERCENTAGE Unary@right <op: "mod">
+ : Unary@this <>
+;
+
+Unary ::=
+ : TILDE Unary@right <op: "com">
+ : PLUS Unary@right <op: "pls">
+ : MINUS Unary@right <op: "min">
+ : Power@this <>
+;
+
+Power ::=
+ : Power@left DASTERISK Atom@right <op: "pow">
  : Atom@this <>
 ;
 
 Expression ::=
- : Sum@this <>
+ : Equality@this <>
+ : Statement@frame <op: "frame">
 ;
 
 Statement ::=
- : Expression@this SEMICOLON <s: 'eval'>
  : Assignment@this SEMICOLON <s: 'assign'>
+ : Declaration@this SEMICOLON <s: 'declare'>
+ : IfStatement@this <s: 'test'>
+ : WhileStatement@this <s: 'do'>
+ : LBRACE StatementList@this RBRACE <>
+ : RETURN Expression@this SEMICOLON <s: 'return'>
+;
+
+StatementList ::=
+ : StatementList@left Statement@right <s: 'concatenate'>
+ : Statement@this <>
 ;

@@ -8,7 +8,5 @@ import sys, re
 from . import state
 from . import lexer
 from . import parser
-from . import stdout
-from . import stderr
 from .parser import ASTBuilder
 

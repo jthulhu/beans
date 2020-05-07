@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import re, collections
-from .stderr import *
+from stderr import *
 from .stdloc import Location
 
 class Token:

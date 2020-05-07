@@ -4,10 +4,12 @@
 from .lexer import Lexer
 from .psrgmrparser import ParserReader
 from .state import *
+import stderr
 
 class ASTNode:
-    def __init__(self, name, **kwargs):
+    def __init__(self, name, frame, **kwargs):
         self.name = name
+        self.frame = frame
         self.attributes = kwargs
     def items(self):
         return self.attributes.items()
@@ -22,6 +24,23 @@ class ASTNode:
 ### STATE SET ###
 #################
 
+class SortedSet:
+    def __init__(self):
+        self._set = []
+        self._hash_table = {}
+    def add(self, item, priority):
+        if item in self:
+            return
+        
+    def __contains__(self, item):
+        h = hash(item)
+        if h not in self._hash_table:
+            return False
+        for it in self._hash_table[h]:
+            if item == it:
+                return True
+        return False
+    
 class DynamicSet:
     def __init__(self):
         self._set = []
@@ -217,16 +236,20 @@ class ASTBuilder:
                     nodeattributes[k] = v
             else:
                 nodeattributes[key] = value
-            for key, (value, type) in rule.proxy.items():
-                if type == 'string':
-                    nodeattributes[key] = value
-                elif type == 'float':
-                    nodeattributes[key] = float(value)
-                elif type == 'int':
-                    nodeattributes[key] = int(value)
-                elif type == 'id':
-                    nodeattributes[key] = eval(value, nodeattributes)
-        node = ASTNode(rule.name, **nodeattributes)
+        for key, (value, type) in rule.proxy.items():
+            if type == 'string':
+                nodeattributes[key] = value
+            elif type == 'float':
+                nodeattributes[key] = float(value)
+            elif type == 'int':
+                nodeattributes[key] = int(value)
+            elif type == 'id':
+                nodeattributes[key] = eval(value, nodeattributes)
+            elif type == 'bool':
+                nodeattributes[key] = bool(value)
+            else:
+                print('Attribute type (%s) not understood...' % type)
+        node = ASTNode(rule.name, stderr.token_to_frame(input[start]), **nodeattributes)
         return node
             
     def get_ast(self, input, input_file="<stdin>"):
@@ -235,7 +258,9 @@ class ASTBuilder:
         ended, S = self._get_reversed_S()
         if not ended:
             # Handling error
-            raise SyntaxError('Could not understand token %s' % len(S))
+            token = self.lexer[len(S)-1]
+            frame = stderr.token_to_frame(token)
+            stderr.raise_error(stderr.SyntaxError(frame, 'Could not understand token `%s\'.' % token))
         if len(S) == 0:
             # Empty AST
             #  weird...
@@ -246,4 +271,5 @@ class ASTBuilder:
                 return self.search_item(0, item, S, self.parser.grammar, self.parser.input)
         else:
             # Handling error
-            raise SyntaxError('Input was not understood')
+            frame = stderr.token_to_frame(self.lexer[len(S)-1])
+            stderr.raise_error(stderr.SyntaxError(frame, "Input was not understood"))

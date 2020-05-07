@@ -1,5 +1,5 @@
 from color import *
-from . import parser
+from beansast import parser
 
 ###############
 #### TIMES ####

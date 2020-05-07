@@ -1,6 +1,6 @@
 from .lxrgmrparser import LexerReader
 from .stdloc import Location
-from .stderr import *
+from stderr import *
 class LexingError(Exception):
     pass
 

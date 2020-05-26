@@ -1,10 +1,8 @@
-import sys, traceback
-import carrot
-import stderr
+import carrot, stderr
 from stderr import raise_error
 
 class Type:
-    type_repr = 'Abstract type Type'
+    type_repr = 'type'
     def __init__(self):
         self.ops = {
             "add": {},
@@ -95,10 +93,10 @@ class Type:
     def min(self, left, frame):
         if None in self.ops["min"]:
             ntype, op = self.ops["min"][None]
-            return ntype(self, op(left))
+            return ntype(self), op(left)
         elif "*" in self.ops["min"]:
             ntype, op = self.ops["min"]["*"]
-            return ntype(self, op(left))
+            return ntype(self), op(left)
         else:
             raise_error (stderr.OpNotDefinedError(frame, "Tryed to take minus `%s'"% (self,)))
     def pls(self, left, frame):
@@ -169,7 +167,27 @@ class Type:
 
 class BnsStringType(Type):
     type_repr = 'string'
-    
+    def __init__(self):
+        Type.__init__(self)
+        self.ops.update({
+            "add": {
+                BnsStringType: (lambda ltype, rtype: ltype, lambda left, right: left+right)
+            },
+            "mul": {
+                BnsIntType: (lambda ltype, rtype: ltype, lambda left, right: left*right)
+            },
+            "eq": {
+                BnsStringType: (lambda ltype, rtype: BnsBoolType(), lambda left, right: left == right),
+                "*": (lambda ltype, rtype: BnsBoolType(), lambda left, right: False)
+            },
+            "lt": {
+                BnsStringType: (lambda ltype, rtype: BnsBoolType(), lambda left, right: left < right)
+            },
+            "gt": {
+                BnsStringType: (lambda ltype, rtype: BnsBoolType(), lambda left, right: left > right)
+            }
+        })
+        
 class BnsIntType(Type):
     type_repr = 'int'
     def __init__(self):
@@ -252,23 +270,23 @@ class Executer:
     def __init__(self):
         self.prevars = {}
         self.vars = {
-            'string': BnsStringType(),
-            'int': BnsIntType(),
-            'bool': BnsBoolType(),
+            'string': (Type(), BnsStringType()),
+            'int': (Type(), BnsIntType()),
+            'bool': (Type(), BnsBoolType()),
         }
     def evaluate(self, node):
         if node["op"] == "builtin":
             if node["type"] == "int":
-                return (self.get_variable("int", node.frame), int(node["value"]))
+                return (self.get_variable("int", node.frame)[1], int(node["value"]))
             elif node["type"] == "string":
-                return (self.get_variable("string", node.frame), node["value"])
+                return (self.get_variable("string", node.frame)[1], node["value"])
             elif node["type"] == "id":
                 var = self.get_variable(node["value"], node.frame)
                 return var
             elif node["type"] == "true":
-                return (self.get_variable("bool", node.frame), True)
+                return (self.get_variable("bool", node.frame)[1], True)
             elif node["type"] == "false":
-                return (self.get_variable("bool", node.frame), False)
+                return (self.get_variable("bool", node.frame)[1], False)
         elif node["op"] == "add":
             ltype, lvalue = self.evaluate(node["left"])
             rtype, rvalue = self.evaluate(node["right"])
@@ -314,13 +332,13 @@ class Executer:
             rtype, rvalue = self.evaluate(node["right"])
             return ltype.add(lvalue, rtype, rvalue, node.frame)
         elif node["op"] == "com":
-            ltype, lvalue = self.evaluate(node["left"])
+            ltype, lvalue = self.evaluate(node["right"])
             return ltype.com(lvalue, node.frame)
         elif node["op"] == "pls":
-            ltype, lvalue = self.evaluate(node["left"])
+            ltype, lvalue = self.evaluate(node["right"])
             return ltype.pls(lvalue, node.frame)
         elif node["op"] == "min":
-            ltype, lvalue = self.evaluate(node["left"])
+            ltype, lvalue = self.evaluate(node["right"])
             return ltype.min(lvalue, node.frame)
         elif node["op"] == "pow":
             ltype, lvalue = self.evaluate(node["left"])
@@ -342,25 +360,31 @@ class Executer:
             value = self.evaluate(node["value"])
             if node["type"] != "[None]":
                 self.declare(node["key"], node["type"], node.frame)
+            elif node["key"] not in self.prevars and node["key"] not in self.vars:
+                self.prevars[node["key"]] = value[0]
             self.define(node["key"], value, node.frame)
         elif node["s"] == 'concatenate':
-            yield from self.execute(node["left"])
-            yield from self.execute(node["right"])
+            a = self.execute(node["left"])
+            if a != None:
+                return a
+            return self.execute(node["right"])
         elif node["s"] == 'declare':
             self.declare(node["key"], node["type"], node.frame)
         elif node["s"] == 'test':
             type, value = self.evaluate(node["test"])
             if type.bool(value, node.frame)[1]:
-                yield from self.execute(node["then"])
+                return self.execute(node["then"])
             elif node["haselse"]:
-                yield from self.execute(node["else"])
+                return self.execute(node["else"])
         elif node["s"] == 'do':
             type, value = self.evaluate(node["test"])
             while type.bool(value, node.frame)[1]:
-                yield from self.execute(node["do"])
+                a = self.execute(node["do"])
+                if a != None:
+                    return a
                 type, value = self.evaluate(node["test"])
         elif node["s"] == "return":
-            yield self.evaluate(node)
+            return self.evaluate(node)
     def define(self, key, value, frame):
         if key not in self.prevars and key not in self.vars:
             raise_error (stderr.DeclarationNotFound(frame, 'Trying to define variable `%s\' without declaring it' % key))
@@ -381,7 +405,7 @@ class Executer:
         return self.vars[key]
     def declare(self, key, type, frame):
         if key in self.prevars or key in self.vars:
-            raise_error (stderr.DeclaredTwiceError(frame, 'Trying to declared already declared variable `%s\'' % key))
-        self.prevars[key] = self.get_variable(type, frame)
+            raise_error (stderr.DeclaredTwiceError(frame, 'Trying to declare already declared variable `%s\'' % key))
+        self.prevars[key] = self.get_variable(type, frame)[1]
     def exec(self, node):
-        yield from self.execute(node)
+        return self.execute(node)

@@ -25,9 +25,6 @@ class SyntaxError(Error):
 class ParsingSyntaxError(Error):
     errtype = "Syntax error"
 
-class NoPathSyntaxError(Error):
-    errtype = "Syntax error"
-
 class GrammarIdentityError(Error):
     errtype = "Grammar syntax-time error"
     
@@ -36,6 +33,9 @@ class LexingSyntaxError(Error):
 
 class GrammarSyntaxError(Error):
     errtype = "Grammar syntax error"
+
+class NotDeclaredError(Error):
+    errtype = "Declaration error"
 
 class NotDefinedError(Error):
     errtype = "Declaration error"
@@ -52,6 +52,9 @@ class OpNotDefinedError(Error):
 class OpNotFoundError(Error):
     errtype = "Illegal operation"
 
+class TypeNotFoundError(Error):
+    errtype = "Illegal operation"
+    
 class DefineTypeError(Error):
     errtype = "Type error"
     

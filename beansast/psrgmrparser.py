@@ -80,7 +80,7 @@ class RuleToken:
     def __repr__(self):
         return self.name
     def __eq__(self, right):
-        return self.name == right.name
+        return (isinstance(right, str) and self.name == right) or (self.name == right.name)
     def __hash__(self):
         return hash(self.name)
     def compile(self):
@@ -118,7 +118,7 @@ class Rule:
         return (self.name, tuple(token.compile() for token in self.tokens), self.proxy.compile())
 
 class Grammar:
-    dedent("""\
+    __doc__ = dedent("""\
     Grammar(helpmsg=False) === G:=(NT, A, R)
      * represents a grammar without terminals
      * NT represents the non-ternimals
@@ -140,6 +140,41 @@ class Grammar:
             if token.name not in self.nullables:
                 return False
         return True
+    def verify_nonproductive(self):
+        nnprod_nt = self.nonterminals.copy()
+        nnprod_rules = {i for i in range(len(self.rules))}
+        edited = True
+        while edited:
+            edited = False
+            nprod_rules = set()
+            for i in nnprod_rules:
+                for tok in self.rules[i]:
+                    if tok in nnprod_nt:
+                        break
+                else:
+                    edited = True
+                    nprod_rules.add(i)
+                    nt = self.rules[i].name
+                    if nt in nnprod_nt:
+                        nnprod_nt.remove(nt)
+            nnprod_rules.difference_update(nprod_rules)
+        return (nnprod_nt, nnprod_rules)
+    def verify_unreachable(self):
+        reachables = set(self.axioms)
+        new_reachables = reachables.copy()
+        edited = True
+        while edited:
+            edited = False
+            found = set()
+            for nt in new_reachables:
+                for r in (rule for rule in self.rules if rule.name == nt):
+                    for tok in r:
+                        if tok.name in self.nonterminals and tok.name not in reachables:
+                            edited = True
+                            found.add(tok.name)
+            reachables.update(new_reachables)
+            new_reachables = found
+        return self.nonterminals - reachables
     def verify_nullables(self):
         # build children
         children = {}
@@ -171,7 +206,7 @@ class Grammar:
                 if self._is_rule_nullable(rule):
                     edited = True
                     self.nullables.add(rule.name)
-                    
+    
     def add_axiom(self, axiom):
         self.axioms.append(axiom)
     def add_nonterminal(self, nonterminal):
@@ -180,6 +215,8 @@ class Grammar:
         for rule_id in self.query_rules(name):
             yield self[rule_id]
     def query_rules(self, name):
+        yield from (i for i in range(len(self.rules)) if self.rules[i].name == name)
+        return
         indexes = self._indexes.get(name, set())
         for i in indexes:
             yield i
@@ -247,7 +284,18 @@ class ParserReader:
         grammar.compute_nullables()
         correct, stack = grammar.verify_nullables()
         if not correct:
-            raise SyntaxError('Grammar is bottomless (%s)' % (' -> '.join(stack)))
+            raise_warning (GrammarSyntaxError(Frame(self.file, "*", "*"), 'Grammar is bottomless (%s)' % (' -> '.join(stack))))
+        nonprod_nonter, nonprod_rules = grammar.verify_nonproductive()
+        if len(nonprod_nonter) > 0:
+            raise_warning (GrammarSyntaxError(Frame(self.file, "*", "*"), 'Grammar contains %s nonproductive nonterminals:\n%s' % (len(nonprod_nonter), "\n".join(nonprod_nonter))))
+        grammar.nonterminals.difference_update(nonprod_nonter)
+        if len(nonprod_rules) > 0:
+            raise_warning (GrammarSyntaxError(Frame(self.file, "*", "*"), 'Grammar contains %s nonproductive rules:\n%s' % (len(nonprod_rules), "\n".join(repr(grammar.rules[i]) for i in nonprod_rules))))
+        grammar.rules = [grammar.rules[i] for i in range(len(grammar.rules)) if i not in nonprod_rules]
+        unreachables = grammar.verify_unreachable()
+        if len(unreachables) > 0:
+            raise_warning (GrammarSyntaxError(Frame(self.file, "*", "*"), 'Grammar contains %s unreachable nonterminals:\n%s' % (len(unreachables), "\n".join(unreachables))))
+        grammar.nonterminals.difference_update(unreachables)
         self.compile(grammar)
         return grammar
     def aheadf_sgl_token(self, token):

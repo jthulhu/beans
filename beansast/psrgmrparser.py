@@ -185,17 +185,20 @@ class Grammar:
                         children[n] = set()
                     for token in self[rule_id]:
                         children[n].add(token.name)
+        loops = set()
         for n in self.nullables:
             done = []
             todo = [n]
             while len(todo) > 0:
                 current = todo.pop()
                 if current in done:
-                    return (False, done + [current])
+                    loops.add(tuple(done+[current]))
+                    #return (False, done + [current])
+                    continue
                 done.append(current)
                 for child in children[current]:
                     todo.append(child)
-        return (True,[])
+        return loops
     def compute_nullables(self):
         edited = True
         while edited:
@@ -282,20 +285,21 @@ class ParserReader:
         for token, _ in metastmts["first"]:
             grammar.add_axiom(token)
         grammar.compute_nullables()
-        correct, stack = grammar.verify_nullables()
-        if not correct:
+        loops = grammar.verify_nullables()
+        for stack in loops:
             raise_warning (GrammarSyntaxError(Frame(self.file, "*", "*"), 'Grammar is bottomless (%s)' % (' -> '.join(stack))))
         nonprod_nonter, nonprod_rules = grammar.verify_nonproductive()
         if len(nonprod_nonter) > 0:
-            raise_warning (GrammarSyntaxError(Frame(self.file, "*", "*"), 'Grammar contains %s nonproductive nonterminals:\n%s' % (len(nonprod_nonter), "\n".join(nonprod_nonter))))
+            raise_warning (GrammarSyntaxError(Frame(self.file, "*", "*"), 'Grammar contains %s nonproductive nonterminals:\n%s' % (len(nonprod_nonter), ", ".join(nonprod_nonter))))
         grammar.nonterminals.difference_update(nonprod_nonter)
         if len(nonprod_rules) > 0:
             raise_warning (GrammarSyntaxError(Frame(self.file, "*", "*"), 'Grammar contains %s nonproductive rules:\n%s' % (len(nonprod_rules), "\n".join(repr(grammar.rules[i]) for i in nonprod_rules))))
         grammar.rules = [grammar.rules[i] for i in range(len(grammar.rules)) if i not in nonprod_rules]
         unreachables = grammar.verify_unreachable()
         if len(unreachables) > 0:
-            raise_warning (GrammarSyntaxError(Frame(self.file, "*", "*"), 'Grammar contains %s unreachable nonterminals:\n%s' % (len(unreachables), "\n".join(unreachables))))
+            raise_warning (GrammarSyntaxError(Frame(self.file, "*", "*"), 'Grammar contains %s unreachable nonterminals:\n%s' % (len(unreachables), ", ".join(unreachables))))
         grammar.nonterminals.difference_update(unreachables)
+        grammar.rules = [rule for rule in grammar.rules if rule.name not in unreachables]
         self.compile(grammar)
         return grammar
     def aheadf_sgl_token(self, token):

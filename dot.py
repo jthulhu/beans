@@ -32,8 +32,8 @@ def ret_node(node, cur, first=False):
         if isinstance(value, parser.ASTNode):
             v, e = ret_node(value, i_cur)
         else:
-            v = ['node%s_1 [label="%s"];' % (i_cur, value)]
-            e = ['node%s -> node%s_1;' % (i_cur, i_cur)]
+            v = ['node%s_0 [label="%s"];' % (i_cur, value)]
+            e = ['node%s -> node%s_0;' % (i_cur, i_cur)]
         vertex.extend(v)
         edges.extend(e)
     return vertex, edges

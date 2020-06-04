@@ -22,8 +22,10 @@ def prompt():
 inp = prompt()
 while inp not in {"q", "e", "quit", "exit"}:
     try:
-        for type, result in ex.exec(shell.get_ast(inp)):
-            print(type.repr(result))
+        r = ex.exec(shell.get_ast(inp))
+        if r:
+            type, result = r
+            print("(%s) %s" % (type, result))
     except SystemExit:
         pass
     inp = prompt()

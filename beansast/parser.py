@@ -261,7 +261,7 @@ class EarleyParser(Parser):
             # Handling error
             token = self.input[len(S)-1]
             frame = stderr.token_to_frame(token)
-            stderr.raise_error(stderr.SyntaxError(frame, 'Could not understand token `%s\'.' % token))
+            stderr.raise_error(stderr.SyntaxError(frame, 'Could not understand token ‘%s’.' % token))
         if len(S) == 0:
             # Empty AST
             #  weird...
@@ -273,7 +273,7 @@ class EarleyParser(Parser):
         else:
             # Handling error
             frame = stderr.token_to_frame(self.input[len(S)-1])
-            stderr.raise_error(stderr.SyntaxError(frame, "Input was not understood"))
+            stderr.raise_error(stderr.SyntaxError(frame, "Input was not understood."))
 
 # State set
 

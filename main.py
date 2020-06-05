@@ -1,9 +1,10 @@
 #!/usr/bin/python3
+import time
+t1 = time.time()*1000
 from beansexe import executer
 from beansast import ASTBuilder
 from beanscomp import vmcompiler
-import sys, time
-
+import sys
 DEBUG = False
 
 def debug(*args, **kwargs):
@@ -34,4 +35,5 @@ debug("done.")
 if a != None:
     print("(%s) %s" % tuple(a))
 
-debug('Times:\n Grammar: %sms\n AST: %sms\n Exec: %sms' % (round(t_grammar_2 - t_grammar_1), round(t_ast_2 - t_ast_1), round(t_exec_2 - t_exec_1)))
+t2 = time.time()*1000
+debug('Total: %sms\n Grammar: %sms\n AST: %sms\n Exec: %sms' % (round(t2-t1), round(t_grammar_2 - t_grammar_1), round(t_ast_2 - t_ast_1), round(t_exec_2 - t_exec_1)))

@@ -253,22 +253,24 @@ class ParserReader:
     def __init__(self, inp, helperr=False):
         self.helpmsg = helperr
         self.inp = inp # beansast.lexer.Lexer self.inp = self.inp
-        self.file = inp.fn
+        
+    def compile(self, grammar):
+        with open(self.ofile, "wb") as f:
+            f.write(grammar.compile())
+    def read(self, flux, fn="<stdin>"):
+        self.file = fn
         self._compile = bool(self.file)
         if self.file.endswith(".gmr"):
             self.ofile = self.file[:-3] + "bo"
         else:
             self.ofile = self.file + ".bo"
-    def compile(self, grammar):
-        with open(self.ofile, "wb") as f:
-            f.write(grammar.compile())
-    def read(self):
         try:
             if os.path.getmtime(self.file) < os.path.getmtime(self.ofile):
                 with open(self.ofile, 'rb') as f:
                     return Grammar.from_compilation(f.read())
         except FileNotFoundError:
             pass
+        self.inp(flux, fn)
         grammar = Grammar(self.helpmsg)
         self.pos = 0
         while not self.ahead_sgl_token("EOF"):

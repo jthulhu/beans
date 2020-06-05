@@ -42,8 +42,7 @@ class Parser:
     def compute_grammar(self):
         with open(PLEXER_GRAMMAR) as f:
             self.lexedgrammar = Lexer(f.read(), file=PLEXER_GRAMMAR)
-        self.lexedgrammar(self.rawgrammar, fn=self.gmrfile)
-        self.grammar = ParserReader(self.lexedgrammar).read()
+        self.grammar = ParserReader(self.lexedgrammar).read(self.rawgrammar, fn=self.gmrfile)
     def __call__(self, input, file="<stdin>"):
         self.file = file
         self.input = input

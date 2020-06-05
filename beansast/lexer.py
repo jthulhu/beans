@@ -46,7 +46,7 @@ class Lexer:
         while len(self.tokens) - 1 < key:
             is_good, value = self._lex()
             if not is_good:
-                raise raise_error(LexingSyntaxError(Frame(self.fn, *pos2coords(self._pos, self.flux))))
+                raise_error (LexingSyntaxError(Frame(self.fn, *pos2coords(self._pos, self.flux))), "Could not tokenize at a certain point... what have you done?")
             self.tokens.append((self.tokenize(value), self._pos))
         while len(self.tokens) - 1 > key:
             self.tokens.pop()

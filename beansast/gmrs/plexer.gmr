@@ -3,9 +3,9 @@ ignore SPACE ::= [\t ]
 ignore EOL ::= \n
 ignore COMMENT ::= \(\*(\n|.)*\*\)
 
-UNIQUE ::= u(niq(ue)?)?(?!\w)
-PUBLIC ::= pub(lic)?(?!\w)
-PRIVATE ::= priv(ate)?(?!\w)
+UNIQUE ::= u(niq(ue)?)?\b
+PUBLIC ::= pub(lic)?\b
+PRIVATE ::= priv(ate)?\b
 
 INT ::= (?P<value>[+-]?(\d+|(inf)))
 STRING ::= ("|')(?P<value>(((?!(\\|\1)).)|(\\(?!\\).)|(\\\\))*)\1

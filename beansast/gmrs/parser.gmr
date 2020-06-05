@@ -1,126 +1,14 @@
-% GRAMMAR'S SYNTAX
-% every statement must end with `;'
-%
-% /Metarule statements/
-% c - class rule
-% f - first rule
-% e - end metarules
-% inside rules and classes, some defaults attributes can be defined
-% with the specifier d
-% inside classes, priority can be set with the specifier p
-% inside classes, shift/reduce conflict rule can be set with
-% specifier sr
-% inside classes, associativity can be set with the specifier a
-% first statement specify which rules are to be applied to find out
-% ast nodes, or, in other words, should be applied on the call
-% remember that default first rule also applies on metastatements
-% which is requiered for being able to change grammar on the fly
-% (which means, if you change that statement, be sure of what you do
-% because you shouldn't be doing it)
-%
-% /Rules/
-% Rules follow a simplified version of BNF
-% Basically place a terminal or non-terminals one after the other
-% A non-terminal may be composed of many rules; split them with `:' (COLON)
-% put an `;' (SEMICOLON) at the end of a non-terminal definition
-% after a terminal or non-terminal in a rule, you may specify it's
-% key so it can be stored after the parsing with `@' + key
-%   - Example ::= : TERMINAL NonTerminal@key <>;
-% put the modifiers before the non-terminal name in the non-terminal definition
-%   - d<> Example ::= : TERMINAL <>;
-% specify the class after the name of the non-terminal
-%   - Example[exampleclass] ::= : TERMINAL <>;
-%
-% /Other/
-% % - Comment
-% d<proxy> - default specifier
-% p[/*TOKENS*/]/*PRIORITY*/ - priority specifier
-% sr[/*shift|reduce*/]
+(* GRAMMAR'S SYNTAX
+ every statement must end with `;'
 
-
-% OPERATOR PRECENDENCE
-%  - this rules inside the expression class -
-% DOT
-% POW, SQRT, LOG
-% MUL, DIV, MOD
-% ADD, MIN
-% IN, HAS, IS, EQ, GT, GE, LT, LE, NE
-% NOT
-% AND
-% OR
-% ASSIGNMENT
-
-
-
-
-
-
-%%%%%%%%%%%%%%%%%%%
-%% ASSOCIATIVITY %%
-%%%%%%%%%%%%%%%%%%%
-% This command sets associativity for operators
-% when a shift/reduce conflict happends, associativity is the first
-% critirea which is look for (check if the lookahead token has a rule defined), and are class-defined
-% Associativity take place when the question of merging two solutions that require rules within the same class
-
-% : a[/*operators*/]/*right|left|nonassoc*/
-
-% standard binary operators priority
-%  * notice assignement operator is an operator
-%    assignement is an expression
-%  * notice most bitwise operators are not presents
-%    they are not defined
-%  * default is a[op] left
-
-
-%%%%%%%%%%%%%
-%% CLASSES %%
-%%%%%%%%%%%%%
-% This command creates a new class
-% Each class has head rule, which is considered as set of rules more as a rule in itself, and will lead to a common ASTNode
-% Each class requires gives some default attributes for every node created by a rule in its class
-% This attributes are used because class will turn into a common ASTNode, so to ease the parsing of the AST we put a signature (like functions)
-% Moreover, an attribute can be required to proceed compilation, which means the default value cannot be used.
-% This also allows certains rules to be contextually illegal, within a context-free language
-% As an example, we can see that expressions can be used as statements, but we won't allow expressions that are not actually statements (which means purely functional expression, with no procedural aspects, cannot be statements, as they would result in giving their return value in no context frame)
-% An other aspect of classes is that they define custom shift/reduce conflicts resolve rules. The default is, here shift, but you could force to reduce instead (but this is highly unrecommended, unless you know what you do)
-% Finally if a rule of a classhead is compound of only one rule, bound to that class, the key @this is allowed, and means "inherit every attribute". This is useful to build a lot of subrules without creating tons of useless subASTNodes (eg expression rule).
-
-% default is : sr[shift]
-
-% c[/*CLASS*/]/*Rule*/ /*:specifier*/*;
-% create a class to define attribute inheritance and
-% shift/reduce conflicts resolution rules
-
-
-%%%%%%%%%%%
-%% FIRST %%
-%%%%%%%%%%%
-% This command indicated which are the rules the compiler should try look for.
-
-% f[/*priority*/]/*Rule*/ :is a metastatement (helpful to define custom metastatements) :what should the compiler do after they reduced the stack to one of this rule - 0 means continue and allowed to finish 2with any number, 1 means continue and allowed to finish with one, 2 means stop and allowed to finish with one, 3 means stop and ignore the rest of the input (for languages who require to be in shared input) :is unique, which means should the compiler try an other first statement AFTER this one matched (in other words, is this statement the only one that can match what he matches, or supposed to);
-% default is : meta False : single 0 : unique False
-
-% Metastatement should always have the lowest priority (which means it's the first to be executed) and should always be unique (because if there could be a doubt, it's a bad language; if there are no doubts, no needs to look somewhere else)
-
-f[0]StatementList
-;
-
-%%%%%%%%%
-%% END %%
-%%%%%%%%%
-% This command ends the metacommands section and starts the grammar
-% (close to the Backus-Naur Form -- BNF) with non-terminals rules
-% Note that after this, the lexer's grammar will change:
-% metastaments' keywords will disapear, and comments will be
-% (* comment *)
-
-% e[];
-
-% No particural notes for this command as it is very self-explanatory
-
-e[]
-;
+ /Rules/
+ Rules follow a simplified version of BNF
+ Basically place a terminal or non-terminals one after the other
+ A non-terminal may be composed of many rules; split them with `:' (COLON)
+ put an `;' (SEMICOLON) at the end of a non-terminal definition
+ after a terminal or non-terminal in a rule, you may specify it's
+ key so it can be stored after the parsing with `@' + key
+   - Example ::= : TERMINAL NonTerminal@key <>; *)
 
 IfStatement ::=
  : IF Expression@test Statement@then <haselse: False>
@@ -207,7 +95,7 @@ Statement ::=
  : RETURN Expression@this SEMICOLON <s: 'return'>
 ;
 
-StatementList ::=
+@StatementList ::=
  : StatementList@left Statement@right <s: 'concatenate'>
  : Statement@this <>
 ;

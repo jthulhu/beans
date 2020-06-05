@@ -1,0 +1,30 @@
+EOF ::= \Z
+ignore SPACE ::= [\t ]
+ignore EOL ::= \n
+ignore COMMENT ::= \(\*(\n|.)*\*\)
+
+UNIQUE ::= u(niq(ue)?)?(?!\w)
+PUBLIC ::= pub(lic)?(?!\w)
+PRIVATE ::= priv(ate)?(?!\w)
+
+INT ::= (?P<value>[+-]?(\d+|(inf)))
+STRING ::= ("|')(?P<value>(((?!(\\|\1)).)|(\\(?!\\).)|(\\\\))*)\1
+FLOAT ::= (?P<value>[+-]?((\d*\.\d+)|(\d+\.\d*)|(inf)))
+BOOL ::= (?P<value>True|False)
+ID ::= (?P<value>\w+)
+
+LPROXY ::= <
+RPROXY ::= >
+
+ASSIGNMENT ::= ::=
+COLON ::= :
+SEMICOLON ::= ;
+COMMA ::= ,
+
+AT ::= @
+DOT ::= [.]
+LBRACE ::= {
+RBRACE ::= }
+LPAR ::= \(
+RPAR ::= \)
+LINE ::= \|

@@ -271,10 +271,8 @@ class ParserReader:
             pass
         grammar = Grammar(self.helpmsg)
         self.pos = 0
-        metastmts = self.read_metastmts()
-        with open("beansast/gmrs/plexer-r.gmr") as f:
-            self.inp.update(f.read(), "beansast/gmrs/plexer-r.gmr")
         while not self.ahead_sgl_token("EOF"):
+            is_axiom = self.read_axiom()
             name = self.read_name()
             self.read_sgl_token("ASSIGNMENT")
             rules = self.read_rules(name)
@@ -282,8 +280,8 @@ class ParserReader:
             grammar.add_nonterminal(name)
             for rule in rules:
                 grammar.add_rule(rule)
-        for token, _ in metastmts["first"]:
-            grammar.add_axiom(token)
+            if is_axiom:
+                grammar.add_axiom(name)
         grammar.compute_nullables()
         loops = grammar.verify_nullables()
         for stack in loops:
@@ -304,7 +302,7 @@ class ParserReader:
         return grammar
     def aheadf_sgl_token(self, token):
         tok = self.ahead_sgl_token(token, step=False)
-        if not tok: self.err_toks(token)
+        if not tok: self.err_toks(token, self.inp[self.pos])
         else: return tok
     def ahead_sgl_token(self, token, step=True):
         if (type(token) == set and self.inp[self.pos] in token) or (type(token) != set and self.inp[self.pos] == token):
@@ -313,14 +311,14 @@ class ParserReader:
             return self.inp[pos]
         else:
             return None
-    def err_toks(self, token):
+    def err_toks(self, token, found):
         last = (" or " + token.pop()) if type(token) == set else ""
         sent = (", ".join(token) if type(token) == set else token) + last
-        raise_error(ParsingSyntaxError(token_to_frame(self.inp[self.pos]), sent), helpmsg=self.helpmsg)
+        raise_error(ParsingSyntaxError(token_to_frame(self.inp[self.pos]), "Excpected %s but found %s" % (sent, found)), helpmsg=self.helpmsg)
     def read_sgl_token(self, token):
         tok = self.ahead_sgl_token(token)
         if tok: return tok
-        else: self.err_toks(token)
+        else: self.err_toks(token, self.inp[self.pos])
     def read_sgl_token_typed(self, token):
         tok = self.read_sgl_token(token)
         if tok == "INT":
@@ -337,67 +335,9 @@ class ParserReader:
             return tok["value"]
         else:
             return tok
-            
-    def read_metastmt(self):
-        tok = self.aheadf_sgl_token({"FIRST", "END"})
-        if tok == "END":
-            self.read_end()
-            args = ("end", None)
-        elif tok == "FIRST":
-            first_rules = self.read_first()
-            args = ("first", first_rules)
-        else:
-            # wtf...
-            raise RuntimeError("This should not happen")
-        self.read_sgl_token("SEMICOLON")
-        return args
-    def read_first_instruction(self):
-        tok = self.read_sgl_token({"META", "SINGLE", "UNIQUE"})
-        if tok == "META":
-            tok = self.read_sgl_token_typed("BOOL")
-            return ("meta", tok)
-        elif tok == "SINGLE":
-            tok = self.read_sgl_token_typed("INT")
-            return ("single", tok)
-        elif tok == "UNIQUE":
-            tok = self.read_sgl_token_typed("BOOL")
-            return ("unique", tok)
-        else:
-            # wtf...
-            raise RuntimeError("This should not happen")
-    def read_first(self):
-        attributes = {"priority": None, "single": 0, "meta": False, "unique": False}
-        self.read_sgl_token("FIRST")
-        self.read_sgl_token("LBRACKET")
-        tok = self.read_sgl_token_typed("INT")
-        attributes["priority"] = tok
-        self.read_sgl_token("RBRACKET")
-        tok = self.read_sgl_token("ID")
-        root_token = tok["value"]
-        
-        while self.ahead_sgl_token("COLON"):
-            (key, value) = self.read_first_instruction()
-            attributes[key] = value
-    
-        return (root_token, attributes)
-    def read_end(self):
-        self.read_sgl_token("END")
-        self.read_sgl_token("LBRACKET")
-        self.read_sgl_token("RBRACKET")
-    def read_metastmts(self):
-        stmt, args = self.read_metastmt()
-        metastmts = {
-            "first": []
-        }
-        while stmt != "end":
-            if stmt == "first":
-                metastmts[stmt].append(args)
-            else:
-                # wtf...
-                raise RuntimeError("This should not happen")
-            (stmt, args) = self.read_metastmt()
-        metastmts["first"].sort(key=lambda x: x[1]["priority"])
-        return metastmts
+    def read_axiom(self):
+        tok = self.ahead_sgl_token("AT")
+        return tok != None
     def read_tokens(self):
         tokens = []
         self.read_sgl_token("LBRACKET")

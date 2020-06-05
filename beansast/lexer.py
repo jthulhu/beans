@@ -1,6 +1,7 @@
 from .lxrgmrparser import LexerReader
 from .stdloc import Location
 from stderr import *
+
 class LexingError(Exception):
     pass
 
@@ -16,11 +17,16 @@ class Lexer:
         self._pos = pos
         self.tokens = []
         self.fn = fn
-    def debug_read_tokens(self):
-        if self.flux:
-            i = 0
-            while self[i] != "EOF":
-                i+=1
+        self.prelex()
+    def prelex(self):
+        while True:
+            is_good, value = self._lex()
+            if not is_good:
+                raise_error (LexingSyntaxError(Frame(self.fn, *pos2coords(self._pos, self.flux))), "Could not tokenize at a certain point... what have you done?")
+            token = self.tokenize(value)
+            self.tokens.append((token, self._pos))
+            if token == 'EOF':
+                break
     def tokenize(self, token):
         token.file = self.fn
         token.pos = pos2coords(self._pos, self.flux)[::-1]
@@ -37,30 +43,10 @@ class Lexer:
                 return is_good, result
         return False, None
     def __getitem__(self, key):
-        if key == -1:
-            self._pos = 0
-            self.tokens = []
-            return None
-        if key < 0:
-            raise ValueError("Flux doesn't accept negative key. (-1 to reset)")
-        while len(self.tokens) - 1 < key:
-            is_good, value = self._lex()
-            if not is_good:
-                raise_error (LexingSyntaxError(Frame(self.fn, *pos2coords(self._pos, self.flux))), "Could not tokenize at a certain point... what have you done?")
-            self.tokens.append((self.tokenize(value), self._pos))
-        while len(self.tokens) - 1 > key:
-            self.tokens.pop()
-        self._pos = self.tokens[-1][1]
-        return self.tokens[key][0]
-
-    def update(self, grammar, file="<stdgmr>"):
-        """update the lexer's grammar. same arguments used in the default constructor"""
-        new_tokenizers, dels = LexerReader(grammar, file=file, helperr=self.helperr).read()
-        for del_ in dels:
-            if del_ in self.tokenizers.keys():
-                del self.tokenizers[del_]
-        self.tokenizers.update(new_tokenizers)
-        self.file = file
+        if key >= len(self.tokens):
+            return self.tokens[-1][0]
+        else:
+            return self.tokens[key][0]
     def copy(self):
         return Lexer._paste(self.tokenizers, self.flux, self._pos)
     @classmethod

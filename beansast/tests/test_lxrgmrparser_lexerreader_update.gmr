@@ -1,6 +1,0 @@
-del TABULATION
-ignore SPACE ::= [\t ]
-ignore NEWLINE ::= \n
-del DOT
-STRING ::= ("|')(?P<value>(([^\1\\]|((\\\\)*\\[^\\])|(\\\\)*\\\1)*)((\\\\)|(\\)?[^\\]|))?\1
-INT ::= (?P<value>\d+)

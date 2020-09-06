@@ -1,6 +1,7 @@
-*.pyc
 *~
-**/#*#
-test.py
 *.bo
 *.bns
+
+#Added by cargo
+
+/target

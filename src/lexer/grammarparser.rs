@@ -84,6 +84,19 @@ mod tests {
             ""
         );
     }
+    #[test]
+    fn grammar_parser_ignores() {
+	let ignores = GrammarParser::new(String::from("whatever"), String::from("ignore A ::= [ ]\nignore B ::= bbb\nC ::= ccc"))
+	    .read()
+	    .unwrap()
+	    .1;
+	assert!(ignores.contains(&String::from("A")));
+	assert!(ignores.contains(&String::from("B")));
+	assert!(!ignores.contains(&String::from("C")));
+	assert_eq!(ignores.len(), 2);
+	    
+    }
+
 }
 
 #[derive(Debug)]

@@ -6,9 +6,7 @@ mod location;
 mod error;
 mod stream;
 
-use lexer::{Lexer, GrammarParser};
+use lexer::Lexer;
 
 fn main() {
-    let mut a = GrammarParser::new(String::from("myfile"), String::from(""));
-    println!("{}", a.read().unwrap().0.as_str());
 }

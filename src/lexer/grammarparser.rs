@@ -37,8 +37,8 @@ mod tests {
         assert_eq!(grammar_parser.pos, 0);
         assert_eq!(grammar_parser.read_id(), Ok(String::from("to")));
         assert_eq!(grammar_parser.pos, 2);
-	grammar_parser.ignore_blank();
-	assert_eq!(grammar_parser.pos, 3);
+        grammar_parser.ignore_blank();
+        assert_eq!(grammar_parser.pos, 3);
         assert_eq!(grammar_parser.read_id(), Ok(String::from("del")));
         assert_eq!(grammar_parser.pos, 6);
         assert_eq!(
@@ -59,7 +59,7 @@ mod tests {
                 .as_str(),
             "(?P<A>wot!)"
         );
-	assert_eq!(
+        assert_eq!(
             GrammarParser::new(String::from("whatever"), String::from("B ::= wot!  "))
                 .read()
                 .unwrap()
@@ -67,15 +67,18 @@ mod tests {
                 .as_str(),
             "(?P<B>wot!  )"
         );
-	assert_eq!(
-            GrammarParser::new(String::from("whatever"), String::from("A ::= wot!\n\nB ::= wheel"))
-                .read()
-                .unwrap()
-                .0
-                .as_str(),
+        assert_eq!(
+            GrammarParser::new(
+                String::from("whatever"),
+                String::from("A ::= wot!\n\nB ::= wheel")
+            )
+            .read()
+            .unwrap()
+            .0
+            .as_str(),
             "(?P<A>wot!)|(?P<B>wheel)"
         );
-	assert_eq!(
+        assert_eq!(
             GrammarParser::new(String::from("whatever"), String::from(""))
                 .read()
                 .unwrap()
@@ -86,17 +89,18 @@ mod tests {
     }
     #[test]
     fn grammar_parser_ignores() {
-	let ignores = GrammarParser::new(String::from("whatever"), String::from("ignore A ::= [ ]\nignore B ::= bbb\nC ::= ccc"))
-	    .read()
-	    .unwrap()
-	    .1;
-	assert!(ignores.contains(&String::from("A")));
-	assert!(ignores.contains(&String::from("B")));
-	assert!(!ignores.contains(&String::from("C")));
-	assert_eq!(ignores.len(), 2);
-	    
+        let ignores = GrammarParser::new(
+            String::from("whatever"),
+            String::from("ignore A ::= [ ]\nignore B ::= bbb\nC ::= ccc"),
+        )
+        .read()
+        .unwrap()
+        .1;
+        assert!(ignores.contains(&String::from("A")));
+        assert!(ignores.contains(&String::from("B")));
+        assert!(!ignores.contains(&String::from("C")));
+        assert_eq!(ignores.len(), 2);
     }
-
 }
 
 #[derive(Debug)]
@@ -172,18 +176,18 @@ impl GrammarParser {
         let size = self.stream.len();
         let mut ignores = HashSet::<String>::new();
         let mut full_pattern = String::new();
-	self.ignore_blank_lines();
+        self.ignore_blank_lines();
         while self.pos < size {
             let ignore = self.read_keyword("ignore");
-	    self.ignore_blank();
+            self.ignore_blank();
             let name = self.read_id()?;
             self.ignore_blank();
             self.ignore_assignment()?;
-	    self.ignore_blank();
+            self.ignore_blank();
             let start = self.pos;
             let pattern = self.read_pattern();
-            Regex::new(pattern.as_str()).or_else(|error| {
-                return Err((
+            Regex::new(pattern.as_str()).map_err(|error|
+                (
                     Location::from_stream_pos(self.file.clone(), &self.stream[..], start, self.pos),
                     ErrorType::LexerGrammarSyntax(match error {
                         regex::Error::Syntax(msg) => msg,
@@ -192,20 +196,20 @@ impl GrammarParser {
                         }
                         _ => String::from("unknown regex error"),
                     }),
-                ));
-            })?;
+                )
+            )?;
             full_pattern.push_str(format!("(?P<{}>{})|", &name, pattern).as_str());
             if ignore {
                 ignores.insert(name);
             }
-	    self.ignore_blank_lines();
+            self.ignore_blank_lines();
         }
         full_pattern.pop();
         let re = RegexBuilder::new(full_pattern.as_str())
             .multi_line(true)
-	    .build()
-            .or_else(|error| {
-                return Err((
+            .build()
+            .map_err(|error|
+                (
                     Location::from_stream_pos(self.file.clone(), &self.stream[..], 0, self.pos),
                     ErrorType::LexerGrammarSyntax(match error {
                         regex::Error::Syntax(msg) => msg,
@@ -214,8 +218,8 @@ impl GrammarParser {
                         }
                         _ => String::from("unknown regex error"),
                     }),
-                ));
-            })?;
+                )
+	    )?;
         Ok((re, ignores))
     }
 
@@ -251,15 +255,15 @@ impl GrammarParser {
     }
 
     fn ignore_blank(&mut self) {
-	while let Char::Some(chr) = self.get() {
-	    if chr == ' ' || chr == '\t' {
-		self.pos += 1;
-	    } else {
-		break;
-	    }
-	}
+        while let Char::Some(chr) = self.get() {
+            if chr == ' ' || chr == '\t' {
+                self.pos += 1;
+            } else {
+                break;
+            }
+        }
     }
-    
+
     fn ignore_blank_lines(&mut self) {
         while let Char::Some(chr) = self.get() {
             if chr.is_whitespace() {

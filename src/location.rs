@@ -45,10 +45,10 @@ impl Location {
         let mut current_pos = 0;
         assert!(start_pos <= end_pos);
         let start;
-	let mut chr;
+        let mut chr;
         loop {
-	    chr = stream.chars().nth(current_pos);
-            if current_pos == start_pos || !chr.is_some() {
+            chr = stream.chars().nth(current_pos);
+            if current_pos == start_pos || chr.is_none() {
                 start = (current_line, current_char);
                 break;
             }
@@ -62,8 +62,8 @@ impl Location {
         }
         let end;
         loop {
-	    chr = stream.chars().nth(current_pos);
-            if current_pos == end_pos || !chr.is_some() {
+            chr = stream.chars().nth(current_pos);
+            if current_pos == end_pos || chr.is_none() {
                 end = (current_line, current_char);
                 break;
             }

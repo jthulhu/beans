@@ -1,12 +1,11 @@
-extern crate regex;
 extern crate hashbrown;
+extern crate regex;
 
+mod error;
 mod lexer;
 mod location;
-mod error;
 mod stream;
 
 use lexer::Lexer;
 
-fn main() {
-}
+fn main() {}

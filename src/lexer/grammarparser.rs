@@ -1,5 +1,6 @@
 use crate::error::{Error, ErrorType};
 use crate::location::Location;
+use crate::stream::{Stream, StringStream};
 use hashbrown::{HashMap, HashSet};
 use regex::{Regex, RegexBuilder};
 use std::fmt;
@@ -151,21 +152,19 @@ enum Char {
 
 pub struct GrammarParser {
     file: String,
-    pos: usize,
-    stream: String,
+    stream: StringStream,
 }
 
 impl GrammarParser {
     pub fn new(file: String, stream: String) -> Self {
         Self {
             file,
-            pos: 0,
-            stream,
+            stream: StringStream::new(stream),
         }
     }
 
     fn get(&self) -> Char {
-        if let Some(chr) = self.stream.chars().nth(self.pos) {
+        if let Some(chr) = self.get() {
             Char::Some(chr)
         } else {
             Char::EOF
@@ -177,18 +176,18 @@ impl GrammarParser {
         let mut ignores = HashSet::<String>::new();
         let mut full_pattern = String::new();
         self.ignore_blank_lines();
-        while self.pos < size {
+        while self.stream.pos() < size {
             let ignore = self.read_keyword("ignore");
             self.ignore_blank();
             let name = self.read_id()?;
             self.ignore_blank();
             self.ignore_assignment()?;
             self.ignore_blank();
-            let start = self.pos;
+            let start = self.stream.pos();
             let pattern = self.read_pattern();
             Regex::new(pattern.as_str()).map_err(|error|
                 (
-                    Location::from_stream_pos(self.file.clone(), &self.stream[..], start, self.pos),
+                    Location::from_stream_pos(self.file.clone(), &self.stream[..], start, self.stream.pos()),
                     ErrorType::LexerGrammarSyntax(match error {
                         regex::Error::Syntax(msg) => msg,
                         regex::Error::CompiledTooBig(size) => {
@@ -210,7 +209,7 @@ impl GrammarParser {
             .build()
             .map_err(|error|
                 (
-                    Location::from_stream_pos(self.file.clone(), &self.stream[..], 0, self.pos),
+                    Location::from_stream_pos(self.file.clone(), &self.stream[..], 0, self.stream.pos()),
                     ErrorType::LexerGrammarSyntax(match error {
                         regex::Error::Syntax(msg) => msg,
                         regex::Error::CompiledTooBig(size) => {
@@ -230,7 +229,7 @@ impl GrammarParser {
                 break;
             }
             result.push(chr);
-            self.pos += 1;
+            self.stream.pos_pp();
         }
         result
     }
@@ -238,7 +237,7 @@ impl GrammarParser {
     /// Checks if there is the given keyword at the given position in the stream, and returns Some(()) if there is, else None, and updates current position
     fn read_keyword(&mut self, keyword: &str) -> bool {
         let size = keyword.len();
-        if self.stream[self.pos..].starts_with(keyword) {
+        if self.stream.slice(self.pos..).starts_with(keyword) {
             self.pos += size;
             true
         } else {

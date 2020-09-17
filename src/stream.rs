@@ -1,47 +1,57 @@
-use std::str::Chars;
-
-pub trait Stream {
-    type Single;
-    type Slice;
-    fn get_at(&self, pos: usize) -> Option<Self::Single>;
+pub trait Stream<'a> {
+    type Output: 'a;
+    fn get_at(&'a self, pos: usize) -> Self::Output;
     fn pos(&self) -> usize;
     fn set_pos(&mut self, pos: usize);
-    fn slice(&self, slice: std::ops::Range<usize>) -> Self::Slice;
     fn pos_pp(&mut self) {
         self.set_pos(self.pos() + 1);
     }
-    fn get(&self) -> Option<Self::Single> {
+    fn pos_inc(&mut self, off: usize) {
+        self.set_pos(self.pos() + off);
+    }
+    fn get(&'a self) -> Self::Output {
         self.get_at(self.pos())
     }
 }
 
+pub enum Char {
+    Char(char),
+    EOF,
+}
+
 pub struct StringStream {
     stream: String,
-    pos: usize
+    pos: usize,
 }
 
 impl StringStream {
     pub fn new(stream: String) -> Self {
-	Self {
-	    stream,
-	    pos: 0
-	}
+        Self { stream, pos: 0 }
+    }
+    pub fn continues(&self, keyword: &str) -> bool {
+        self.stream[self.pos..].starts_with(keyword)
+    }
+    pub fn borrow(&self) -> &str {
+        &self.stream[..]
+    }
+    pub fn len(&self) -> usize {
+        self.stream.len()
     }
 }
 
-impl<'a> Stream for StringStream {
-    type Single = char;
-    type Slice = &'a str;
-    fn slice(&self, slice: std::ops::Range<usize>) -> Self::Slice {
-	self.stream[slice]
-    }
-    fn get_at(&self, pos: usize) -> Option<Self::Single> {
-	self.stream.chars().nth(pos)
+impl Stream<'_> for StringStream {
+    type Output = Char;
+    fn get_at(&self, pos: usize) -> Self::Output {
+	if let Some(chr) = self.stream.chars().nth(pos) {
+	    Char::Char(chr)
+	} else {
+	    Char::EOF
+	}   
     }
     fn set_pos(&mut self, pos: usize) {
-	self.pos = pos;
+        self.pos = pos;
     }
     fn pos(&self) -> usize {
-	self.pos
+        self.pos
     }
 }

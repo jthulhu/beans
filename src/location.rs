@@ -1,4 +1,4 @@
-type CharLocation = (usize, usize);
+pub type CharLocation = (usize, usize);
 
 #[cfg(test)]
 mod tests {
@@ -17,12 +17,12 @@ mod tests {
     #[test]
     #[should_panic]
     fn wrong_location() {
-        let location = Location::new(String::from("some file"), (1, 0), (0, 0));
+        Location::new(String::from("some file"), (1, 0), (0, 0));
     }
     #[test]
     #[should_panic]
     fn wrong_location2() {
-        let location = Location::new(String::from("some file"), (1, 5), (1, 3));
+        Location::new(String::from("some file"), (1, 5), (1, 3));
     }
 }
 

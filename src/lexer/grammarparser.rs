@@ -1,6 +1,6 @@
 use crate::error::{Error, ErrorType};
-use crate::stream::{Stream, StringStream, Char};
 use crate::location::Location;
+use crate::stream::{Char, Stream, StringStream};
 use hashbrown::HashSet;
 use regex::{Regex, RegexBuilder};
 
@@ -89,25 +89,29 @@ mod tests {
         assert!(!ignores.contains(&String::from("C")));
         assert_eq!(ignores.len(), 2);
     }
+    #[test]
+    fn grammar_default_grammar() {
+//	let grammar = GrammarParser::new();
+    }
 }
 
+#[derive(Debug)]
 pub struct GrammarParser {
-    file: String,
     stream: StringStream,
 }
 
 impl GrammarParser {
     pub fn new(file: String, stream: String) -> Self {
+	let stream = StringStream::new(file, stream);
         Self {
-            file,
-            stream: StringStream::new(stream),
+            stream,
         }
     }
 
     pub fn read(&mut self) -> Result<(Regex, Vec<String>, HashSet<String>), Error> {
         let size = self.stream.len();
         let mut ignores = HashSet::<String>::new();
-	let mut names = vec![];
+        let mut names = vec![];
         let mut full_pattern = String::new();
         self.ignore_blank_lines();
         while self.stream.pos() < size {
@@ -122,8 +126,10 @@ impl GrammarParser {
             Regex::new(pattern.as_str()).map_err(|error| {
                 (
                     Location::from_stream_pos(
-                        self.file.clone(),
-                        self.stream.borrow(),
+			self.stream
+			    .origin()
+			    .to_string(),
+                        &self.stream.borrow()[..],
                         start,
                         self.stream.pos(),
                     ),
@@ -137,7 +143,7 @@ impl GrammarParser {
                 )
             })?;
             full_pattern.push_str(format!("(?P<{}>{})|", &name, pattern).as_str());
-	    names.push(name.clone());
+            names.push(name.clone());
             if ignore {
                 ignores.insert(name);
             }
@@ -150,8 +156,10 @@ impl GrammarParser {
             .map_err(|error| {
                 (
                     Location::from_stream_pos(
-                        self.file.clone(),
-                        self.stream.borrow(),
+			self.stream
+			    .origin()
+			    .to_string(),
+                        &self.stream.borrow()[..],
                         0,
                         self.stream.pos(),
                     ),
@@ -169,7 +177,7 @@ impl GrammarParser {
 
     fn read_pattern(&mut self) -> String {
         let mut result = String::new();
-        while let Char::Char(chr) = self.stream.get() {
+        while let (Char::Char(chr), _) = self.stream.get().unwrap() {
             if chr == '\n' {
                 break;
             }
@@ -199,7 +207,7 @@ impl GrammarParser {
     }
 
     fn ignore_blank(&mut self) {
-        while let Char::Char(chr) = self.stream.get() {
+        while let (Char::Char(chr), _) = self.stream.get().unwrap() {
             if chr == ' ' || chr == '\t' {
                 self.stream.pos_pp();
             } else {
@@ -209,7 +217,7 @@ impl GrammarParser {
     }
 
     fn ignore_blank_lines(&mut self) {
-        while let Char::Char(chr) = self.stream.get() {
+        while let (Char::Char(chr), _) = self.stream.get().unwrap() {
             if chr.is_whitespace() {
                 self.stream.pos_pp();
             } else {
@@ -218,11 +226,13 @@ impl GrammarParser {
         }
     }
 
-    fn generate_error(&self, err_message: &str) -> Error {
+    fn generate_error<'b>(&'b self, err_message: &str) -> Error {
         (
             Location::from_stream_pos(
-                self.file.clone(),
-                self.stream.borrow(),
+                self.stream
+		    .origin()
+		    .to_string(),
+                &self.stream.borrow()[..],
                 self.stream.pos(),
                 self.stream.pos() + 1,
             ),
@@ -232,7 +242,7 @@ impl GrammarParser {
 
     fn read_id(&mut self) -> Result<String, Error> {
         let mut result = String::new();
-        while let Char::Char(chr) = self.stream.get() {
+        while let (Char::Char(chr), _) = self.stream.get().unwrap() {
             if !chr.is_ascii_alphabetic() {
                 break;
             }

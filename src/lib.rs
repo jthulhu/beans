@@ -1,3 +1,4 @@
+#![allow(unused)]
 extern crate hashbrown;
 extern crate regex;
 
@@ -6,6 +7,7 @@ mod lexer;
 mod location;
 mod stream;
 
+#[allow(unused)]
 use lexer::Lexer;
 
-fn main() {}
+// fn main() {}

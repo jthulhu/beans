@@ -5,7 +5,7 @@
 ///
 /// # Example
 ///
-/// ```
+/// ```text
 /// abc def
 /// ghi
 /// ```
@@ -23,7 +23,7 @@ mod tests {
         assert_eq!(location.file(), "a cool filename");
         assert_eq!(location.start(), (0, 3));
         assert_eq!(location.end(), (1, 6));
-        let location = Location::new("", (0, 0), (0, 0));
+        let location = Location::new(String::from(""), (0, 0), (0, 0));
         assert_eq!(location.file(), "");
         assert_eq!(location.start(), (0, 0));
         assert_eq!(location.end(), (0, 0));
@@ -43,7 +43,7 @@ mod tests {
 /// # Summary
 ///
 /// Stores the location of any bit of information that is bound to a file.
-/// Asks a start position and an end position, both inclusive.
+/// Asks a start position (inclusive) and an end position (exclusive).
 /// This means that if my chunk of data is one character long,
 /// and starts at the beginning of the file `myfile`, the location
 /// data bound to it is the one defined in example 1.
@@ -53,12 +53,13 @@ mod tests {
 /// Example 1
 ///
 /// ```rust
-/// let location = Location::new(String::from("myfile"), (0, 0), (0, 1))
+/// # use beans::location::Location;
+/// let location = Location::new(String::from("myfile"), (0, 0), (0, 1));
 /// ```
 ///
 /// Example 2 -- `afile`
 ///
-/// ```
+/// ```text
 /// abc def
 /// ghi
 /// ```
@@ -66,11 +67,13 @@ mod tests {
 /// Here, the location of `c def/gh` is
 ///
 /// ```rust
+/// # use beans::location::Location;
 /// Location::new(
 ///   String::from("afile"),
 ///   (0, 4),
-///   (1, 1)
+///   (1, 2)
 /// )
+/// # ;
 /// ```
 #[derive(Debug, PartialEq, Clone)]
 pub struct Location {
@@ -81,18 +84,20 @@ pub struct Location {
 
 impl Location {
     /// Create a new `Location` object.
-    /// Requires three arguments,
+    /// Require three arguments,
     ///  * file: the name of the file where the data is;
     ///  * start: the location (inclusive) of the beginning of the data;
-    ///  * end: the location (inclusive) of the end of the data.
+    ///  * end: the location (exclusive) of the end of the data.
+    ///
+    /// Panic if start > end (lexicographic order)
     pub fn new(file: String, start: CharLocation, end: CharLocation) -> Self {
         assert!(start.0 < end.0 || (start.0 == end.0 && start.1 <= end.1));
         Self { file, start, end }
     }
 
     /// Generate of new `Location` object.
-    /// Takes the locations as index of the stream,
-    /// and converts them as actual locations in the file.
+    /// Take the locations as index of the stream,
+    /// and convert them as actual locations in the file.
     pub fn from_stream_pos(file: String, stream: &str, start_pos: usize, end_pos: usize) -> Self {
         let mut current_char = 0;
         let mut current_line = 0;

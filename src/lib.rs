@@ -1,13 +1,11 @@
 #![allow(unused)]
 extern crate hashbrown;
 extern crate regex;
+extern crate fixedbitset;
 
-mod error;
-mod lexer;
-mod location;
-mod stream;
+pub mod error;
+pub mod lexer;
+pub mod location;
+pub mod stream;
 
-#[allow(unused)]
 use lexer::Lexer;
-
-// fn main() {}

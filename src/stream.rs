@@ -20,7 +20,7 @@ mod tests {
                         i, &string
                     ));
                 }
-                let location = Location::from_stream_pos(origin, &string[..], i, i);
+                let location = Location::from_stream_pos(origin.clone(), &string[..], i, i);
                 assert_eq!(location, loc);
             } else {
                 if let Char::Char(_) = chr {
@@ -30,7 +30,7 @@ mod tests {
                     ));
                 }
                 let location = Location::from_stream_pos(
-                    origin,
+                    origin.clone(),
                     &string[..],
                     string.len(),
                     string.len(),

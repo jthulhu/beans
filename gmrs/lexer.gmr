@@ -1,0 +1,35 @@
+IF ::= if\b
+ELSE ::= else\b
+ELIF ::= elif\b
+WHILE ::= while\b
+FOR ::= for\b
+
+EOF ::= \z
+STRING ::= "(?P<string_value>([^"\\]|(\\[^\\])|(\\\\))*)"
+FLOAT ::= (?P<float_value>(\d*\.\d+)|(\d+\.\d*))
+INT ::= (?P<int_value>\d+)
+ignore SPACE ::= [\t ]+
+ignore EOL ::= \n
+ignore COMMENT ::= #[^\n]*
+TRUE ::= true
+FALSE ::= false
+
+DOT ::= [.]
+
+LPAR ::= \(
+RPAR ::= \)
+LBRACE ::= \{
+RBRACE ::= \}
+LBRACKET ::= \[
+RBRACKET ::= \]
+LBRACEU ::= \{\|
+RBRACEU ::= \|\}
+LBRACKETU ::= \[\|
+RBRACKETU ::= \|\]
+
+AND ::= and\b
+OR ::= or\b
+XOR ::= xor\b
+NOT ::= not\b
+
+ID ::= (?P<id_value>\w*[a-zA-Z_]\w*)

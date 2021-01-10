@@ -177,7 +177,7 @@ impl StringStream {
 
     /// Return is the stream is empty.
     pub fn is_empty(&self) -> bool {
-	self.stream.is_empty()
+        self.stream.is_empty()
     }
 }
 

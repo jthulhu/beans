@@ -47,23 +47,23 @@ pub struct Error(Location, ErrorType);
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-	use ErrorType::*;
-	let (type_, msg) = match &self.1 {
-	    LexerGrammarSyntax(msg) => ("Syntax error within the lexer's grammar", msg),
-	    LexingError(msg) => ("Error while lexing", msg),
-	    InternalError(msg) => ("Internal Error, this should not happend", msg)
-	};
-	write!(
-	    f,
-	    "{}\n @{}, from {}:{} to {}:{}\n{}",
-	    type_,
-	    self.0.file(),
-	    self.0.start().0,
-	    self.0.start().1,
-	    self.0.end().0,
-	    self.0.end().1,
-	    msg
-	)
+        use ErrorType::*;
+        let (type_, msg) = match &self.1 {
+            LexerGrammarSyntax(msg) => ("Syntax error within the lexer's grammar", msg),
+            LexingError(msg) => ("Error while lexing", msg),
+            InternalError(msg) => ("Internal Error, this should not happend", msg),
+        };
+        write!(
+            f,
+            "{}\n @{}, from {}:{} to {}:{}\n{}",
+            type_,
+            self.0.file(),
+            self.0.start().0,
+            self.0.start().1,
+            self.0.end().0,
+            self.0.end().1,
+            msg
+        )
     }
 }
 
@@ -71,6 +71,6 @@ impl error::Error for Error {}
 
 impl From<(Location, ErrorType)> for Error {
     fn from((loc, err): (Location, ErrorType)) -> Self {
-	Error(loc, err)
+        Error(loc, err)
     }
 }

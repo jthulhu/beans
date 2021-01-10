@@ -103,6 +103,7 @@ pub enum Char {
 /// `continues`: returns if the substring that starts at the current position matches the given one.
 /// `borrow`: borrows (read-only) the stream as a string slice
 /// `len`: the size of the stream
+/// `is_empty`: whether the stream is empty
 pub struct StringStream {
     origin: String,
     stream: Vec<(char, Location)>,
@@ -112,7 +113,7 @@ pub struct StringStream {
 }
 
 impl StringStream {
-    /// Builds a new `StringStream`, based on its `origin` and on a given `string`.
+    /// Build a new `StringStream`, based on its `origin` and on a given `string`.
     pub fn new(origin: String, string: String) -> Self {
         let mut current_char = 0;
         let mut current_line = 0;
@@ -140,7 +141,7 @@ impl StringStream {
         }
     }
 
-    /// Returns a boolean corresponding to whether the substring of
+    /// Return a boolean corresponding to whether the substring of
     /// the `StringStream` that starts at the current position matches
     /// the given string.
     pub fn continues(&self, keyword: &str) -> bool {
@@ -159,19 +160,24 @@ impl StringStream {
         result
     }
 
-    /// Returns a string slice corresponding to the
+    /// Return a string slice corresponding to the
     /// underlying string.
     pub fn borrow(&self) -> String {
         self.stream.iter().map(|(chr, _)| chr).collect()
     }
 
     pub fn origin(&self) -> &str {
-	&self.origin[..]
+        &self.origin[..]
     }
-    
-    /// Returns the length of the stream.
+
+    /// Return the length of the stream.
     pub fn len(&self) -> usize {
         self.stream.len()
+    }
+
+    /// Return is the stream is empty.
+    pub fn is_empty(&self) -> bool {
+	self.stream.is_empty()
     }
 }
 
@@ -193,8 +199,6 @@ impl Stream<'_> for StringStream {
 
 impl std::fmt::Debug for StringStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-	self
-	    .borrow()
-	    .fmt(f)
+        self.borrow().fmt(f)
     }
 }

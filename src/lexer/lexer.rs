@@ -225,12 +225,12 @@ impl LexerBuilder {
     /// Build the lexer.
     pub fn build(self) -> Result<Lexer, Box<dyn Error>> {
         let mut lexer = Lexer::new(
-            self.stream.ok_or_else(|| ExecutionError::new(String::from(
-                "Trying to build a lexer without stream.",
-            )))?,
-            self.grammar.ok_or_else(|| ExecutionError::new(String::from(
-                "Trying to build a lexer without grammar.",
-            )))?,
+            self.stream.ok_or_else(|| {
+                ExecutionError::new(String::from("Trying to build a lexer without stream."))
+            })?,
+            self.grammar.ok_or_else(|| {
+                ExecutionError::new(String::from("Trying to build a lexer without grammar."))
+            })?,
         );
         lexer.lex()?;
         Ok(lexer)

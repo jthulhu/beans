@@ -305,7 +305,7 @@ impl Into<Regex> for (Regex, Option<Regex>) {
     }
 }
 
-pub fn build(regex: Regex, program: &mut Program, offset: usize) {
+pub fn build(regex: Regex, program: &mut Program) {
     match regex {
         Regex::Char(c) => {
             program.push(Instruction::Char(c));
@@ -313,41 +313,41 @@ pub fn build(regex: Regex, program: &mut Program, offset: usize) {
         Regex::Option(r1, r2) => {
             let split_pos = program.len();
             program.push(Instruction::Split(0, 0));
-            build(*r1, program, offset);
+            build(*r1, program);
             let jmp_pos = program.len();
             program.push(Instruction::Jump(0));
-            build(*r2, program, offset);
-            program[split_pos] = Instruction::Split(split_pos + 1 + offset, jmp_pos + 1 + offset);
-            program[jmp_pos] = Instruction::Jump(program.len() + offset);
+            build(*r2, program);
+            program[split_pos] = Instruction::Split(split_pos + 1, jmp_pos + 1);
+            program[jmp_pos] = Instruction::Jump(program.len());
         }
         Regex::Concat(r1, r2) => {
-            build(*r1, program, offset);
-            build(*r2, program, offset);
+            build(*r1, program);
+            build(*r2, program);
         }
         Regex::Optional(r) => {
             let split_pos = program.len();
             program.push(Instruction::Split(0, 0));
-            build(*r, program, offset);
-            program[split_pos] = Instruction::Split(split_pos + 1 + offset, program.len() + offset);
+            build(*r, program);
+            program[split_pos] = Instruction::Split(split_pos + 1, program.len());
         }
         Regex::KleeneStar(r) => {
             let split_pos = program.len();
             program.push(Instruction::Split(0, 0));
-            build(*r, program, offset);
-            program.push(Instruction::Jump(split_pos + offset));
-            program[split_pos] = Instruction::Split(split_pos + 1 + offset, program.len() + offset);
+            build(*r, program);
+            program.push(Instruction::Jump(split_pos));
+            program[split_pos] = Instruction::Split(split_pos + 1, program.len());
         }
         Regex::Repetition(r) => {
             let init_pos = program.len();
-            build(*r, program, offset);
+            build(*r, program);
             program.push(Instruction::Split(
-                init_pos + offset,
-                program.len() + 1 + offset,
+                init_pos,
+                program.len() + 1,
             ));
         }
         Regex::Group(r, i) => {
             program.push(Instruction::Save(2 * i));
-            build(*r, program, offset);
+            build(*r, program);
             program.push(Instruction::Save(2 * i + 1));
         }
         Regex::Empty => {}
@@ -357,7 +357,7 @@ pub fn build(regex: Regex, program: &mut Program, offset: usize) {
 pub fn compile(regex: &str, id: usize) -> Result<(Program, usize), RegexError> {
     let mut program = Vec::new();
     let (regex, nb_groups) = read(regex, 0)?;
-    build(regex, &mut program, 0);
+    build(regex, &mut program);
     program.push(Instruction::Match(id));
     Ok((program, nb_groups))
 }

@@ -16,6 +16,16 @@ mod tests {
     }
 
     #[test]
+    fn chars() {
+	use super::super::parsing::compile;
+	let (program, nb_groups) = compile("ab", 0).unwrap();
+	let (end, idx, results) = find(&program, "abb", nb_groups).unwrap();
+	assert_eq!(idx, 0);
+	assert_eq!(end, 2);
+	assert_eq!(results, vec![]);
+    }
+    
+    #[test]
     fn greedy() {
         use super::super::parsing::compile;
         let (program, nb_groups) = compile("(a+)(a+)", 0).unwrap();
@@ -43,10 +53,12 @@ pub enum Instruction {
     Char(char),
     Jump(usize),
     Match(usize),
+    Any,
 }
 
 pub type Match = (usize, usize, Vec<Option<usize>>);
 pub type Program = Vec<Instruction>;
+pub type ProgramRef<'a> = &'a [Instruction];
 
 struct ThreadList {
     done: FixedBitSet,
@@ -106,7 +118,7 @@ impl Thread {
     }
 }
 
-pub fn find(prog: &Program, input: &str, size: usize) -> Option<Match> {
+pub fn find(prog: ProgramRef, input: &str, size: usize) -> Option<Match> {
     let mut current = ThreadList::from(vec![Thread::new(0, size)], prog.len());
     let mut best_match = None;
     for (pos, chr) in input.chars().enumerate() {
@@ -118,6 +130,10 @@ pub fn find(prog: &Program, input: &str, size: usize) -> Option<Match> {
                         thread.jump(thread.instruction() + 1);
                         next.add(thread);
                     }
+                }
+                Instruction::Any => {
+                    thread.jump(thread.instruction() + 1);
+                    next.add(thread);
                 }
                 Instruction::Jump(pos) => {
                     thread.jump(pos);
@@ -151,7 +167,7 @@ pub fn find(prog: &Program, input: &str, size: usize) -> Option<Match> {
     let pos = input.len();
     while let Some(mut thread) = current.get() {
         match prog[thread.instruction()] {
-            Instruction::Char(expected) => (),
+            Instruction::Char(..) | Instruction::Any => (),
             Instruction::Jump(pos) => {
                 thread.jump(pos);
                 current.add(thread);

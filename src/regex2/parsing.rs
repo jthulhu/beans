@@ -104,6 +104,13 @@ mod tests {
             )
         );
     }
+    
+    #[test]
+    fn read_any() {
+        use Regex::*;
+        assert_eq!(read(".", 0).unwrap(), (Any, 0));
+        assert_eq!(read(".*", 0).unwrap(), (KleeneStar(Box::new(Any)), 0));
+    }
 
     #[test]
     fn read_malformed() {
@@ -195,6 +202,13 @@ mod tests {
     }
 
     #[test]
+    fn build_any() {
+	use Instruction::*;
+	let program = compile(".", 0).unwrap();
+	assert_eq!(program, (vec![Any, Match(0)], 0));
+    }
+    
+    #[test]
     fn build_groups() {
         use Instruction::*;
         let program = compile("(a+)(b+)", 0).unwrap();
@@ -227,6 +241,7 @@ pub enum Regex {
     KleeneStar(Box<Regex>),
     Concat(Box<Regex>, Box<Regex>),
     Group(Box<Regex>, usize),
+    Any,
     Empty,
 }
 
@@ -340,15 +355,15 @@ pub fn build(regex: Regex, program: &mut Program) {
         Regex::Repetition(r) => {
             let init_pos = program.len();
             build(*r, program);
-            program.push(Instruction::Split(
-                init_pos,
-                program.len() + 1,
-            ));
+            program.push(Instruction::Split(init_pos, program.len() + 1));
         }
         Regex::Group(r, i) => {
             program.push(Instruction::Save(2 * i));
             build(*r, program);
             program.push(Instruction::Save(2 * i + 1));
+        }
+        Regex::Any => {
+            program.push(Instruction::Any);
         }
         Regex::Empty => {}
     };
@@ -365,7 +380,7 @@ pub fn compile(regex: &str, id: usize) -> Result<(Program, usize), RegexError> {
 pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError> {
     let mut stack = vec![(Regex::Empty, None)];
     let mut chrs = regex.chars().enumerate();
-    while let Some((pos, chr)) = chrs.next() {
+    for (pos, chr) in chrs {
         match chr {
             '(' => {
                 stack.push((Regex::Empty, None));
@@ -399,6 +414,10 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
             '|' => {
                 let last = stack.pop().unwrap().into();
                 stack.push((Regex::Empty, Some(last)));
+            }
+            '.' => {
+                let (last, remainder) = stack.pop().unwrap();
+                stack.push((concat(last, Regex::Any), remainder));
             }
             c => {
                 let (last, remainder) = stack.pop().unwrap();

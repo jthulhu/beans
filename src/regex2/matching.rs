@@ -24,6 +24,30 @@ mod tests {
 	assert_eq!(end, 2);
 	assert_eq!(results, vec![]);
     }
+
+    #[test]
+    fn escaped() {
+	use super::super::parsing::compile;
+	let escaped = vec![
+	    (
+		r"\w",
+		vec![
+		    ("a", true),
+		    ("A", true),
+		    ("0", true),
+		    ("_", true),
+		    ("%", false),
+		    ("'", false)
+		]
+	    )
+	];
+	for (regex, tests) in escaped {
+	    let (program, nb_groups) = compile(regex, 0).unwrap();
+	    for (string, result) in tests {
+		assert_eq!(find(&program, string, 0).is_some(), result);
+	    }
+	}
+    }
     
     #[test]
     fn greedy() {
@@ -66,6 +90,7 @@ pub enum Instruction {
     Char(char),
     Jump(usize),
     Match(usize),
+    WordChar,
     Any,
 }
 
@@ -192,6 +217,58 @@ impl Thread {
     }
 }
 
+fn match_next(chr: char, pos: usize, mut thread: Thread, current: &mut ThreadList, next: Option<&mut ThreadList>, prog: ProgramRef, best_match: &mut Option<Match>) {
+    match prog[thread.instruction()] {
+        Instruction::Char(expected) => {
+            if expected == chr {
+                thread.jump(thread.instruction() + 1);
+                if let Some(next) = next {
+		    next.add(thread);
+		}
+            }
+        }
+        Instruction::Any => {
+            thread.jump(thread.instruction() + 1);
+	    if let Some(next) = next {
+		next.add(thread);
+	    }
+        }
+	Instruction::WordChar => {
+	    if chr.is_alphanumeric() || chr == '_' {
+		thread.jump(thread.instruction() + 1);
+		if let Some(next) = next {
+		    next.add(thread);
+		}
+	    }
+	}
+        Instruction::Jump(pos) => {
+            thread.jump(pos);
+            current.add(thread);
+        }
+        Instruction::Save(idx) => {
+            thread.save(idx, pos);
+            thread.jump(thread.instruction() + 1);
+            current.add(thread);
+        }
+        Instruction::Split(pos1, pos2) => {
+            let mut other = thread.clone();
+            other.jump(pos2);
+            thread.jump(pos1);
+            current.add(other);
+            current.add(thread);
+        }
+        Instruction::Match(id) => {
+            if let Some((p, prior, _)) = best_match {
+                if pos > *p || *prior > id {
+                    *best_match = Some((pos, id, thread.groups));
+                }
+            } else {
+                *best_match = Some((pos, id, thread.groups));
+            }
+        }
+    }
+}
+
 /// Simulate a VM with program `prog` on `input`. There should be `size` groups.
 pub fn find(prog: ProgramRef, input: &str, size: usize) -> Option<Match> {
     let mut current = ThreadList::from(vec![Thread::new(0, size)], prog.len());
@@ -199,76 +276,14 @@ pub fn find(prog: ProgramRef, input: &str, size: usize) -> Option<Match> {
     for (pos, chr) in input.chars().enumerate() {
         let mut next = ThreadList::new(prog.len());
         while let Some(mut thread) = current.get() {
-            match prog[thread.instruction()] {
-                Instruction::Char(expected) => {
-                    if expected == chr {
-                        thread.jump(thread.instruction() + 1);
-                        next.add(thread);
-                    }
-                }
-                Instruction::Any => {
-                    thread.jump(thread.instruction() + 1);
-                    next.add(thread);
-                }
-                Instruction::Jump(pos) => {
-                    thread.jump(pos);
-                    current.add(thread);
-                }
-                Instruction::Save(idx) => {
-                    thread.save(idx, pos);
-                    thread.jump(thread.instruction() + 1);
-                    current.add(thread);
-                }
-                Instruction::Split(pos1, pos2) => {
-                    let mut other = thread.clone();
-                    other.jump(pos2);
-                    thread.jump(pos1);
-                    current.add(other);
-                    current.add(thread);
-                }
-                Instruction::Match(id) => {
-                    if let Some((p, prior, _)) = best_match {
-                        if pos > p || prior > id {
-                            best_match = Some((pos, id, thread.groups));
-                        }
-                    } else {
-                        best_match = Some((pos, id, thread.groups));
-                    }
-                }
-            }
+	    match_next(chr, pos, thread, &mut current, Some(&mut next), &prog[..], &mut best_match);
+            
         }
         current = next;
     }
     let pos = input.len();
     while let Some(mut thread) = current.get() {
-        match prog[thread.instruction()] {
-            Instruction::Char(..) | Instruction::Any => (),
-            Instruction::Jump(pos) => {
-                thread.jump(pos);
-                current.add(thread);
-            }
-            Instruction::Save(idx) => {
-                thread.save(idx, pos);
-                thread.jump(thread.instruction() + 1);
-                current.add(thread);
-            }
-            Instruction::Split(pos1, pos2) => {
-                let mut other = thread.clone();
-                other.jump(pos2);
-                thread.jump(pos1);
-                current.add(other);
-                current.add(thread);
-            }
-            Instruction::Match(id) => {
-                if let Some((p, prior, _)) = best_match {
-                    if pos > p || prior > id {
-                        best_match = Some((pos, id, thread.groups));
-                    }
-                } else {
-                    best_match = Some((pos, id, thread.groups));
-                }
-            }
-        }
+        match_next('#', pos, thread, &mut current, None, &prog[..], &mut best_match);
     }
 
     best_match

@@ -11,6 +11,18 @@ mod tests {
     }
 
     #[test]
+    fn read_escaped() {
+	use Regex::*;
+	assert_eq!(read(r"\w", 0).unwrap(), (WordChar, 0));
+    }
+
+    #[test]
+    #[should_panic]
+    fn read_wrong_escaped() {
+	read(r"\l", 0).unwrap();
+    }
+    
+    #[test]
     fn read_group() {
         use Regex::*;
         assert_eq!(read("(a)", 0).unwrap(), (Group(Box::new(Char('a')), 0), 1));
@@ -158,6 +170,13 @@ mod tests {
     }
 
     #[test]
+    fn build_escaped() {
+	use Instruction::*;
+	let program = compile(r"\w", 0).unwrap();
+	assert_eq!(program, (vec![WordChar, Match(0)], 0));
+    }
+    
+    #[test]
     fn build_concat() {
         use Instruction::*;
         let program = compile("ab", 0).unwrap();
@@ -232,6 +251,10 @@ mod tests {
     }
 }
 
+
+/// # Summary
+///
+/// `Regex` represents any successfully parsed regex.
 #[derive(PartialEq, Eq, Debug)]
 pub enum Regex {
     Char(char),
@@ -241,8 +264,14 @@ pub enum Regex {
     KleeneStar(Box<Regex>),
     Concat(Box<Regex>, Box<Regex>),
     Group(Box<Regex>, usize),
+    WordChar,
     Any,
     Empty,
+}
+
+fn add(regex: Regex, stack: &mut Vec<(Regex, Option<Regex>)>) {
+    let (last, remainder) = stack.pop().unwrap();
+    stack.push((concat(last, regex), remainder));
 }
 
 fn concat(left: Regex, right: Regex) -> Regex {
@@ -365,6 +394,9 @@ pub fn build(regex: Regex, program: &mut Program) {
         Regex::Any => {
             program.push(Instruction::Any);
         }
+	Regex::WordChar => {
+	    program.push(Instruction::WordChar);
+	}
         Regex::Empty => {}
     };
 }
@@ -380,7 +412,7 @@ pub fn compile(regex: &str, id: usize) -> Result<(Program, usize), RegexError> {
 pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError> {
     let mut stack = vec![(Regex::Empty, None)];
     let mut chrs = regex.chars().enumerate();
-    for (pos, chr) in chrs {
+    while let Some((pos, chr)) = chrs.next() {
         match chr {
             '(' => {
                 stack.push((Regex::Empty, None));
@@ -415,14 +447,18 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                 let last = stack.pop().unwrap().into();
                 stack.push((Regex::Empty, Some(last)));
             }
-            '.' => {
-                let (last, remainder) = stack.pop().unwrap();
-                stack.push((concat(last, Regex::Any), remainder));
-            }
-            c => {
-                let (last, remainder) = stack.pop().unwrap();
-                stack.push((concat(last, Regex::Char(c)), remainder));
-            }
+            '.' => add(Regex::Any, &mut stack),
+	    '\\' => {
+		if let Some((pos, chr)) = chrs.next() {
+		    match chr {
+			'w' => add(Regex::WordChar, &mut stack),
+			_ => return Err((pos, format!("Cannot escape character {}, try replacing \\{} with {}", chr, chr, chr))),
+		    }
+		} else {
+		    return Err((pos, String::from("Expected something after character '\', but found EOF instead")));
+		}
+	    }
+            c => add(Regex::Char(c), &mut stack)
         }
     }
     if stack.len() != 1 {

@@ -1,5 +1,6 @@
 use super::parsing::Regex;
 use fixedbitset::FixedBitSet;
+use unbounded_interval_tree::IntervalTree;
 
 #[cfg(test)]
 mod tests {
@@ -17,38 +18,36 @@ mod tests {
 
     #[test]
     fn chars() {
-	use super::super::parsing::compile;
-	let (program, nb_groups) = compile("ab", 0).unwrap();
-	let (end, idx, results) = find(&program, "abb", nb_groups).unwrap();
-	assert_eq!(idx, 0);
-	assert_eq!(end, 2);
-	assert_eq!(results, vec![]);
+        use super::super::parsing::compile;
+        let (program, nb_groups) = compile("ab", 0).unwrap();
+        let (end, idx, results) = find(&program, "abb", nb_groups).unwrap();
+        assert_eq!(idx, 0);
+        assert_eq!(end, 2);
+        assert_eq!(results, vec![]);
     }
 
     #[test]
     fn escaped() {
-	use super::super::parsing::compile;
-	let escaped = vec![
-	    (
-		r"\w",
-		vec![
-		    ("a", true),
-		    ("A", true),
-		    ("0", true),
-		    ("_", true),
-		    ("%", false),
-		    ("'", false)
-		]
-	    )
-	];
-	for (regex, tests) in escaped {
-	    let (program, nb_groups) = compile(regex, 0).unwrap();
-	    for (string, result) in tests {
-		assert_eq!(find(&program, string, 0).is_some(), result);
-	    }
-	}
+        use super::super::parsing::compile;
+        let escaped = vec![(
+            r"\w",
+            vec![
+                ("a", true),
+                ("A", true),
+                ("0", true),
+                ("_", true),
+                ("%", false),
+                ("'", false),
+            ],
+        )];
+        for (regex, tests) in escaped {
+            let (program, nb_groups) = compile(regex, 0).unwrap();
+            for (string, result) in tests {
+                assert_eq!(find(&program, string, 0).is_some(), result);
+            }
+        }
     }
-    
+
     #[test]
     fn greedy() {
         use super::super::parsing::compile;
@@ -83,7 +82,7 @@ mod tests {
 /// `Jump(ip: usize)`: set the instruction pointer of the current thread to `ip`
 /// `Match(id: usize)`: stop the thread and record it as a successful match of the regex `id`
 /// `Any`: match any character at the current location
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Debug)]
 pub enum Instruction {
     Save(usize),
     Split(usize, usize),
@@ -91,6 +90,7 @@ pub enum Instruction {
     Jump(usize),
     Match(usize),
     WordChar,
+    CharacterClass(IntervalTree<char>, bool),
     Any,
 }
 
@@ -99,7 +99,7 @@ pub enum Instruction {
 /// Represents a `Match`, as returned by a parse of an input by a regex.
 ///
 /// # Definition
-/// 
+///
 /// `Match` is `pos: usize, id: usize, groups: Vec<Option<usize>>`, where
 /// `pos` is the end position (exclusive) of the match (the start position is 0, since all matches are anchored matches).
 /// `id` is the id of the regex that led to a match. If many had, one has been selected according to the priority rules.
@@ -180,7 +180,7 @@ impl ThreadList {
 /// and a bunch of registers dedicated to group matching.
 ///
 /// # Methods
-/// 
+///
 /// `new`: create a new `Thread`
 /// `instruction`: return the `ip` value
 /// `jump`: set the `ip` to a new value
@@ -217,53 +217,69 @@ impl Thread {
     }
 }
 
-fn match_next(chr: char, pos: usize, mut thread: Thread, current: &mut ThreadList, next: Option<&mut ThreadList>, prog: ProgramRef, best_match: &mut Option<Match>) {
-    match prog[thread.instruction()] {
+fn match_next(
+    chr: char,
+    pos: usize,
+    mut thread: Thread,
+    current: &mut ThreadList,
+    next: Option<&mut ThreadList>,
+    prog: ProgramRef,
+    best_match: &mut Option<Match>,
+) {
+    match &prog[thread.instruction()] {
         Instruction::Char(expected) => {
-            if expected == chr {
+            if *expected == chr {
                 thread.jump(thread.instruction() + 1);
                 if let Some(next) = next {
-		    next.add(thread);
-		}
+                    next.add(thread);
+                }
             }
         }
         Instruction::Any => {
             thread.jump(thread.instruction() + 1);
-	    if let Some(next) = next {
-		next.add(thread);
-	    }
+            if let Some(next) = next {
+                next.add(thread);
+            }
         }
-	Instruction::WordChar => {
-	    if chr.is_alphanumeric() || chr == '_' {
-		thread.jump(thread.instruction() + 1);
-		if let Some(next) = next {
-		    next.add(thread);
-		}
-	    }
-	}
+        Instruction::WordChar => {
+            if chr.is_alphanumeric() || chr == '_' {
+                thread.jump(thread.instruction() + 1);
+                if let Some(next) = next {
+                    next.add(thread);
+                }
+            }
+        }
         Instruction::Jump(pos) => {
-            thread.jump(pos);
+            thread.jump(*pos);
             current.add(thread);
         }
         Instruction::Save(idx) => {
-            thread.save(idx, pos);
+            thread.save(*idx, pos);
             thread.jump(thread.instruction() + 1);
             current.add(thread);
         }
         Instruction::Split(pos1, pos2) => {
             let mut other = thread.clone();
-            other.jump(pos2);
-            thread.jump(pos1);
+            other.jump(*pos2);
+            thread.jump(*pos1);
             current.add(other);
             current.add(thread);
         }
         Instruction::Match(id) => {
             if let Some((p, prior, _)) = best_match {
-                if pos > *p || *prior > id {
-                    *best_match = Some((pos, id, thread.groups));
+                if pos > *p || *prior > *id {
+                    *best_match = Some((pos, *id, thread.groups));
                 }
             } else {
-                *best_match = Some((pos, id, thread.groups));
+                *best_match = Some((pos, *id, thread.groups));
+            }
+        }
+        Instruction::CharacterClass(class, negated) => {
+            if negated ^ class.contains_point(chr) {
+                thread.jump(thread.instruction() + 1);
+                if let Some(next) = next {
+                    next.add(thread);
+                }
             }
         }
     }
@@ -276,14 +292,29 @@ pub fn find(prog: ProgramRef, input: &str, size: usize) -> Option<Match> {
     for (pos, chr) in input.chars().enumerate() {
         let mut next = ThreadList::new(prog.len());
         while let Some(mut thread) = current.get() {
-	    match_next(chr, pos, thread, &mut current, Some(&mut next), &prog[..], &mut best_match);
-            
+            match_next(
+                chr,
+                pos,
+                thread,
+                &mut current,
+                Some(&mut next),
+                &prog[..],
+                &mut best_match,
+            );
         }
         current = next;
     }
     let pos = input.len();
     while let Some(mut thread) = current.get() {
-        match_next('#', pos, thread, &mut current, None, &prog[..], &mut best_match);
+        match_next(
+            '#',
+            pos,
+            thread,
+            &mut current,
+            None,
+            &prog[..],
+            &mut best_match,
+        );
     }
 
     best_match

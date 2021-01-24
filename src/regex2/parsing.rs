@@ -1,4 +1,5 @@
 use super::matching::{Instruction, Program};
+use unbounded_interval_tree::IntervalTree;
 
 #[cfg(test)]
 mod tests {
@@ -11,17 +12,42 @@ mod tests {
     }
 
     #[test]
+    fn read_char_class() {
+        use std::ops::Bound::Included;
+        use Regex::*;
+        let mut tree = IntervalTree::default();
+        tree.insert((Included('a'), Included('a')));
+        assert_eq!(read("[a]", 0).unwrap(), (CharacterClass(tree, false), 0));
+
+	let mut tree = IntervalTree::default();
+	tree.insert((Included('a'), Included('z')));
+	tree.insert((Included('A'), Included('Z')));
+	tree.insert((Included('0'), Included('9')));
+	tree.insert((Included('_'), Included('_')));
+	assert_eq!(read("[a-zA-Z0-9_]", 0).unwrap(), (CharacterClass(tree, false), 0));
+
+	let mut tree = IntervalTree::default();
+	tree.insert((Included('a'), Included('z')));
+	tree.insert((Included('A'), Included('Z')));
+	tree.insert((Included('0'), Included('9')));
+	tree.insert((Included('_'), Included('_')));
+	assert_eq!(read("[^a-zA-Z0-9_]", 0).unwrap(), (CharacterClass(tree, true), 0));
+
+	assert_eq!(read("[a-zb-z]", 0).unwrap_err(), (8, String::from("Found 1 overlaps in character class from position 0 to position 8: (a-z,b-z)")));
+    }
+
+    #[test]
     fn read_escaped() {
-	use Regex::*;
-	assert_eq!(read(r"\w", 0).unwrap(), (WordChar, 0));
+        use Regex::*;
+        assert_eq!(read(r"\w", 0).unwrap(), (WordChar, 0));
     }
 
     #[test]
     #[should_panic]
     fn read_wrong_escaped() {
-	read(r"\l", 0).unwrap();
+        read(r"\l", 0).unwrap();
     }
-    
+
     #[test]
     fn read_group() {
         use Regex::*;
@@ -116,7 +142,7 @@ mod tests {
             )
         );
     }
-    
+
     #[test]
     fn read_any() {
         use Regex::*;
@@ -170,12 +196,17 @@ mod tests {
     }
 
     #[test]
-    fn build_escaped() {
-	use Instruction::*;
-	let program = compile(r"\w", 0).unwrap();
-	assert_eq!(program, (vec![WordChar, Match(0)], 0));
+    fn build_char_class() {
+	
     }
     
+    #[test]
+    fn build_escaped() {
+        use Instruction::*;
+        let program = compile(r"\w", 0).unwrap();
+        assert_eq!(program, (vec![WordChar, Match(0)], 0));
+    }
+
     #[test]
     fn build_concat() {
         use Instruction::*;
@@ -222,11 +253,11 @@ mod tests {
 
     #[test]
     fn build_any() {
-	use Instruction::*;
-	let program = compile(".", 0).unwrap();
-	assert_eq!(program, (vec![Any, Match(0)], 0));
+        use Instruction::*;
+        let program = compile(".", 0).unwrap();
+        assert_eq!(program, (vec![Any, Match(0)], 0));
     }
-    
+
     #[test]
     fn build_groups() {
         use Instruction::*;
@@ -251,11 +282,10 @@ mod tests {
     }
 }
 
-
 /// # Summary
 ///
 /// `Regex` represents any successfully parsed regex.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Debug)]
 pub enum Regex {
     Char(char),
     Option(Box<Regex>, Box<Regex>),
@@ -264,78 +294,10 @@ pub enum Regex {
     KleeneStar(Box<Regex>),
     Concat(Box<Regex>, Box<Regex>),
     Group(Box<Regex>, usize),
+    CharacterClass(IntervalTree<char>, bool),
     WordChar,
     Any,
     Empty,
-}
-
-fn add(regex: Regex, stack: &mut Vec<(Regex, Option<Regex>)>) {
-    let (last, remainder) = stack.pop().unwrap();
-    stack.push((concat(last, regex), remainder));
-}
-
-fn concat(left: Regex, right: Regex) -> Regex {
-    if let Regex::Empty = left {
-        right
-    } else {
-        Regex::Concat(Box::new(left), Box::new(right))
-    }
-}
-
-fn kleene_star(exp: Regex, pos: usize) -> Result<Regex, RegexError> {
-    match exp {
-        Regex::Concat(r1, r2) => Ok(Regex::Concat(r1, Box::new(kleene_star(*r2, pos)?))),
-        Regex::Option(r1, r2) => Ok(Regex::Option(r1, Box::new(kleene_star(*r2, pos)?))),
-        Regex::Empty => Err((
-            pos,
-            String::from("Cannot apply kleene star to empty regex."),
-        )),
-        Regex::KleeneStar(..) => Err((pos, String::from("Cannot apply kleene star twice."))),
-        Regex::Optional(..) => Err((
-            pos,
-            String::from("Cannot apply kleene star on an optional group."),
-        )),
-        Regex::Repetition(..) => Err((
-            pos,
-            String::from("Cannot apply kleene star and repetition."),
-        )),
-        r => Ok(Regex::KleeneStar(Box::new(r))),
-    }
-}
-
-fn repetition(exp: Regex, pos: usize) -> Result<Regex, RegexError> {
-    match exp {
-        Regex::Concat(r1, r2) => Ok(Regex::Concat(r1, Box::new(repetition(*r2, pos)?))),
-        Regex::Option(r1, r2) => Ok(Regex::Option(r1, Box::new(repetition(*r2, pos)?))),
-        Regex::Empty => Err((pos, String::from("Cannot apply repetition to empty regex."))),
-        Regex::KleeneStar(..) => Err((pos, String::from("Cannot apply repetition twice."))),
-        Regex::Optional(..) => Err((
-            pos,
-            String::from("Cannot apply repetition on an optional group."),
-        )),
-        Regex::Repetition(..) => Err((
-            pos,
-            String::from("Cannot apply repetition and kleene star."),
-        )),
-        r => Ok(Regex::Repetition(Box::new(r))),
-    }
-}
-
-fn optional(exp: Regex, pos: usize) -> Result<Regex, RegexError> {
-    match exp {
-        Regex::Concat(r1, r2) => Ok(Regex::Concat(r1, Box::new(optional(*r2, pos)?))),
-        Regex::Option(r1, r2) => Ok(Regex::Option(r1, Box::new(optional(*r2, pos)?))),
-        Regex::Empty => Err((pos, String::from("Cannot apply optional to empty regex."))),
-        Regex::KleeneStar(..) => Err((
-            pos,
-            String::from("Non-greedy kleene star is not supported."),
-        )),
-        Regex::Optional(..) => Err((pos, String::from("Non-greedy optional is not supported."))),
-        Regex::Repetition(..) => {
-            Err((pos, String::from("Non-greedy repetition is not supported.")))
-        }
-        r => Ok(Regex::Optional(Box::new(r))),
-    }
 }
 
 pub type RegexError = (usize, String);
@@ -394,9 +356,12 @@ pub fn build(regex: Regex, program: &mut Program) {
         Regex::Any => {
             program.push(Instruction::Any);
         }
-	Regex::WordChar => {
-	    program.push(Instruction::WordChar);
-	}
+        Regex::WordChar => {
+            program.push(Instruction::WordChar);
+        }
+        Regex::CharacterClass(class, negated) => {
+            program.push(Instruction::CharacterClass(class, negated));
+        }
         Regex::Empty => {}
     };
 }
@@ -410,8 +375,184 @@ pub fn compile(regex: &str, id: usize) -> Result<(Program, usize), RegexError> {
 }
 
 pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError> {
+    fn read_char_class(
+        input: &mut std::iter::Enumerate<std::str::Chars>,
+        size: usize,
+        actual: usize,
+    ) -> Result<Regex, RegexError> {
+        use std::ops::{Bound, Bound::Included};
+        fn insert(
+            interval: (Bound<char>, Bound<char>),
+            tree: &mut IntervalTree<char>,
+            overlaps: &mut Vec<Vec<(char, char)>>,
+        ) {
+            let over = tree.get_interval_overlaps(&interval);
+            if !over.is_empty() {
+                overlaps.push(
+                    over.into_iter()
+                        .chain(std::iter::once(&interval))
+                        .map(|(start, end)| {
+                            let s = match start {
+                                Included(s) => *s,
+                                _ => panic!(),
+                            };
+                            let e = match end {
+                                Included(e) => *e,
+                                _ => panic!(),
+                            };
+                            (s, e)
+                        })
+                        .collect(),
+                );
+            }
+            tree.insert(interval);
+        }
+        let mut tree = IntervalTree::default();
+        let mut last = None;
+        let mut overlaps = Vec::new();
+        let mut negated = false;
+        while let Some((pos, chr)) = input.next() {
+            match chr {
+                '\\' => {
+                    if let Some((pos, c)) = input.next() {
+                        if let Some(cr) = last {
+                            insert((Included(cr), Included(cr)), &mut tree, &mut overlaps);
+                        }
+                        last = Some(c);
+                    } else {
+                        return Err((
+                            pos,
+                            String::from("Expected something after '\', but found EOF instead"),
+                        ));
+                    }
+                }
+                '^' if pos == actual+1 => {
+                    negated = true;
+                }
+                '-' => {
+                    if let Some(c1) = last {
+                        if let Some((_, c2)) = input.next() {
+                            insert((Included(c1), Included(c2)), &mut tree, &mut overlaps);
+                        } else {
+                            return Err((
+                                pos,
+                                String::from("Expected something after '-', but found EOF instead"),
+                            ));
+                        }
+                        last = None;
+                    } else {
+                        insert((Included('-'), Included('-')), &mut tree, &mut overlaps);
+                    }
+                }
+                ']' => {
+                    if let Some(c) = last {
+                        insert((Included(c), Included(c)), &mut tree, &mut overlaps);
+                    }
+                    if !overlaps.is_empty() {
+			let mut err_str = format!("Found {} overlaps in character class from position {} to position {}: ", overlaps.len(), actual, pos+1);
+			for overlap in overlaps {
+			    err_str.push('(');
+			    for (s, e) in overlap {
+				err_str.push(s);
+				err_str.push('-');
+				err_str.push(e);
+				err_str.push(',');
+			    }
+			    err_str.pop();
+			    err_str.push_str("), ");
+			}
+			err_str.pop();
+			err_str.pop();
+                        return Err((pos+1, err_str));
+                    } else {
+                        return Ok(Regex::CharacterClass(tree, negated));
+                    }
+                }
+                c => {
+                    if let Some(cr) = last {
+                        insert((Included(cr), Included(cr)), &mut tree, &mut overlaps);
+                    }
+                    last = Some(c);
+                }
+            }
+        }
+        Err((size, format!("Expected end of character class, but found EOF. Try adding ']' if you really meant to have a character class, or adding '\\' at position {} if you didn't want a character class", actual)))
+    }
+
+    fn add(regex: Regex, stack: &mut Vec<(Regex, Option<Regex>)>) {
+        let (last, remainder) = stack.pop().unwrap();
+        stack.push((concat(last, regex), remainder));
+    }
+
+    fn concat(left: Regex, right: Regex) -> Regex {
+        if let Regex::Empty = left {
+            right
+        } else {
+            Regex::Concat(Box::new(left), Box::new(right))
+        }
+    }
+
+    fn kleene_star(exp: Regex, pos: usize) -> Result<Regex, RegexError> {
+        match exp {
+            Regex::Concat(r1, r2) => Ok(Regex::Concat(r1, Box::new(kleene_star(*r2, pos)?))),
+            Regex::Option(r1, r2) => Ok(Regex::Option(r1, Box::new(kleene_star(*r2, pos)?))),
+            Regex::Empty => Err((
+                pos,
+                String::from("Cannot apply kleene star to empty regex."),
+            )),
+            Regex::KleeneStar(..) => Err((pos, String::from("Cannot apply kleene star twice."))),
+            Regex::Optional(..) => Err((
+                pos,
+                String::from("Cannot apply kleene star on an optional group."),
+            )),
+            Regex::Repetition(..) => Err((
+                pos,
+                String::from("Cannot apply kleene star and repetition."),
+            )),
+            r => Ok(Regex::KleeneStar(Box::new(r))),
+        }
+    }
+
+    fn repetition(exp: Regex, pos: usize) -> Result<Regex, RegexError> {
+        match exp {
+            Regex::Concat(r1, r2) => Ok(Regex::Concat(r1, Box::new(repetition(*r2, pos)?))),
+            Regex::Option(r1, r2) => Ok(Regex::Option(r1, Box::new(repetition(*r2, pos)?))),
+            Regex::Empty => Err((pos, String::from("Cannot apply repetition to empty regex."))),
+            Regex::KleeneStar(..) => Err((pos, String::from("Cannot apply repetition twice."))),
+            Regex::Optional(..) => Err((
+                pos,
+                String::from("Cannot apply repetition on an optional group."),
+            )),
+            Regex::Repetition(..) => Err((
+                pos,
+                String::from("Cannot apply repetition and kleene star."),
+            )),
+            r => Ok(Regex::Repetition(Box::new(r))),
+        }
+    }
+
+    fn optional(exp: Regex, pos: usize) -> Result<Regex, RegexError> {
+        match exp {
+            Regex::Concat(r1, r2) => Ok(Regex::Concat(r1, Box::new(optional(*r2, pos)?))),
+            Regex::Option(r1, r2) => Ok(Regex::Option(r1, Box::new(optional(*r2, pos)?))),
+            Regex::Empty => Err((pos, String::from("Cannot apply optional to empty regex."))),
+            Regex::KleeneStar(..) => Err((
+                pos,
+                String::from("Non-greedy kleene star is not supported."),
+            )),
+            Regex::Optional(..) => {
+                Err((pos, String::from("Non-greedy optional is not supported.")))
+            }
+            Regex::Repetition(..) => {
+                Err((pos, String::from("Non-greedy repetition is not supported.")))
+            }
+            r => Ok(Regex::Optional(Box::new(r))),
+        }
+    }
+
     let mut stack = vec![(Regex::Empty, None)];
     let mut chrs = regex.chars().enumerate();
+    let size = regex.chars().count();
     while let Some((pos, chr)) = chrs.next() {
         match chr {
             '(' => {
@@ -448,22 +589,38 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                 stack.push((Regex::Empty, Some(last)));
             }
             '.' => add(Regex::Any, &mut stack),
-	    '\\' => {
-		if let Some((pos, chr)) = chrs.next() {
-		    match chr {
-			'w' => add(Regex::WordChar, &mut stack),
-			_ => return Err((pos, format!("Cannot escape character {}, try replacing \\{} with {}", chr, chr, chr))),
-		    }
-		} else {
-		    return Err((pos, String::from("Expected something after character '\', but found EOF instead")));
-		}
-	    }
-            c => add(Regex::Char(c), &mut stack)
+            '\\' => {
+                if let Some((pos, chr)) = chrs.next() {
+                    match chr {
+                        'w' => add(Regex::WordChar, &mut stack),
+                        _ => {
+                            return Err((
+                                pos,
+                                format!(
+                                    "Cannot escape character {}, try replacing \\{} with {}",
+                                    chr, chr, chr
+                                ),
+                            ))
+                        }
+                    }
+                } else {
+                    return Err((
+                        pos,
+                        String::from(
+                            "Expected something after character '\', but found EOF instead",
+                        ),
+                    ));
+                }
+            }
+            '[' => {
+                add(read_char_class(&mut chrs, size, pos)?, &mut stack);
+            }
+            c => add(Regex::Char(c), &mut stack),
         }
     }
     if stack.len() != 1 {
         Err((
-            regex.chars().count(),
+            size,
             format!(
                 "Expected {} closing parenthesis, found EOF",
                 stack.len() - 1

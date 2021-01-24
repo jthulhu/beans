@@ -80,15 +80,15 @@ mod tests {
         assert_eq!(match2.length, 2);
         assert_eq!(match2.id, "BC");
         assert_eq!(match2.groups.len(), 2);
-	assert_eq!(match2.text, "bc");
+        assert_eq!(match2.text, "bc");
         let handle = match2.groups[0].as_ref().unwrap();
         assert_eq!(handle.start, 0);
         assert_eq!(handle.end, 1);
         assert_eq!(handle.text, "b");
-	let handle = match2.groups[1].as_ref().unwrap();
-	assert_eq!(handle.start, 1);
-	assert_eq!(handle.end, 2);
-	assert_eq!(handle.text, "c");
+        let handle = match2.groups[1].as_ref().unwrap();
+        assert_eq!(handle.start, 1);
+        assert_eq!(handle.end, 2);
+        assert_eq!(handle.text, "c");
 
         let match3 = regex.find("cde");
         assert!(match3.is_none());
@@ -96,32 +96,32 @@ mod tests {
 
     #[test]
     fn groups() {
-	let regex = RegexBuilder::new()
-	    .with_named_regex("'(.*)'", String::from("STRING"))
-	    .unwrap()
-	    .with_named_regex("\"(.*)\"", String::from("STRING"))
-	    .unwrap()
-	    .build();
-	let match1 = regex.find("'blabla'").unwrap();
-	assert_eq!(match1.length, 8);
-	assert_eq!(match1.id, "STRING");
-	assert_eq!(match1.groups.len(), 1);
-	assert_eq!(match1.text, "'blabla'");
-	let handle = match1.groups[0].as_ref().unwrap();
-	assert_eq!(handle.start, 1);
-	assert_eq!(handle.end, 7);
-	assert_eq!(handle.text, "blabla");
+        let regex = RegexBuilder::new()
+            .with_named_regex("'(.*)'", String::from("STRING"))
+            .unwrap()
+            .with_named_regex("\"(.*)\"", String::from("STRING"))
+            .unwrap()
+            .build();
+        let match1 = regex.find("'blabla'").unwrap();
+        assert_eq!(match1.length, 8);
+        assert_eq!(match1.id, "STRING");
+        assert_eq!(match1.groups.len(), 1);
+        assert_eq!(match1.text, "'blabla'");
+        let handle = match1.groups[0].as_ref().unwrap();
+        assert_eq!(handle.start, 1);
+        assert_eq!(handle.end, 7);
+        assert_eq!(handle.text, "blabla");
     }
-    
+
     #[test]
     fn any() {
-	let regex = RegexBuilder::new()
-	    .with_named_regex(".*", String::from("Default"))
-	    .unwrap()
-	    .build();
-	assert_eq!(regex.find("0123456").unwrap().length, 7);
-	assert_eq!(regex.find("012").unwrap().length, 3);
-	assert_eq!(regex.find("").unwrap().length, 0);
+        let regex = RegexBuilder::new()
+            .with_named_regex(".*", String::from("Default"))
+            .unwrap()
+            .build();
+        assert_eq!(regex.find("0123456").unwrap().length, 7);
+        assert_eq!(regex.find("012").unwrap().length, 3);
+        assert_eq!(regex.find("").unwrap().length, 0);
     }
 }
 
@@ -165,33 +165,28 @@ pub struct Handle<'a> {
 impl<'a> Handle<'a> {
     /// Create a new `Handle`
     pub fn new(start: usize, end: usize, text: &'a str) -> Self {
-	Self {
-	    start,
-	    end,
-	    text
-	}
+        Self { start, end, text }
     }
     /// Return the start position of the region (inclusive).
     pub fn start(&self) -> usize {
-	self.start
+        self.start
     }
 
     /// Return the end position of the region (exclusive).
     pub fn end(&self) -> usize {
-	self.end
+        self.end
     }
 
     /// Return the captured region as a slice of the input.
     pub fn text(&self) -> &str {
-	self.text
+        self.text
     }
 
     /// Return the length of the captured region.
     pub fn length(&self) -> usize {
-	self.end - self.start
+        self.end - self.start
     }
 }
-
 
 /// # Summary
 ///
@@ -218,29 +213,29 @@ pub struct Match<'a> {
 impl Match<'_> {
     /// Return the length of the match.
     pub fn length(&self) -> usize {
-	self.length
+        self.length
     }
-    
+
     /// Return the identifier of the regex which led to the match.
     pub fn id(&self) -> &str {
-	self.id
+        self.id
     }
 
     /// Return the groups of the regex. The position of each group is
     /// enforced by its position in the regex. Each group may or may not
     /// have been caught.
     pub fn groups(&self) -> &[Option<Handle>] {
-	&self.groups[..]
+        &self.groups[..]
     }
 
     /// Return the substring of the input that corresponds to the match.
     pub fn text(&self) -> &str {
-	self.text
+        self.text
     }
 }
 
 /// # Summary
-/// 
+///
 /// `CompiledRegex` represents a regex that has already been processed. Since it is not supposed to be built
 /// directly, there is no way to do so. Instead, use the `RegexBuilder`.
 /// Keep in mind that the compilation time might be more expensive than matching time, especially if
@@ -298,9 +293,8 @@ impl CompiledRegex {
     }
 }
 
-
 /// # Summary
-/// 
+///
 /// `RegexBuilder` is a helper to build a regular expression engine.
 /// A single regex engine may process many regex at once, so it is encouraged
 /// to (as it is very cheap) load every regex that should be matched against the

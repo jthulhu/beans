@@ -418,7 +418,21 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                         if let Some(cr) = last {
                             insert((Included(cr), Included(cr)), &mut tree, &mut overlaps);
                         }
-                        last = Some(c);
+			match c {
+			    ']' => last = Some(c),
+			    't' => last = Some('\t'),
+			    'n' => last = Some('\n'),
+			    '^' => last = Some('^'),
+			    '-' => last = Some('-'),
+			    '\\' => last = Some('\\'),
+			    _ => return Err((
+				pos,
+				format!(
+                                    "Cannot escape character {}, try replacing /\\{}/ with /{}/",
+                                    c, c, c
+                                )
+			    )),
+			};
                     } else {
                         return Err((
                             pos,
@@ -588,16 +602,78 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                 let last = stack.pop().unwrap().into();
                 stack.push((Regex::Empty, Some(last)));
             }
+	    '$' => return Err((
+		pos,
+		String::from("End-of-line /$/ is not supported. Matches are anchored anyways. Try /\\n/ instead.")
+	    )),
+	    '^' => return Err((
+		pos,
+		String::from("Start-of-line /^/ is not supported. Matches are anchored anyways.")
+	    )),
             '.' => add(Regex::Any, &mut stack),
             '\\' => {
                 if let Some((pos, chr)) = chrs.next() {
                     match chr {
+			'A' => return Err((
+			    pos,
+			    String::from("Start of the string anchor /\\A/ is not supported.")
+			)),
+			'N' => return Err((
+			    pos,
+			    String::from("Not a line break shorthand /\\N/ is not supported. Try /[^\\n]/ instead.")
+			)),
+			'Z' => return Err((
+			    pos,
+			    String::from("EOF anchor /\\Z/ is not supported.")
+			)),
+			'b' => return Err((
+			    pos,
+			    String::from("Word boundary /\\b/ is not supported.")
+			)),
+			'd' => return Err((
+			    pos,
+			    String::from("Digit shorthand /\\d/ is not supported. Try /[0-9]/ instead.")
+			)),
+			'h' => return Err((
+			    pos,
+			    String::from("Horizontal whitespace / hexadecimal digit shorthand /\\h/ is not supported. Try [0-9a-f] instead if you wanted hexadecimal digit.")
+			)),
+			'l' => return Err((
+			    pos,
+			    String::from("Lowercase shorthand /\\l/ is not supported. Try /[a-z]/ instead.")
+			)),
+			'n' => add(Regex::Char('\n'), &mut stack),
+			'r' => return Err((
+			    pos,
+			    String::from("Nonsense EOL /\\r/ is not supported. Try /\\n/ instead.")
+			)),
+			's' => return Err((
+			    pos,
+			    String::from("Whitespace shorthand /\\s/ is not supported. Try /[ \t]/ instead.")
+			)),
+			't' => add(Regex::Char('\t'), &mut stack),
+			'u' => return Err((
+			    pos,
+			    String::from("Uppercase shorthand /\\u/ is not supported. Try /[A-Z]/ instead.")
+			)),
+			'v' => return Err((
+			    pos,
+			    String::from("Vertical whitespace shorthand /\\v/ is not supported.")
+			)),
                         'w' => add(Regex::WordChar, &mut stack),
+			'x' => return Err((
+			    pos,
+			    String::from("Hexadecimal escape /\\xFF/ is not supported.")
+			)),
+			'z' => return Err((
+			    pos,
+			    String::from("EOF anchor /\\z/ is not supported.")
+			)),
                         _ => {
                             return Err((
                                 pos,
                                 format!(
-                                    "Cannot escape character {}, try replacing \\{} with {}",
+                                    "Cannot escape character {}, try replacing /\\{}/ with /{}/",
                                     chr, chr, chr
                                 ),
                             ))

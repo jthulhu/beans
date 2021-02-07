@@ -12,6 +12,12 @@ mod tests {
     }
 
     #[test]
+    fn read_word_boundary() {
+	use Regex::*;
+	assert_eq!(read("\\b", 0).unwrap(), (WordBoundary, 0));
+    }	
+
+    #[test]
     fn read_char_class() {
         use std::ops::Bound::Included;
         use Regex::*;
@@ -197,7 +203,22 @@ mod tests {
 
     #[test]
     fn build_char_class() {
-	
+	use std::ops::Bound::Included;
+	use Instruction::*;
+	let mut tree = IntervalTree::default();
+	tree.insert((Included('a'), Included('z')));
+	tree.insert((Included('A'), Included('Z')));
+	tree.insert((Included('0'), Included('9')));
+	tree.insert((Included('_'), Included('_')));
+	let program = compile("[a-zA-Z0-9_]", 0).unwrap();
+	assert_eq!(program, (vec![CharacterClass(tree, false), Match(0)], 0));
+    }
+
+    #[test]
+    fn build_word_boundary() {
+	use Instruction::*;
+	let program = compile(r"\b", 0).unwrap();
+	assert_eq!(program, (vec![WordBoundary, Match(0)], 0));
     }
     
     #[test]
@@ -296,6 +317,7 @@ pub enum Regex {
     Group(Box<Regex>, usize),
     CharacterClass(IntervalTree<char>, bool),
     WordChar,
+    WordBoundary,
     Any,
     Empty,
 }
@@ -359,6 +381,9 @@ pub fn build(regex: Regex, program: &mut Program) {
         Regex::WordChar => {
             program.push(Instruction::WordChar);
         }
+	Regex::WordBoundary => {
+	    program.push(Instruction::WordBoundary);
+	}
         Regex::CharacterClass(class, negated) => {
             program.push(Instruction::CharacterClass(class, negated));
         }
@@ -626,10 +651,7 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
 			    pos,
 			    String::from("EOF anchor /\\Z/ is not supported.")
 			)),
-			'b' => return Err((
-			    pos,
-			    String::from("Word boundary /\\b/ is not supported.")
-			)),
+			'b' => add(Regex::WordBoundary, &mut stack),
 			'd' => return Err((
 			    pos,
 			    String::from("Digit shorthand /\\d/ is not supported. Try /[0-9]/ instead.")

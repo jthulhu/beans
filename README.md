@@ -5,6 +5,8 @@
  |_.__/   \___|  \__,_| |_| |_| |___/
                                      
 
+[![Build Status](https://travis-ci.com/TheBlackBeans/beans.svg?branch=rust-dev)](https://travis-ci.com/TheBlackBeans/beans)
+
 Beans is a dynamic programing language, which means its syntax may change during compilation time,
 and adapts to different type of compilation different syntaxes require. It may handle static typing as dynamic typing.
 

@@ -23,6 +23,7 @@ mod tests {
         assert_eq!(token.name(), "wow");
         assert_eq!(token.location().file(), "test_file");
     }
+
     #[test]
     fn lexer_builder() {
         // No options: fails
@@ -96,7 +97,7 @@ mod tests {
         assert!(lexer.get().is_none());
     }
 
-    // #[test]
+    #[test]
     fn default_lex_grammar() {
         let mut lexer = LexerBuilder::new()
             .with_grammar_file(String::from("gmrs/lexer.gmr"))
@@ -113,7 +114,7 @@ mod tests {
             ((0, 6), (0, 9), "ID"),
         ];
         let mut i = 0;
-        while let Some((token, loc)) = lexer.get() {
+        while let Some((token, loc)) = lexer.get_at(i) {
             assert_eq!(*token.location(), loc);
             let (start, end, name) = result[i];
             assert_eq!(loc.start(), start);
@@ -135,7 +136,7 @@ mod tests {
 #[derive(Debug)]
 pub struct Token {
     name: String,
-    attributes: HashMap<String, String>,
+    attributes: HashMap<usize, String>,
     location: Location,
 }
 
@@ -145,17 +146,17 @@ impl fmt::Display for Token {
     }
 }
 
-impl Index<&String> for Token {
+impl Index<&usize> for Token {
     type Output = String;
 
-    fn index(&self, key: &String) -> &Self::Output {
+    fn index(&self, key: &usize) -> &Self::Output {
         &self.attributes[key]
     }
 }
 
 impl Token {
     /// Build a new token.
-    pub fn new(name: String, attributes: HashMap<String, String>, location: Location) -> Self {
+    pub fn new(name: String, attributes: HashMap<usize, String>, location: Location) -> Self {
         Self {
             name,
             attributes,
@@ -164,8 +165,8 @@ impl Token {
     }
 
     /// Return whether the token has a given attribute.
-    pub fn contains(&self, key: &str) -> bool {
-        self.attributes.contains_key(key)
+    pub fn contains(&self, key: usize) -> bool {
+        self.attributes.contains_key(&key)
     }
 
     /// Return the `name` of the token.
@@ -276,40 +277,33 @@ impl Lexer {
     pub fn lex(&mut self) -> Result<(), error::Error> {
         self.stream.set_pos(0);
         while self.stream.pos() < self.stream.len() {
-            let mut capture_locations = self.grammar.pattern().capture_locations();
-            self.grammar.pattern().captures_read_at(
-                &mut capture_locations,
-                &self.stream.borrow(),
-                self.stream.pos(),
-            );
-            if capture_locations.len() == 0 {
+            if let Some(result) = self
+                .grammar
+                .pattern()
+                .find(&self.stream.borrow()[self.stream.pos()..])
+            {
+                let start = self.stream.pos();
+                let end = start + result.length();
+		self.stream.set_pos(end);
+		if self.grammar.ignored(result.id()) {
+		    continue;
+		}
+                let location = Location::from_stream_pos(
+                    self.stream.origin().to_string(),
+                    &self.stream.borrow(),
+                    start,
+                    end,
+                );
+                let name = result.name().to_string();
+                let _attributes = vec![result.groups()];
+                let token = Token::new(name, HashMap::new(), location.clone());
+                self.tokens.push((token, location));
+            } else {
                 return Err((
                     self.stream.get_at(self.stream.pos()).unwrap().1,
                     error::ErrorType::LexingError(String::from("cannot recognize a token there")),
                 )
                     .into());
-            }
-            let mut i = 1;
-            loop {
-                if let Some((start, end)) = capture_locations.get(i) {
-                    let location = Location::from_stream_pos(
-                        self.stream.origin().to_string(),
-                        &self.stream.borrow()[..],
-                        start,
-                        end,
-                    );
-                    self.stream.set_pos(end + 1);
-                    self.tokens.push((
-                        Token::new(
-                            self.grammar.name(i - 1).to_string(),
-                            HashMap::new(),
-                            location.clone(),
-                        ),
-                        location,
-                    ));
-                    break;
-                }
-                i += 1;
             }
         }
         Ok(())

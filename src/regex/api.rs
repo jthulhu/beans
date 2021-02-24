@@ -68,7 +68,7 @@ mod tests {
 
         let match1 = regex.find("aaacd").unwrap();
         assert_eq!(match1.length, 3);
-        assert_eq!(match1.id, "As");
+        assert_eq!(match1.name, "As");
         assert_eq!(match1.groups.len(), 1);
         let handle = match1.groups[0].as_ref().unwrap();
         assert_eq!(handle.start, 0);
@@ -78,7 +78,7 @@ mod tests {
 
         let match2 = regex.find("bc").unwrap();
         assert_eq!(match2.length, 2);
-        assert_eq!(match2.id, "BC");
+        assert_eq!(match2.name, "BC");
         assert_eq!(match2.groups.len(), 2);
         assert_eq!(match2.text, "bc");
         let handle = match2.groups[0].as_ref().unwrap();
@@ -104,7 +104,7 @@ mod tests {
             .build();
         let match1 = regex.find("'blabla'").unwrap();
         assert_eq!(match1.length, 8);
-        assert_eq!(match1.id, "STRING");
+        assert_eq!(match1.name, "STRING");
         assert_eq!(match1.groups.len(), 1);
         assert_eq!(match1.text, "'blabla'");
         let handle = match1.groups[0].as_ref().unwrap();
@@ -147,7 +147,7 @@ mod tests {
 /// Then
 ///
 /// ```rust
-/// # use beans::regex2::Handle;
+/// # use beans::regex::Handle;
 /// # let string = "012345678910";
 /// # let handle = Handle::new(4, 8, &string[4..8]);
 /// assert_eq!(handle.start(), 4);
@@ -199,13 +199,15 @@ impl<'a> Handle<'a> {
 /// # Methods
 ///
 /// `length`: return the length of the match
+/// `name`: return the name of the regex which led to the match
 /// `id`: return the identifier of the regex which led to the match
 /// `groups`: return the groups of the regex
 /// `text`: return the substring of the input that corresponds to the match
 #[derive(Debug)]
 pub struct Match<'a> {
     length: usize,
-    id: &'a str,
+    name: &'a str,
+    id: usize,
     groups: Vec<Option<Handle<'a>>>,
     text: &'a str,
 }
@@ -217,8 +219,13 @@ impl Match<'_> {
     }
 
     /// Return the identifier of the regex which led to the match.
-    pub fn id(&self) -> &str {
+    pub fn id(&self) -> usize {
         self.id
+    }
+
+    /// Return the name of the regex which led to the match.
+    pub fn name(&self) -> &str {
+	self.name
     }
 
     /// Return the groups of the regex. The position of each group is
@@ -245,6 +252,7 @@ impl Match<'_> {
 /// # Method
 ///
 /// `find`: match against a given input
+#[derive(Debug, PartialEq)]
 pub struct CompiledRegex {
     names: Vec<String>,
     program: Program,
@@ -283,7 +291,8 @@ impl CompiledRegex {
             }
             Some(Match {
                 length,
-                id: &self.names[id][..],
+		id: id,
+                name: &self.names[id],
                 groups: grps,
                 text: &input[..length],
             })

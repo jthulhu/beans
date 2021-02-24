@@ -5,31 +5,33 @@ WHILE ::= while\b
 FOR ::= for\b
 
 EOF ::= \z
-STRING ::= "(?P<string_value>([^"\\]|(\\[^\\])|(\\\\))*)"
-FLOAT ::= (?P<float_value>(\d*\.\d+)|(\d+\.\d*))
-INT ::= (?P<int_value>\d+)
-ignore SPACE ::= [\t ]+
+STRING ::= "(([^"\\]|(\\[^\\])|(\\\\))*)"
+FLOAT ::= ((\d*\.\d+)|(\d+\.\d*))
+INT ::= (\d+)
+ignore SPACE ::= \s+
 ignore EOL ::= \n
 ignore COMMENT ::= #[^\n]*
 TRUE ::= true
 FALSE ::= false
 
-DOT ::= [.]
+DOT ::= \.
 
 LPAR ::= \(
 RPAR ::= \)
-LBRACE ::= \{
-RBRACE ::= \}
+LBRACE ::= {
+RBRACE ::= }
 LBRACKET ::= \[
-RBRACKET ::= \]
-LBRACEU ::= \{\|
-RBRACEU ::= \|\}
+RBRACKET ::= ]
+LBRACEU ::= {\|
+RBRACEU ::= \|}
 LBRACKETU ::= \[\|
-RBRACKETU ::= \|\]
+RBRACKETU ::= \|]
 
 AND ::= and\b
 OR ::= or\b
 XOR ::= xor\b
 NOT ::= not\b
 
-ID ::= (?P<id_value>\w*[a-zA-Z_]\w*)
+PLUS ::= \+
+
+ID ::= (\w*[a-zA-Z_]\w*)

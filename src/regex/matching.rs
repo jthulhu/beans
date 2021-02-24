@@ -30,34 +30,23 @@ mod tests {
     fn escaped() {
         use super::super::parsing::compile;
         let escaped = vec![
-	    (
-		r"\w",
-		vec![
+            (
+                r"\w",
+                vec![
                     ("a", true),
                     ("A", true),
                     ("0", true),
                     ("_", true),
                     ("%", false),
                     ("'", false),
-		],
+                ],
             ),
-	    (
-		r"a\b",
-		vec![
-		    ("a", true),
-		    ("ab", false)
-		]
-	    ),
-	    (
-		r".\b.",
-		vec![
-		    ("a ", true),
-		    (" a", true),
-		    ("  ", false),
-		    ("aa", false)
-		]
-	    )
-	];
+            (r"a\b", vec![("a", true), ("ab", false)]),
+            (
+                r".\b.",
+                vec![("a ", true), (" a", true), ("  ", false), ("aa", false)],
+            ),
+        ];
         for (regex, tests) in escaped {
             let (program, nb_groups) = compile(regex, 0).unwrap();
             for (string, result) in tests {
@@ -101,8 +90,14 @@ mod tests {
 /// `Match(id: usize)`: stop the thread and record it as a successful match of the regex `id`
 /// `WordChar`: match /[A-Za-z0-9_]/ at the current location, or stop the thread if it doesn't match
 /// `WordBoundary`: match a word boundary (meaning, the end of the beginning of a word)
-/// `CharacterClass(class: IntervalTree<char>, negated: bool)`: match any character inside `class`,
-///                                                           or outside if `negated`
+/// `CharacterClass(
+///      class: IntervalTree<char>,
+///      negated: bool
+///  )`: match any character inside `class`, or outside if `negated`.
+///     **Warning**: this instruction is not constant time complexity,
+///              since it is actually a shorthand for many instructions at once.
+///              It is however (much) more efficient than if those instructions
+///              were executed indipendently.
 /// `Any`: match any character at the current location
 #[derive(PartialEq, Debug)]
 pub enum Instruction {
@@ -112,8 +107,11 @@ pub enum Instruction {
     Jump(usize),
     Match(usize),
     WordChar,
+    Digit,
     WordBoundary,
+    Whitespace,
     CharacterClass(IntervalTree<char>, bool),
+    EOF,
     Any,
 }
 
@@ -249,34 +247,54 @@ fn match_next(
     next: Option<&mut ThreadList>,
     prog: ProgramRef,
     best_match: &mut Option<Match>,
-    last: Option<char>
+    last: Option<char>,
 ) {
     /// Return whether `chr` is a word char,
     /// matched by /[a-zA-Z0-9_]/.
     fn is_word_char(chr: char) -> bool {
-	chr.is_alphanumeric() || chr == '_'
+        chr.is_alphanumeric() || chr == '_'
+    }
+
+    /// Return whether `chr` is a digit,
+    /// matched by /[0-9]/.
+    fn is_digit(chr: char) -> bool {
+        chr.is_digit(10)
+    }
+
+    /// Return whether `chr` is a whitespace,
+    /// matched by /[ \t]/.
+    fn is_whitespace(chr: char) -> bool {
+        chr == ' ' || chr == '\t'
     }
 
     /// Advance `thread` to the next instruction and queue it
     /// in the `thread_list`.
     fn advance(mut thread: Thread, thread_list: Option<&mut ThreadList>) {
-	thread.jump(thread.instruction() + 1);
-	if let Some(next) = thread_list {
-	    next.add(thread);
-	}
+        thread.jump(thread.instruction() + 1);
+        if let Some(next) = thread_list {
+            next.add(thread);
+        }
     }
-    
+
     match &prog[thread.instruction()] {
         Instruction::Char(expected) => {
             if *expected == chr {
-		advance(thread, next);
+                advance(thread, next);
             }
         }
-        Instruction::Any => {
-            advance(thread, next);
-        }
+        Instruction::Any => advance(thread, next),
         Instruction::WordChar => {
             if is_word_char(chr) {
+                advance(thread, next);
+            }
+        }
+        Instruction::Digit => {
+            if is_digit(chr) {
+                advance(thread, next);
+            }
+        }
+        Instruction::Whitespace => {
+            if is_whitespace(chr) {
                 advance(thread, next);
             }
         }
@@ -286,7 +304,7 @@ fn match_next(
         }
         Instruction::Save(idx) => {
             thread.save(*idx, pos);
-	    advance(thread, Some(current));
+            advance(thread, Some(current));
         }
         Instruction::Split(pos1, pos2) => {
             let mut other = thread.clone();
@@ -309,15 +327,20 @@ fn match_next(
                 advance(thread, next);
             }
         }
-	Instruction::WordBoundary => {
-	    if let Some(last) = last {
-		if is_word_char(last) ^ is_word_char(chr) {
-		    advance(thread, Some(current));
-		}
-	    } else {
-		advance(thread, Some(current));
-	    }
-	}
+        Instruction::WordBoundary => {
+            if let Some(last) = last {
+                if is_word_char(last) ^ is_word_char(chr) {
+                    advance(thread, Some(current));
+                }
+            } else {
+                advance(thread, Some(current));
+            }
+        }
+        Instruction::EOF => {
+            if next.is_none() {
+                advance(thread, Some(current));
+            }
+        }
     }
 }
 
@@ -337,11 +360,11 @@ pub fn find(prog: ProgramRef, input: &str, size: usize) -> Option<Match> {
                 Some(&mut next),
                 &prog[..],
                 &mut best_match,
-		last
+                last,
             );
         }
         current = next;
-	last = Some(chr);
+        last = Some(chr);
     }
     let pos = input.len();
     while let Some(mut thread) = current.get() {
@@ -353,7 +376,7 @@ pub fn find(prog: ProgramRef, input: &str, size: usize) -> Option<Match> {
             None,
             &prog[..],
             &mut best_match,
-	    last
+            last,
         );
     }
 

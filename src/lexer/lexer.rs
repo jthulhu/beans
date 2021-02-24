@@ -284,10 +284,10 @@ impl Lexer {
             {
                 let start = self.stream.pos();
                 let end = start + result.length();
-		self.stream.set_pos(end);
-		if self.grammar.ignored(result.id()) {
-		    continue;
-		}
+                self.stream.set_pos(end);
+                if self.grammar.ignored(result.id()) {
+                    continue;
+                }
                 let location = Location::from_stream_pos(
                     self.stream.origin().to_string(),
                     &self.stream.borrow(),

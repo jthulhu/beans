@@ -225,7 +225,7 @@ impl Match<'_> {
 
     /// Return the name of the regex which led to the match.
     pub fn name(&self) -> &str {
-	self.name
+        self.name
     }
 
     /// Return the groups of the regex. The position of each group is
@@ -291,7 +291,7 @@ impl CompiledRegex {
             }
             Some(Match {
                 length,
-		id: id,
+                id: id,
                 name: &self.names[id],
                 groups: grps,
                 text: &input[..length],

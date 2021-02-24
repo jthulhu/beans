@@ -1,9 +1,9 @@
 use crate::error::{Error, ErrorType};
 use crate::location::Location;
+use crate::regex::{CompiledRegex, RegexBuilder};
 use crate::stream::{Char, Stream, StringStream};
 use fixedbitset::FixedBitSet;
 use hashbrown::HashSet;
-use regex::{Regex, RegexBuilder};
 use std::error;
 use std::fs::File;
 use std::io::prelude::*;
@@ -27,6 +27,7 @@ mod tests {
         );
         assert_eq!(stream.pos(), 6);
     }
+
     #[test]
     fn grammar_parser_read_id() {
         let mut stream = StringStream::new(String::from("whatever"), String::from("to del"));
@@ -55,52 +56,59 @@ mod tests {
     #[test]
     fn grammar_parser_regex() {
         assert_eq!(
-            LexerGrammarBuilder::new()
+            *LexerGrammarBuilder::new()
                 .with_stream(StringStream::new(
                     String::from("whatever"),
                     String::from("A ::= wot!")
                 ))
                 .build()
                 .unwrap()
-                .pattern()
-                .as_str(),
-            "(?P<A>wot!)"
+                .pattern(),
+            RegexBuilder::new()
+                .with_named_regex("wot!", String::from("A"))
+                .unwrap()
+                .build(),
         );
         assert_eq!(
-            LexerGrammarBuilder::new()
+            *LexerGrammarBuilder::new()
                 .with_stream(StringStream::new(
                     String::from("whatever"),
                     String::from("B ::= wot!  ")
                 ))
                 .build()
                 .unwrap()
-                .pattern()
-                .as_str(),
-            "(?P<B>wot!  )"
+                .pattern(),
+            RegexBuilder::new()
+                .with_named_regex("wot!  ", String::from("B"))
+                .unwrap()
+                .build()
         );
         assert_eq!(
-            LexerGrammarBuilder::new()
+            *LexerGrammarBuilder::new()
                 .with_stream(StringStream::new(
                     String::from("whatever"),
                     String::from("A ::= wot!\n\nB ::= wheel")
                 ))
                 .build()
                 .unwrap()
-                .pattern()
-                .as_str(),
-            "(?P<A>wot!)|(?P<B>wheel)"
+                .pattern(),
+            RegexBuilder::new()
+                .with_named_regex("wot!", String::from("A"))
+                .unwrap()
+                .with_named_regex("wheel", String::from("B"))
+                .unwrap()
+                .build()
         );
         assert_eq!(
-            LexerGrammarBuilder::new()
+            *LexerGrammarBuilder::new()
                 .with_stream(StringStream::new(
                     String::from("whatever"),
                     String::from("")
                 ))
                 .build()
                 .unwrap()
-                .pattern()
-                .as_str(),
-            ""
+                .pattern(),
+            RegexBuilder::new().build()
         );
     }
     #[test]
@@ -172,7 +180,7 @@ impl LexerGrammarBuilder {
         let size = stream.len();
         let mut ignores = HashSet::<String>::new();
         let mut names = vec![];
-        let mut full_pattern = String::new();
+        let mut regex_builder = RegexBuilder::new();
         Self::ignore_blank_lines(stream);
         while stream.pos() < size {
             let ignore = Self::read_keyword(stream, "ignore");
@@ -183,51 +191,26 @@ impl LexerGrammarBuilder {
             Self::ignore_blank(stream);
             let start = stream.pos();
             let pattern = Self::read_pattern(stream);
-            Regex::new(pattern.as_str()).map_err(|error| {
-                (
-                    Location::from_stream_pos(
-                        stream.origin().to_string(),
-                        &stream.borrow()[..],
-                        start,
-                        stream.pos(),
-                    ),
-                    ErrorType::LexerGrammarSyntax(match error {
-                        regex::Error::Syntax(msg) => msg,
-                        regex::Error::CompiledTooBig(size) => {
-                            format!("size too big (maximum is {})", size)
-                        }
-                        _ => String::from("unknown regex error"),
-                    }),
-                )
-            })?;
-            full_pattern.push_str(format!("(?P<{}>{})|", &name, pattern).as_str());
+            regex_builder = regex_builder
+                .with_named_regex(pattern.as_str(), name.clone())
+                .map_err(|(_, message)| {
+                    (
+                        Location::from_stream_pos(
+                            stream.origin().to_string(),
+                            &stream.borrow()[..],
+                            start,
+                            stream.pos(),
+                        ),
+                        ErrorType::LexerGrammarSyntax(message),
+                    )
+                })?;
             names.push(name.clone());
             if ignore {
                 ignores.insert(name);
             }
             Self::ignore_blank_lines(stream);
         }
-        full_pattern.pop();
-        let re = RegexBuilder::new(full_pattern.as_str())
-            .multi_line(true)
-            .build()
-            .map_err(|error| {
-                (
-                    Location::from_stream_pos(
-                        stream.origin().to_string(),
-                        &stream.borrow()[..],
-                        stream.pos(),
-                        stream.pos(),
-                    ),
-                    ErrorType::LexerGrammarSyntax(match error {
-                        regex::Error::Syntax(msg) => msg,
-                        regex::Error::CompiledTooBig(size) => {
-                            format!("Size too big (maximum is {})", size)
-                        }
-                        _ => String::from("unknown regex error"),
-                    }),
-                )
-            })?;
+        let re = regex_builder.build();
         let mut ignores_bitset = FixedBitSet::with_capacity(names.len());
         for (i, name) in names.iter().enumerate() {
             if ignores.contains(name) {
@@ -328,13 +311,13 @@ impl LexerGrammarBuilder {
 /// `name`: return the name of the token with the given id.
 #[derive(Debug)]
 pub struct LexerGrammar {
-    pattern: Regex,
+    pattern: CompiledRegex,
     names: Vec<String>,
     ignores: FixedBitSet,
 }
 
 impl LexerGrammar {
-    pub fn new(pattern: Regex, names: Vec<String>, ignores: FixedBitSet) -> Self {
+    pub fn new(pattern: CompiledRegex, names: Vec<String>, ignores: FixedBitSet) -> Self {
         Self {
             pattern,
             names,
@@ -350,7 +333,7 @@ impl LexerGrammar {
         self.ignores.contains(idx)
     }
 
-    pub fn pattern(&self) -> &Regex {
+    pub fn pattern(&self) -> &CompiledRegex {
         &self.pattern
     }
 }

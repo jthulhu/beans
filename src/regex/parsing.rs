@@ -13,9 +13,16 @@ mod tests {
 
     #[test]
     fn read_word_boundary() {
-	use Regex::*;
-	assert_eq!(read("\\b", 0).unwrap(), (WordBoundary, 0));
-    }	
+        use Regex::*;
+        assert_eq!(read(r"\b", 0).unwrap(), (WordBoundary, 0));
+    }
+
+    #[test]
+    fn read_eof() {
+        use Regex::*;
+        assert_eq!(read(r"\Z", 0).unwrap(), (EOF, 0));
+        assert_eq!(read(r"\z", 0).unwrap(), (EOF, 0));
+    }
 
     #[test]
     fn read_char_class() {
@@ -25,21 +32,35 @@ mod tests {
         tree.insert((Included('a'), Included('a')));
         assert_eq!(read("[a]", 0).unwrap(), (CharacterClass(tree, false), 0));
 
-	let mut tree = IntervalTree::default();
-	tree.insert((Included('a'), Included('z')));
-	tree.insert((Included('A'), Included('Z')));
-	tree.insert((Included('0'), Included('9')));
-	tree.insert((Included('_'), Included('_')));
-	assert_eq!(read("[a-zA-Z0-9_]", 0).unwrap(), (CharacterClass(tree, false), 0));
+        let mut tree = IntervalTree::default();
+        tree.insert((Included('a'), Included('z')));
+        tree.insert((Included('A'), Included('Z')));
+        tree.insert((Included('0'), Included('9')));
+        tree.insert((Included('_'), Included('_')));
+        assert_eq!(
+            read("[a-zA-Z0-9_]", 0).unwrap(),
+            (CharacterClass(tree, false), 0)
+        );
 
-	let mut tree = IntervalTree::default();
-	tree.insert((Included('a'), Included('z')));
-	tree.insert((Included('A'), Included('Z')));
-	tree.insert((Included('0'), Included('9')));
-	tree.insert((Included('_'), Included('_')));
-	assert_eq!(read("[^a-zA-Z0-9_]", 0).unwrap(), (CharacterClass(tree, true), 0));
+        let mut tree = IntervalTree::default();
+        tree.insert((Included('a'), Included('z')));
+        tree.insert((Included('A'), Included('Z')));
+        tree.insert((Included('0'), Included('9')));
+        tree.insert((Included('_'), Included('_')));
+        assert_eq!(
+            read("[^a-zA-Z0-9_]", 0).unwrap(),
+            (CharacterClass(tree, true), 0)
+        );
 
-	assert_eq!(read("[a-zb-z]", 0).unwrap_err(), (8, String::from("Found 1 overlaps in character class from position 0 to position 8: (a-z,b-z)")));
+        assert_eq!(
+            read("[a-zb-z]", 0).unwrap_err(),
+            (
+                8,
+                String::from(
+                    "Found 1 overlaps in character class from position 0 to position 8: (a-z,b-z)"
+                )
+            )
+        );
     }
 
     #[test]
@@ -203,24 +224,33 @@ mod tests {
 
     #[test]
     fn build_char_class() {
-	use std::ops::Bound::Included;
-	use Instruction::*;
-	let mut tree = IntervalTree::default();
-	tree.insert((Included('a'), Included('z')));
-	tree.insert((Included('A'), Included('Z')));
-	tree.insert((Included('0'), Included('9')));
-	tree.insert((Included('_'), Included('_')));
-	let program = compile("[a-zA-Z0-9_]", 0).unwrap();
-	assert_eq!(program, (vec![CharacterClass(tree, false), Match(0)], 0));
+        use std::ops::Bound::Included;
+        use Instruction::*;
+        let mut tree = IntervalTree::default();
+        tree.insert((Included('a'), Included('z')));
+        tree.insert((Included('A'), Included('Z')));
+        tree.insert((Included('0'), Included('9')));
+        tree.insert((Included('_'), Included('_')));
+        let program = compile("[a-zA-Z0-9_]", 0).unwrap();
+        assert_eq!(program, (vec![CharacterClass(tree, false), Match(0)], 0));
     }
 
     #[test]
     fn build_word_boundary() {
-	use Instruction::*;
-	let program = compile(r"\b", 0).unwrap();
-	assert_eq!(program, (vec![WordBoundary, Match(0)], 0));
+        use Instruction::*;
+        let program = compile(r"\b", 0).unwrap();
+        assert_eq!(program, (vec![WordBoundary, Match(0)], 0));
     }
-    
+
+    #[test]
+    fn build_eof() {
+        use Instruction::*;
+        let program = compile(r"\z", 0).unwrap();
+        assert_eq!(program, (vec![EOF, Match(0)], 0));
+        let program = compile(r"\Z", 0).unwrap();
+        assert_eq!(program, (vec![EOF, Match(0)], 0));
+    }
+
     #[test]
     fn build_escaped() {
         use Instruction::*;
@@ -317,11 +347,19 @@ pub enum Regex {
     Group(Box<Regex>, usize),
     CharacterClass(IntervalTree<char>, bool),
     WordChar,
+    Digit,
+    Whitespace,
     WordBoundary,
+    EOF,
     Any,
     Empty,
 }
 
+/// # Summary
+///
+/// `RegexError` is an alias of a couple (usize, String).
+/// The first element is the position at which the error occured,
+/// and the second one is a description of the said error.
 pub type RegexError = (usize, String);
 
 impl Into<Regex> for (Regex, Option<Regex>) {
@@ -333,6 +371,14 @@ impl Into<Regex> for (Regex, Option<Regex>) {
     }
 }
 
+/// Take a `Regex`, and a reference to a `Program` and
+/// appends the implementation of the `Regex` at the
+/// end of the `Program`.
+///
+/// **Warning**: this function is recursive, and a malicious input
+/// may lead to a stack overflow. This is because this library
+/// is really meant to be used in a context in which the end user
+/// (the one providing the input) is also the one using the library.
 pub fn build(regex: Regex, program: &mut Program) {
     match regex {
         Regex::Char(c) => {
@@ -375,22 +421,21 @@ pub fn build(regex: Regex, program: &mut Program) {
             build(*r, program);
             program.push(Instruction::Save(2 * i + 1));
         }
-        Regex::Any => {
-            program.push(Instruction::Any);
-        }
-        Regex::WordChar => {
-            program.push(Instruction::WordChar);
-        }
-	Regex::WordBoundary => {
-	    program.push(Instruction::WordBoundary);
-	}
+        Regex::Any => program.push(Instruction::Any),
+        Regex::WordChar => program.push(Instruction::WordChar),
+        Regex::Digit => program.push(Instruction::Digit),
+        Regex::WordBoundary => program.push(Instruction::WordBoundary),
         Regex::CharacterClass(class, negated) => {
-            program.push(Instruction::CharacterClass(class, negated));
+            program.push(Instruction::CharacterClass(class, negated))
         }
+        Regex::EOF => program.push(Instruction::EOF),
+        Regex::Whitespace => program.push(Instruction::Whitespace),
         Regex::Empty => {}
     };
 }
 
+/// Compile a regex into a program executable on the VM.
+/// **This is a private function, please use the API instead.**
 pub fn compile(regex: &str, id: usize) -> Result<(Program, usize), RegexError> {
     let mut program = Vec::new();
     let (regex, nb_groups) = read(regex, 0)?;
@@ -399,7 +444,11 @@ pub fn compile(regex: &str, id: usize) -> Result<(Program, usize), RegexError> {
     Ok((program, nb_groups))
 }
 
+/// Parse a regex. The parsing technique is quite efficient,
+/// essentially linear time.
+/// **This is a private function, please use the API instead.**
 pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError> {
+    /// Parse a character class.
     fn read_char_class(
         input: &mut std::iter::Enumerate<std::str::Chars>,
         size: usize,
@@ -443,21 +492,23 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                         if let Some(cr) = last {
                             insert((Included(cr), Included(cr)), &mut tree, &mut overlaps);
                         }
-			match c {
-			    ']' => last = Some(c),
-			    't' => last = Some('\t'),
-			    'n' => last = Some('\n'),
-			    '^' => last = Some('^'),
-			    '-' => last = Some('-'),
-			    '\\' => last = Some('\\'),
-			    _ => return Err((
-				pos,
-				format!(
+                        match c {
+                            ']' => last = Some(c),
+                            't' => last = Some('\t'),
+                            'n' => last = Some('\n'),
+                            '^' => last = Some('^'),
+                            '-' => last = Some('-'),
+                            '\\' => last = Some('\\'),
+                            _ => {
+                                return Err((
+                                    pos,
+                                    format!(
                                     "Cannot escape character {}, try replacing /\\{}/ with /{}/",
                                     c, c, c
-                                )
-			    )),
-			};
+                                ),
+                                ))
+                            }
+                        };
                     } else {
                         return Err((
                             pos,
@@ -465,7 +516,7 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                         ));
                     }
                 }
-                '^' if pos == actual+1 => {
+                '^' if pos == actual + 1 => {
                     negated = true;
                 }
                 '-' => {
@@ -488,21 +539,21 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                         insert((Included(c), Included(c)), &mut tree, &mut overlaps);
                     }
                     if !overlaps.is_empty() {
-			let mut err_str = format!("Found {} overlaps in character class from position {} to position {}: ", overlaps.len(), actual, pos+1);
-			for overlap in overlaps {
-			    err_str.push('(');
-			    for (s, e) in overlap {
-				err_str.push(s);
-				err_str.push('-');
-				err_str.push(e);
-				err_str.push(',');
-			    }
-			    err_str.pop();
-			    err_str.push_str("), ");
-			}
-			err_str.pop();
-			err_str.pop();
-                        return Err((pos+1, err_str));
+                        let mut err_str = format!("Found {} overlaps in character class from position {} to position {}: ", overlaps.len(), actual, pos+1);
+                        for overlap in overlaps {
+                            err_str.push('(');
+                            for (s, e) in overlap {
+                                err_str.push(s);
+                                err_str.push('-');
+                                err_str.push(e);
+                                err_str.push(',');
+                            }
+                            err_str.pop();
+                            err_str.push_str("), ");
+                        }
+                        err_str.pop();
+                        err_str.pop();
+                        return Err((pos + 1, err_str));
                     } else {
                         return Ok(Regex::CharacterClass(tree, negated));
                     }
@@ -639,6 +690,7 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
             '\\' => {
                 if let Some((pos, chr)) = chrs.next() {
                     match chr {
+			'\\' | '.' | '(' | ')' | '?' | '+' | '*' | '|' | '$' | '^' | '[' => add(Regex::Char(chr), &mut stack),
 			'A' => return Err((
 			    pos,
 			    String::from("Start of the string anchor /\\A/ is not supported.")
@@ -647,15 +699,9 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
 			    pos,
 			    String::from("Not a line break shorthand /\\N/ is not supported. Try /[^\\n]/ instead.")
 			)),
-			'Z' => return Err((
-			    pos,
-			    String::from("EOF anchor /\\Z/ is not supported.")
-			)),
+			'Z' => add(Regex::EOF, &mut stack),
 			'b' => add(Regex::WordBoundary, &mut stack),
-			'd' => return Err((
-			    pos,
-			    String::from("Digit shorthand /\\d/ is not supported. Try /[0-9]/ instead.")
-			)),
+			'd' => add(Regex::Digit, &mut stack),
 			'h' => return Err((
 			    pos,
 			    String::from("Horizontal whitespace / hexadecimal digit shorthand /\\h/ is not supported. Try [0-9a-f] instead if you wanted hexadecimal digit.")
@@ -669,10 +715,7 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
 			    pos,
 			    String::from("Nonsense EOL /\\r/ is not supported. Try /\\n/ instead.")
 			)),
-			's' => return Err((
-			    pos,
-			    String::from("Whitespace shorthand /\\s/ is not supported. Try /[ \t]/ instead.")
-			)),
+			's' => add(Regex::Whitespace, &mut stack),
 			't' => add(Regex::Char('\t'), &mut stack),
 			'u' => return Err((
 			    pos,
@@ -687,10 +730,7 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
 			    pos,
 			    String::from("Hexadecimal escape /\\xFF/ is not supported.")
 			)),
-			'z' => return Err((
-			    pos,
-			    String::from("EOF anchor /\\z/ is not supported.")
-			)),
+			'z' => add(Regex::EOF, &mut stack),
                         _ => {
                             return Err((
                                 pos,

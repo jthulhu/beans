@@ -7,7 +7,6 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-regex = "1.3.9"
-hashbrown = "0.9.0"
-fixedbitset = "0.3.1"
+hashbrown = "0.9.1"
+fixedbitset = "0.3.2"
 unbounded-interval-tree = "0.2.3"

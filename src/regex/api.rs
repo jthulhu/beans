@@ -225,7 +225,7 @@ impl Match<'_> {
 
     /// Return the name of the regex which led to the match.
     pub fn name(&self) -> &str {
-	self.name
+        self.name
     }
 
     /// Return the groups of the regex. The position of each group is
@@ -291,7 +291,7 @@ impl CompiledRegex {
             }
             Some(Match {
                 length,
-		id: id,
+                id,
                 name: &self.names[id],
                 groups: grps,
                 text: &input[..length],
@@ -317,6 +317,25 @@ impl CompiledRegex {
 /// `new`: create a new `RegexBuilder`
 /// `with_named_regex`: add a regex, and bind it to the given name
 /// `build`: consume the `RegexBuilder` and return the `CompiledRegex`
+///
+/// # Examples
+///
+/// Match /(a+)|(b)/ where the first group is named `As` and the second `B`.
+/// ```
+/// # use beans::regex::RegexBuilder;
+/// let regex = RegexBuilder::new()
+///         .with_named_regex("a+", String::from("As"))
+///         .unwrap()
+///         .with_named_regex("b", String::from("B"))
+///         .unwrap()
+///         .build();
+///    let match1 = regex.find("aaacd").unwrap();
+///    assert_eq!(match1.length(), 3);
+///    assert_eq!(match1.name(), "As");
+///    let match2 = regex.find("bbbcd").unwrap();
+///    assert_eq!(match2.length(), 1);
+///    assert_eq!(match2.name(), "B");
+/// ```
 pub struct RegexBuilder {
     names: Vec<String>,
     regexes: Vec<Regex>,

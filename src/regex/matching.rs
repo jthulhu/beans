@@ -239,6 +239,7 @@ impl Thread {
 }
 
 /// Execute a single instruction for `thread`, in a given context.
+#[allow(clippy::too_many_arguments)]
 fn match_next(
     chr: char,
     pos: usize,

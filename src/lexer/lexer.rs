@@ -1,6 +1,6 @@
 use super::grammarparser::{LexerGrammar, LexerGrammarBuilder};
 use crate::error::{self, ExecutionError};
-use crate::location::Location;
+use crate::location::{CharLocation, Location};
 use crate::stream::{Stream, StreamObject, StringStream};
 use hashbrown::HashMap;
 use std::error::Error;
@@ -22,6 +22,8 @@ mod tests {
 
         assert_eq!(token.name(), "wow");
         assert_eq!(token.location().file(), "test_file");
+        assert_eq!(token.location().start(), (3, 0));
+        assert_eq!(token.location().end(), (3, 3));
     }
 
     #[test]
@@ -97,9 +99,23 @@ mod tests {
         assert!(lexer.get().is_none());
     }
 
+    fn verify_input(lexer: Lexer, result: &[(CharLocation, CharLocation, &str)]) {
+        let mut i = 0;
+        while let Some((token, loc)) = lexer.get_at(i) {
+            assert_eq!(*token.location(), loc);
+            let (start, end, name) = result[i];
+            assert_eq!(loc.start(), start);
+            assert_eq!(loc.end(), end);
+            assert_eq!(token.name(), name);
+            i += 1;
+        }
+
+        assert_eq!(result.len(), i);
+    }
+
     #[test]
     fn default_lex_grammar() {
-        let mut lexer = LexerBuilder::new()
+        let lexer = LexerBuilder::new()
             .with_grammar_file(String::from("gmrs/lexer.gmr"))
             .unwrap()
             .with_stream(StringStream::new(
@@ -113,17 +129,30 @@ mod tests {
             ((0, 4), (0, 5), "PLUS"),
             ((0, 6), (0, 9), "ID"),
         ];
-        let mut i = 0;
-        while let Some((token, loc)) = lexer.get_at(i) {
-            assert_eq!(*token.location(), loc);
-            let (start, end, name) = result[i];
-            assert_eq!(loc.start(), start);
-            assert_eq!(loc.end(), end);
-            assert_eq!(token.name(), name);
-            i += 1;
-        }
+        verify_input(lexer, &result);
 
-        assert_eq!(result.len(), i);
+        let lexer = LexerBuilder::new()
+            .with_grammar_file(String::from("gmrs/lexer.gmr"))
+            .unwrap()
+            .with_stream(StringStream::new(
+                String::from("<input>"),
+                String::from("if true and false {\n\tifeat(\"something\")\n}"),
+            ))
+            .build()
+            .unwrap();
+        let result = [
+            ((0, 0), (0, 2), "IF"),
+            ((0, 3), (0, 7), "TRUE"),
+            ((0, 8), (0, 11), "AND"),
+            ((0, 12), (0, 17), "FALSE"),
+            ((0, 18), (0, 19), "LBRACE"),
+            ((1, 1), (1, 6), "ID"),
+            ((1, 6), (1, 7), "LPAR"),
+            ((1, 7), (1, 18), "STRING"),
+            ((1, 18), (1, 19), "RPAR"),
+            ((2, 0), (2, 1), "RBRACE"),
+        ];
+        verify_input(lexer, &result);
     }
 }
 
@@ -284,10 +313,10 @@ impl Lexer {
             {
                 let start = self.stream.pos();
                 let end = start + result.length();
-		self.stream.set_pos(end);
-		if self.grammar.ignored(result.id()) {
-		    continue;
-		}
+                self.stream.set_pos(end);
+                if self.grammar.ignored(result.id()) {
+                    continue;
+                }
                 let location = Location::from_stream_pos(
                     self.stream.origin().to_string(),
                     &self.stream.borrow(),

@@ -166,31 +166,29 @@ impl LexerGrammarBuilder {
         self
     }
 
-    pub fn build(&mut self) -> Result<LexerGrammar, Error> {
-        let stream = match &mut self.stream {
-            Some(l) => l,
-            None => {
-                return Err((
-                    Location::new(String::from("<Beans source code>"), (0, 0), (0, 0)),
-                    ErrorType::InternalError(String::from("")),
-                )
-                    .into())
-            }
-        };
+    pub fn build(mut self) -> Result<LexerGrammar, Error> {
+	let mut stream = self
+	    .stream
+	    .ok_or(
+		(
+		    Location::new(String::from("<Beans source code>"), (0, 0), (0, 0)),
+		    ErrorType::InternalError(String::new())
+		)
+	    )?;
         let size = stream.len();
         let mut ignores = HashSet::<String>::new();
         let mut names = vec![];
         let mut regex_builder = RegexBuilder::new();
-        Self::ignore_blank_lines(stream);
+        Self::ignore_blank_lines(&mut stream);
         while stream.pos() < size {
-            let ignore = Self::read_keyword(stream, "ignore");
-            Self::ignore_blank(stream);
-            let name = Self::read_id(stream)?;
-            Self::ignore_blank(stream);
-            Self::ignore_assignment(stream)?;
-            Self::ignore_blank(stream);
+            let ignore = Self::read_keyword(&mut stream, "ignore");
+            Self::ignore_blank(&mut stream);
+            let name = Self::read_id(&mut stream)?;
+            Self::ignore_blank(&mut stream);
+            Self::ignore_assignment(&mut stream)?;
+            Self::ignore_blank(&mut stream);
             let start = stream.pos();
-            let pattern = Self::read_pattern(stream);
+            let pattern = Self::read_pattern(&mut stream);
             regex_builder = regex_builder
                 .with_named_regex(pattern.as_str(), name.clone())
                 .map_err(|(_, message)| {
@@ -208,7 +206,7 @@ impl LexerGrammarBuilder {
             if ignore {
                 ignores.insert(name);
             }
-            Self::ignore_blank_lines(stream);
+            Self::ignore_blank_lines(&mut stream);
         }
         let re = regex_builder.build();
         let mut ignores_bitset = FixedBitSet::with_capacity(names.len());

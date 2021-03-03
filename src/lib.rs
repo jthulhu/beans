@@ -8,6 +8,7 @@ pub mod lexer;
 pub mod location;
 pub mod regex;
 pub mod stream;
+mod utilities;
 // pub mod parser;
 
 use lexer::Lexer;

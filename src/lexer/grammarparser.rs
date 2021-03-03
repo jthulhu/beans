@@ -2,6 +2,7 @@ use crate::error::{Error, ErrorType};
 use crate::location::Location;
 use crate::regex::{CompiledRegex, RegexBuilder};
 use crate::stream::{Char, Stream, StringStream};
+use crate::retrieve;
 use fixedbitset::FixedBitSet;
 use hashbrown::HashSet;
 use std::error;
@@ -160,21 +161,14 @@ impl LexerGrammarBuilder {
         self.stream = Some(stream);
         Ok(self)
     }
-
+    
     pub fn with_stream(mut self, stream: StringStream) -> Self {
         self.stream = Some(stream);
         self
     }
 
     pub fn build(mut self) -> Result<LexerGrammar, Error> {
-	let mut stream = self
-	    .stream
-	    .ok_or(
-		(
-		    Location::new(String::from("<Beans source code>"), (0, 0), (0, 0)),
-		    ErrorType::InternalError(String::new())
-		)
-	    )?;
+	let mut stream = retrieve!(self.stream);
         let size = stream.len();
         let mut ignores = HashSet::<String>::new();
         let mut names = vec![];

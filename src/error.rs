@@ -1,25 +1,7 @@
 use crate::location::Location;
 use std::error;
 use std::fmt;
-
-#[derive(Debug)]
-pub struct ExecutionError {
-    description: String,
-}
-
-impl ExecutionError {
-    pub fn new(description: String) -> Self {
-        Self { description }
-    }
-}
-
-impl std::fmt::Display for ExecutionError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(formatter, "{}", self.description)
-    }
-}
-
-impl error::Error for ExecutionError {}
+use std::io;
 
 /// # Summary
 ///
@@ -35,6 +17,8 @@ pub enum ErrorType {
     InternalError(String),
     LexerGrammarSyntax(String),
     LexingError(String),
+    GrammarDuplicateDefinition(String, Location),
+    GrammarSyntaxError(String),
 }
 
 /// # Summary
@@ -49,9 +33,22 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use ErrorType::*;
         let (type_, msg) = match &self.1 {
-            LexerGrammarSyntax(msg) => ("Syntax error within the lexer's grammar", msg),
-            LexingError(msg) => ("Error while lexing", msg),
-            InternalError(msg) => ("Internal Error, this should not happend", msg),
+            LexerGrammarSyntax(msg) => ("Syntax error within the lexer's grammar", msg.clone()),
+            LexingError(msg) => ("Error while lexing", msg.clone()),
+            InternalError(msg) => ("Internal Error, this should not happend", msg.clone()),
+            GrammarDuplicateDefinition(name, pos) => (
+                "Duplicate definition in grammar",
+                format!(
+                    "{} is already definded in file {}, from {}:{} to {}:{}",
+                    name,
+                    pos.file(),
+                    pos.start().0,
+                    pos.start().1,
+                    pos.end().0,
+                    pos.end().1
+                ),
+            ),
+            GrammarSyntaxError(msg) => ("Syntax error within the grammar", msg.clone()),
         };
         write!(
             f,

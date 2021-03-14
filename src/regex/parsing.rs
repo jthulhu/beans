@@ -331,6 +331,39 @@ mod tests {
             )
         )
     }
+
+    #[test]
+    fn build_string() {
+        use Instruction::*;
+	use std::collections::Bound::Included;
+        let program = compile(r"'(([^'\\]|\\[^\\]|\\\\)*)'", 0).unwrap();
+	let mut first_char_class = IntervalTree::default();
+	first_char_class.insert((Included('\''), Included('\'')));
+	first_char_class.insert((Included('\\'), Included('\\')));
+	let mut second_char_class = IntervalTree::default();
+	second_char_class.insert((Included('\\'), Included('\\')));
+	let correct = vec![
+	    Char('\''),
+	    Save(0),
+	    Split(3,15),
+	    Save(2),
+	    Split(5, 11),
+	    Split(6, 8),
+	    CharacterClass(first_char_class, true),
+	    Jump(10),
+	    Char('\\'),
+	    CharacterClass(second_char_class, true),
+	    Jump(13),
+	    Char('\\'),
+	    Char('\\'),
+	    Save(3),
+	    Jump(2),
+	    Save(1),
+	    Char('\''),
+	    Match(0)
+	];
+        assert_eq!(program, (correct, 2));
+    }
 }
 
 /// # Summary
@@ -503,7 +536,7 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                                 return Err((
                                     pos,
                                     format!(
-                                    "Cannot escape character {}, try replacing /\\{}/ with /{}/",
+                                    "Cannot escape character inside character class {}, try replacing /\\{}/ with /{}/",
                                     c, c, c
                                 ),
                                 ))
@@ -569,9 +602,9 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
         Err((size, format!("Expected end of character class, but found EOF. Try adding ']' if you really meant to have a character class, or adding '\\' at position {} if you didn't want a character class", actual)))
     }
 
-    fn add(regex: Regex, stack: &mut Vec<(Regex, Option<Regex>)>) {
-        let (last, remainder) = stack.pop().unwrap();
-        stack.push((concat(last, regex), remainder));
+    fn add(regex: Regex, stack: &mut Vec<(Regex, Option<Regex>, usize)>) {
+        let (last, remainder, group) = stack.pop().unwrap();
+        stack.push((concat(last, regex), remainder, group));
     }
 
     fn concat(left: Regex, right: Regex) -> Regex {
@@ -640,13 +673,14 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
         }
     }
 
-    let mut stack = vec![(Regex::Empty, None)];
+    let mut stack = vec![(Regex::Empty, None, 0)];
     let mut chrs = regex.chars().enumerate();
     let size = regex.chars().count();
     while let Some((pos, chr)) = chrs.next() {
         match chr {
             '(' => {
-                stack.push((Regex::Empty, None));
+                stack.push((Regex::Empty, None, groups));
+		groups += 1;
             }
             ')' => {
                 if stack.len() <= 1 {
@@ -656,27 +690,28 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                     ));
                 }
                 {
-                    let group = Regex::Group(Box::new(stack.pop().unwrap().into()), groups);
-                    groups += 1;
-                    let (last, remainder) = stack.pop().unwrap();
-                    stack.push((concat(last, group), remainder));
+		    let (last, remainder, nb_group) = stack.pop().unwrap();
+                    let group = Regex::Group(Box::new((last, remainder).into()), nb_group);
+                    let (last, remainder, nb_group) = stack.pop().unwrap();
+                    stack.push((concat(last, group), remainder, nb_group));
                 }
             }
             '?' => {
-                let (last, remainder) = stack.pop().unwrap();
-                stack.push((optional(last, pos)?, remainder));
+                let (last, remainder, nb_group) = stack.pop().unwrap();
+                stack.push((optional(last, pos)?, remainder, nb_group));
             }
             '*' => {
-                let (last, remainder) = stack.pop().unwrap();
-                stack.push((kleene_star(last, pos)?, remainder));
+                let (last, remainder, nb_group) = stack.pop().unwrap();
+                stack.push((kleene_star(last, pos)?, remainder, nb_group));
             }
             '+' => {
-                let (last, remainder) = stack.pop().unwrap();
-                stack.push((repetition(last, pos)?, remainder));
+                let (last, remainder, nb_group) = stack.pop().unwrap();
+                stack.push((repetition(last, pos)?, remainder, nb_group));
             }
             '|' => {
-                let last = stack.pop().unwrap().into();
-                stack.push((Regex::Empty, Some(last)));
+		let (l, remainder, group) = stack.pop().unwrap();
+                let last = (l, remainder).into();
+                stack.push((Regex::Empty, Some(last), group));
             }
 	    '$' => return Err((
 		pos,
@@ -765,6 +800,12 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
             ),
         ))
     } else {
-        Ok((stack.pop().unwrap().into(), groups))
+        Ok((
+            {
+                let (last, remainder, _) = stack.pop().unwrap();
+                (last, remainder).into()
+            },
+            groups,
+        ))
     }
 }

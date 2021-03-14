@@ -104,9 +104,9 @@ impl Location {
         let mut current_pos = 0;
         assert!(start_pos <= end_pos);
         let start;
-        let mut chr;
+        let mut chrs = stream.chars();
+	let mut chr = chrs.next();
         loop {
-            chr = stream.chars().nth(current_pos);
             if current_pos == start_pos || chr.is_none() {
                 start = (current_line, current_char);
                 break;
@@ -117,11 +117,11 @@ impl Location {
             } else {
                 current_char += 1;
             }
+	    chr = chrs.next();
             current_pos += 1;
         }
         let end;
         loop {
-            chr = stream.chars().nth(current_pos);
             if current_pos == end_pos || chr.is_none() {
                 end = (current_line, current_char);
                 break;
@@ -133,10 +133,19 @@ impl Location {
             } else {
                 current_char += 1;
             }
+	    chr = chrs.next();
             current_pos += 1;
         }
 
         Self { file, start, end }
+    }
+
+    pub fn extend(left: Self, right: Self) -> Self {
+        Self {
+            file: left.file,
+            start: left.start,
+            end: right.end,
+        }
     }
 
     /// Returns the file from which the data is taken.
@@ -152,5 +161,23 @@ impl Location {
     /// Returns the location of the end of the chunk of data in the file
     pub fn end(&self) -> CharLocation {
         self.end
+    }
+}
+
+pub struct LocationBuilder {
+    file: String,
+    stream: String
+}
+
+impl LocationBuilder {
+    pub fn new(file: String, stream: String) -> Self {
+	Self {
+	    file,
+	    stream
+	}
+    }
+
+    pub fn from(&self, start: usize, end: usize) -> Location {
+	Location::from_stream_pos(self.file.clone(), &self.stream, start, end)
     }
 }

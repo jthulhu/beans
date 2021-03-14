@@ -1,0 +1,21 @@
+ignore SPACE ::= \s
+ignore EOL ::= \n
+ignore COMMENT ::= \(\*.*\*\)
+
+INT ::= ([+\-]?\d+)
+STRING ::= "(([^"\\]|(\\[^\\])|(\\\\))*)"
+FLOAT ::= ([+\-]?\d+\.\d+)
+BOOL ::= (true|false)\b
+ID ::= (\w+)
+
+LPROXY ::= <
+RPROXY ::= >
+
+ASSIGNMENT ::= ::=
+COLON ::= :
+SEMICOLON ::= ;
+COMMA ::= ,
+
+AT ::= @
+DOT ::= \.
+LINE ::= \|

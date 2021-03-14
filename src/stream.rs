@@ -1,4 +1,6 @@
 use crate::location::Location;
+use std::fs::File;
+use std::io::prelude::*;
 
 #[cfg(test)]
 mod tests {
@@ -20,7 +22,7 @@ mod tests {
                         i, &string
                     ));
                 }
-                let location = Location::from_stream_pos(origin.clone(), &string[..], i, i);
+                let location = Location::from_stream_pos(origin.clone(), &string, i, i);
                 assert_eq!(location, loc);
             } else {
                 if let Char::Char(_) = chr {
@@ -31,7 +33,7 @@ mod tests {
                 }
                 let location = Location::from_stream_pos(
                     origin.clone(),
-                    &string[..],
+                    &string,
                     string.len(),
                     string.len(),
                 );
@@ -77,6 +79,16 @@ pub trait Stream<'a> {
     /// Get the object at the current position.
     fn get(&'a self) -> Option<StreamObject<Self::Output>> {
         self.get_at(self.pos())
+    }
+
+    fn get_loc_of(&'a self, pos: usize) -> Option<Location> {
+        self.get_at(pos).and_then(|(_, location)| Some(location))
+    }
+
+    fn next(&'a mut self) -> Option<StreamObject<Self::Output>> {
+        let pos = self.pos();
+        self.pos_pp();
+        self.get_at(pos)
     }
 }
 
@@ -139,6 +151,13 @@ impl StringStream {
                 (current_line, current_char),
             ),
         }
+    }
+
+    pub fn from_file(file: String) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut file_stream = File::open(file.as_str())?;
+        let mut stream_buffer = String::new();
+        file_stream.read_to_string(&mut stream_buffer)?;
+        Ok(StringStream::new(file, stream_buffer))
     }
 
     /// Return a boolean corresponding to whether the substring of

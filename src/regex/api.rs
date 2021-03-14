@@ -55,6 +55,15 @@ mod tests {
                 Match(1)
             ]
         );
+
+        // let regex = RegexBuilder::new()
+        //     .with_named_regex(r"'(([^'\\]|(\\[^\\])|(\\\\))*)'", String::from("STRING"))
+        //     .unwrap()
+        //     .build();
+        // assert_eq!(
+        //     regex.program,
+        //     Vec::new()
+        // );
     }
 
     #[test]

@@ -6,9 +6,9 @@ extern crate unbounded_interval_tree;
 pub mod error;
 pub mod lexer;
 pub mod location;
+pub mod parser;
 pub mod regex;
 pub mod stream;
 mod utilities;
-// pub mod parser;
 
 use lexer::Lexer;

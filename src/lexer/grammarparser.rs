@@ -1,10 +1,10 @@
 use crate::error::{Error, ErrorType};
 use crate::location::Location;
 use crate::regex::{CompiledRegex, RegexBuilder};
-use crate::stream::{Char, Stream, StringStream};
 use crate::retrieve;
+use crate::stream::{Char, Stream, StringStream};
 use fixedbitset::FixedBitSet;
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use std::error;
 use std::fs::File;
 use std::io::prelude::*;
@@ -153,22 +153,24 @@ impl LexerGrammarBuilder {
         Self { stream: None }
     }
 
-    pub fn with_file(mut self, file: String) -> Result<Self, Box<dyn error::Error>> {
-        let mut file_stream = File::open(file.as_str())?;
-        let mut stream_buffer = String::new();
-        file_stream.read_to_string(&mut stream_buffer)?;
-        let stream = StringStream::new(file, stream_buffer);
-        self.stream = Some(stream);
+    pub fn with_file(mut self, file: String) -> Result<Self, Error> {
+        self.stream = Some(StringStream::from_file(file).map_err(|x| {
+            let pos = (line!() as usize, column!() as usize);
+            Error::from((
+                Location::new(file!().to_string(), pos, pos),
+                ErrorType::InternalError(format!("IO error: {}", x)),
+            ))
+        })?);
         Ok(self)
     }
-    
+
     pub fn with_stream(mut self, stream: StringStream) -> Self {
         self.stream = Some(stream);
         self
     }
 
     pub fn build(mut self) -> Result<LexerGrammar, Error> {
-	let mut stream = retrieve!(self.stream);
+        let mut stream = retrieve!(self.stream);
         let size = stream.len();
         let mut ignores = HashSet::<String>::new();
         let mut names = vec![];
@@ -306,14 +308,20 @@ pub struct LexerGrammar {
     pattern: CompiledRegex,
     names: Vec<String>,
     ignores: FixedBitSet,
+    name_map: HashMap<String, usize>,
 }
 
 impl LexerGrammar {
     pub fn new(pattern: CompiledRegex, names: Vec<String>, ignores: FixedBitSet) -> Self {
+        let mut name_map = HashMap::new();
+        for (i, name) in names.iter().enumerate() {
+            name_map.insert(name.clone(), i);
+        }
         Self {
             pattern,
             names,
             ignores,
+            name_map,
         }
     }
 
@@ -327,5 +335,13 @@ impl LexerGrammar {
 
     pub fn pattern(&self) -> &CompiledRegex {
         &self.pattern
+    }
+
+    pub fn has_token(&self, token: &str) -> bool {
+        self.name_map.contains_key(token)
+    }
+
+    pub fn id(&self, name: &str) -> Option<usize> {
+        self.name_map.get(name).and_then(|x| Some(*x))
     }
 }

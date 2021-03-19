@@ -1,8 +1,9 @@
-use crate::error::{Error, ErrorType};
+use crate::error::{Error, ErrorType, WarningType};
 use crate::lexer::{Lexer, LexerBuilder, Token};
 use crate::location::Location;
-use crate::retrieve;
+use crate::{retrieve, ask_case};
 use crate::stream::{Stream, StreamObject, StringStream};
+use crate::Case;
 use fixedbitset::FixedBitSet;
 use hashbrown::HashMap;
 use std::error;
@@ -26,6 +27,17 @@ pub type RuleElement = (String, Attribute, Option<Key>);
 pub type Proxy = HashMap<String, Value>;
 pub type Rule = (Vec<RuleElement>, Proxy);
 
+/// # Summary
+///
+/// `Value` is an typed value that may be present in a grammar.
+///
+/// # Variants
+///
+/// `Int` is a signed integer (on 32 bits).
+/// `Str` is a string.
+/// `Id` is an identifier.
+/// `Float` is a floating point number (on 32 bits).
+/// `Bool` is a boolean.
 #[derive(Debug)]
 pub enum Value {
     Int(i32),
@@ -35,6 +47,9 @@ pub enum Value {
     Bool(bool),
 }
 
+/// # Summary
+///
+/// `Attribute` identifies a child element of the node that will take the node's value.
 #[derive(Debug)]
 pub enum Attribute {
     Named(String),
@@ -258,7 +273,8 @@ impl GrammarBuilder {
         Ok((name.content().to_string(), rules))
     }
 
-    pub fn build(mut self) -> Result<Grammar, Error> {
+    pub fn build(mut self) -> Result<(Grammar, Vec<WarningType>), Error> {
+	let mut warnings = Vec::new();
         let mut stream = retrieve!(self.stream);
         let mut lexer = LexerBuilder::new()
             .with_stream(stream)
@@ -280,10 +296,17 @@ impl GrammarBuilder {
                     ErrorType::GrammarDuplicateDefinition(name, old_location.clone()),
                 )));
             }
+	    if lexer.grammar().contains(&name) {
+		return Err(Error::from((
+		    location,
+		    ErrorType::GrammarNonTerminalDuplicate(name)
+		)));
+	    }
+	    ask_case!(name, PascalCase, warnings);
             done.insert(name, location);
         }
 
-        Ok(Grammar::new(Vec::new(), RuleSet::with_capacity(0), lexer))
+        Ok((Grammar::new(Vec::new(), RuleSet::with_capacity(0), lexer), warnings))
     }
 }
 

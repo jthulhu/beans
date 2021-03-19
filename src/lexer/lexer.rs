@@ -657,6 +657,10 @@ impl Lexer {
     pub fn last_location(&self) -> &Location {
         &self.last_location
     }
+
+    pub fn grammar(&self) -> &LexerGrammar {
+	&self.grammar
+    }
 }
 
 impl<'a> Stream<'a> for Lexer {

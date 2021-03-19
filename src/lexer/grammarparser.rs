@@ -329,6 +329,10 @@ impl LexerGrammar {
         &self.names[idx][..]
     }
 
+    pub fn contains(&self, name: &str) -> bool {
+	self.name_map.contains_key(name)
+    }
+    
     pub fn ignored(&self, idx: usize) -> bool {
         self.ignores.contains(idx)
     }

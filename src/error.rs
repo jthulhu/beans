@@ -1,4 +1,5 @@
 use crate::location::Location;
+use crate::Case;
 use std::error;
 use std::fmt;
 use std::io;
@@ -18,7 +19,13 @@ pub enum ErrorType {
     LexerGrammarSyntax(String),
     LexingError(String),
     GrammarDuplicateDefinition(String, Location),
+    GrammarNonTerminalDuplicate(String),
     GrammarSyntaxError(String),
+}
+
+#[derive(Debug)]
+pub enum WarningType {
+    CaseConvention(String, Case, Vec<Case>)
 }
 
 /// # Summary

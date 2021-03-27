@@ -20,7 +20,7 @@ macro_rules! retrieve {
 macro_rules! ask_case {
     ($string:expr, $case:ident, $warnings:expr) => {
 	let string = &$string;
-	use crate::{Case, error::WarningType};
+	use crate::{case::Case, error::WarningType};
 	match Case::case(string) {
 	    Case::$case => {}
 	    c => $warnings.push(WarningType::CaseConvention(string.to_string(), c, vec![Case::$case]))

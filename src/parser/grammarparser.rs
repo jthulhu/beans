@@ -3,7 +3,7 @@ use crate::lexer::{Lexer, LexerBuilder, Token};
 use crate::location::Location;
 use crate::{retrieve, ask_case};
 use crate::stream::{Stream, StreamObject, StringStream};
-use crate::Case;
+use crate::case::Case;
 use fixedbitset::FixedBitSet;
 use hashbrown::HashMap;
 use std::error;
@@ -13,7 +13,7 @@ use std::io::prelude::*;
 #[cfg(test)]
 mod tests {
     use super::*;
-    // #[test]
+    #[test]
     fn grammar_builder() {
         assert!(GrammarBuilder::new().build().is_err());
 

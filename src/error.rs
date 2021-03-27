@@ -1,5 +1,5 @@
 use crate::location::Location;
-use crate::Case;
+use crate::case::Case;
 use std::error;
 use std::fmt;
 use std::io;
@@ -56,6 +56,7 @@ impl fmt::Display for Error {
                 ),
             ),
             GrammarSyntaxError(msg) => ("Syntax error within the grammar", msg.clone()),
+	    GrammarNonTerminalDuplicate(msg) => ("Duplicate definition of a non terminal", msg.clone())
         };
         write!(
             f,

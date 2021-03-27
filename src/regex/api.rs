@@ -144,26 +144,6 @@ mod tests {
 /// `end`: return the end position of the region (exclusive)
 /// `text`: return the captured region as a slice of the input
 /// `length`: return the length of the captured region
-///
-/// # Example
-///
-/// Let `handle` be the `Handle` for the `4567` substring in
-///
-/// ```text
-/// 012345678910
-/// ```
-///
-/// Then
-///
-/// ```rust
-/// # use beans::regex::Handle;
-/// # let string = "012345678910";
-/// # let handle = Handle::new(4, 8, &string[4..8]);
-/// assert_eq!(handle.start(), 4);
-/// assert_eq!(handle.end(), 8);
-/// assert_eq!(handle.text(), "4567");
-/// assert_eq!(handle.length(), 4);
-/// ```
 #[derive(Debug)]
 pub struct Handle<'a> {
     start: usize,
@@ -327,24 +307,6 @@ impl CompiledRegex {
 /// `with_named_regex`: add a regex, and bind it to the given name
 /// `build`: consume the `RegexBuilder` and return the `CompiledRegex`
 ///
-/// # Examples
-///
-/// Match /(a+)|(b)/ where the first group is named `As` and the second `B`.
-/// ```
-/// # use beans::regex::RegexBuilder;
-/// let regex = RegexBuilder::new()
-///         .with_named_regex("a+", String::from("As"))
-///         .unwrap()
-///         .with_named_regex("b", String::from("B"))
-///         .unwrap()
-///         .build();
-///    let match1 = regex.find("aaacd").unwrap();
-///    assert_eq!(match1.length(), 3);
-///    assert_eq!(match1.name(), "As");
-///    let match2 = regex.find("bbbcd").unwrap();
-///    assert_eq!(match2.length(), 1);
-///    assert_eq!(match2.name(), "B");
-/// ```
 pub struct RegexBuilder {
     names: Vec<String>,
     regexes: Vec<Regex>,

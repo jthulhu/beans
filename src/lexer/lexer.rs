@@ -1,8 +1,8 @@
 use super::grammarparser::{LexerGrammar, LexerGrammarBuilder};
-use crate::error::{Error, ErrorType};
+use crate::error::{Error, ErrorType, WResult, WarningSet};
 use crate::location::{CharLocation, Location, LocationBuilder};
-use crate::retrieve;
 use crate::stream::{Stream, StreamObject, StringStream};
+use crate::{ctry, retrieve};
 use hashbrown::HashMap;
 use std::fmt;
 use std::fs::File;
@@ -31,6 +31,21 @@ mod tests {
 	($content: ident) => {
 	    test_token!(ID 0=$content)
 	}
+    }
+
+    #[derive(Debug)]
+    struct TestToken {
+        name: String,
+        attributes: HashMap<usize, String>,
+    }
+
+    impl PartialEq<Token> for TestToken {
+        fn eq(&self, right: &Token) -> bool {
+            self.name == right.name
+                && self.attributes.iter().all(|(key, value)| {
+                    right.attributes.get(&key).filter(|&v| v == value).is_some()
+                })
+        }
     }
 
     #[test]
@@ -176,7 +191,6 @@ mod tests {
         ];
         verify_input(lexer, &result);
     }
-
 
     #[test]
     fn default_parser_grammar() {
@@ -395,6 +409,7 @@ mod tests {
             test_token!(RPROXY),
             test_token!(SEMICOLON),
             // StatementList
+            test_token!(AT),
             id_token!(StatementList),
             test_token!(ASSIGNMENT),
             id_token!(StatementList),
@@ -415,35 +430,29 @@ mod tests {
             test_token!(RPROXY),
             test_token!(SEMICOLON),
         ];
-	
+
         for (i, tok) in result.iter().enumerate() {
             let (token, loc) = lexer
                 .next()
                 .expect(format!("Expected token named {}, found EOF", tok.name).as_str());
-            assert_eq!(tok, token, "Lexer error @{} {}:{} does not match token #{}", loc.file(), loc.start().0+1, loc.end().0+1, i);
+            assert_eq!(
+                tok,
+                token,
+                "Lexer error @{} {}:{} does not match token #{}",
+                loc.file(),
+                loc.start().0 + 1,
+                loc.end().0 + 1,
+                i
+            );
         }
-	if let Some((tok, loc)) = lexer.next() {
-	    panic!("Lexer error @{} {}:{} does not match token EOF", loc.file(), loc.start().0+1, loc.end().0+1);
-	}
-    }
-}
-
-#[derive(Debug)]
-struct TestToken {
-    name: String,
-    attributes: HashMap<usize, String>,
-}
-
-impl PartialEq<Token> for TestToken {
-    fn eq(&self, right: &Token) -> bool {
-        self.name == right.name && self.attributes
-	    .iter()
-	    .all(|(key, value)| right
-		 .attributes
-		 .get(&key)
-		 .filter(|&v| v == value)
-		 .is_some()
-	    )
+        if let Some((tok, loc)) = lexer.next() {
+            panic!(
+                "Lexer error @{} {}:{} does not match token EOF",
+                loc.file(),
+                loc.start().0 + 1,
+                loc.end().0 + 1
+            );
+        }
     }
 }
 
@@ -549,17 +558,25 @@ impl LexerBuilder {
     }
 
     /// Specify the lexer's grammar file.
-    pub fn with_grammar_file(mut self, file: String) -> Result<Self, Error> {
-        let grammar = LexerGrammarBuilder::new().with_file(file)?.build()?;
+    pub fn with_grammar_file(mut self, file: String) -> WResult<Self> {
+        let mut warnings = WarningSet::empty();
+        let grammar = ctry!(
+            ctry!(LexerGrammarBuilder::new().with_file(file), warnings).build(),
+            warnings
+        );
         self.grammar = Some(grammar);
-        Ok(self)
+        WResult::WOk(self, warnings)
     }
 
     /// Build the lexer.
-    pub fn build(mut self) -> Result<Lexer, Error> {
-        let mut lexer = Lexer::new(retrieve!(self.stream), retrieve!(self.grammar));
-        lexer.lex()?;
-        Ok(lexer)
+    pub fn build(mut self) -> WResult<Lexer> {
+        let mut warnings = WarningSet::empty();
+        let mut lexer = Lexer::new(
+            retrieve!(self.stream, warnings),
+            retrieve!(self.grammar, warnings),
+        );
+        ctry!(lexer.lex().into(), warnings);
+        WResult::WOk(lexer, warnings)
     }
 }
 
@@ -602,11 +619,12 @@ impl Lexer {
     /// Consume the input stream until everything could be converted to a token stream or an error was detected.
     /// You should use instead the methods provided by the `Stream` trait.
     fn lex(&mut self) -> Result<(), Error> {
-	let mut nb_iterations = 0;
+        let mut nb_iterations = 0;
         self.stream.set_pos(0);
-	let location_builder = LocationBuilder::new(self.stream.origin().to_string(), self.stream.borrow());
+        let location_builder =
+            LocationBuilder::new(self.stream.origin().to_string(), self.stream.borrow());
         while self.stream.pos() < self.stream.len() {
-	    nb_iterations += 1;
+            nb_iterations += 1;
             if let Some(result) = self
                 .grammar
                 .pattern()
@@ -619,10 +637,7 @@ impl Lexer {
                     continue;
                 }
 
-                let location = location_builder.from(
-                    start,
-                    end,
-                );
+                let location = location_builder.from(start, end);
 
                 let name = result.name().to_string();
                 let mut attributes = HashMap::new();
@@ -634,11 +649,10 @@ impl Lexer {
                 let token = Token::new(name, attributes, location.clone());
                 self.tokens.push((token, location));
             } else {
-                return Err((
+                return Err(Error::new(
                     self.stream.get_at(self.stream.pos()).unwrap().1,
                     ErrorType::LexingError(String::from("cannot recognize a token there")),
-                )
-                    .into());
+                ));
             }
         }
 
@@ -650,7 +664,7 @@ impl Lexer {
         );
 
         self.last_location = location;
-	
+
         Ok(())
     }
 
@@ -659,7 +673,7 @@ impl Lexer {
     }
 
     pub fn grammar(&self) -> &LexerGrammar {
-	&self.grammar
+        &self.grammar
     }
 }
 

@@ -3,11 +3,12 @@ extern crate fixedbitset;
 extern crate hashbrown;
 extern crate unbounded_interval_tree;
 
+mod case;
 pub mod error;
 pub mod lexer;
 pub mod location;
 pub mod parser;
-pub mod stream;
 pub mod regex;
+pub mod stream;
 mod utilities;
-mod case;
+pub use utilities::*;

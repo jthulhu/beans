@@ -7,8 +7,8 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-hashbrown = "0.9.1"
-fixedbitset = "0.3.2"
+hashbrown = "0.11.2"
+fixedbitset = "0.4.0"
 unbounded-interval-tree = "0.2.3"
 # serde = { version = "1.0.123", features = ["derive"] }
 # bincode = "1.3.2"

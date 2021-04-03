@@ -636,9 +636,10 @@ impl Lexer {
                 if self.grammar.ignored(result.id()) {
                     continue;
                 }
-
+		
                 let location = location_builder.from(start, end);
 
+		
                 let name = result.name().to_string();
                 let mut attributes = HashMap::new();
                 for (i, attr) in result.groups().iter().enumerate() {

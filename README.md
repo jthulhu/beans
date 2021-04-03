@@ -11,7 +11,7 @@
 Beans is a language-oriented programing language.
 It may change it's syntax, and the attached semantic, during compilation, in order to always write idiomatic code, no matter what problem you are trying to solve
 
-*Warning*: Beans is still in pre-release, and only the `rust-dev` branch is being developed, as it will soon become the master one.
-The python implementation is only a proof-of-concept.
+*Warning*: Beans is still in pre-release.
+The python implementation is only a proof-of-concept, which is now considered discontinued.
 
 This project is maintained by TheBlackBeans.

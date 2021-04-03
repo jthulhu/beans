@@ -105,7 +105,7 @@ impl Location {
         assert!(start_pos <= end_pos);
         let start;
         let mut chrs = stream.chars();
-	let mut chr = chrs.next();
+        let mut chr = chrs.next();
         loop {
             if current_pos == start_pos || chr.is_none() {
                 start = (current_line, current_char);
@@ -117,7 +117,7 @@ impl Location {
             } else {
                 current_char += 1;
             }
-	    chr = chrs.next();
+            chr = chrs.next();
             current_pos += 1;
         }
         let end;
@@ -133,7 +133,7 @@ impl Location {
             } else {
                 current_char += 1;
             }
-	    chr = chrs.next();
+            chr = chrs.next();
             current_pos += 1;
         }
 
@@ -166,18 +166,15 @@ impl Location {
 
 pub struct LocationBuilder {
     file: String,
-    stream: String
+    stream: String,
 }
 
 impl LocationBuilder {
     pub fn new(file: String, stream: String) -> Self {
-	Self {
-	    file,
-	    stream
-	}
+        Self { file, stream }
     }
 
     pub fn from(&self, start: usize, end: usize) -> Location {
-	Location::from_stream_pos(self.file.clone(), &self.stream, start, end)
+        Location::from_stream_pos(self.file.clone(), &self.stream, start, end)
     }
 }

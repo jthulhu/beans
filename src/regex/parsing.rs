@@ -1,4 +1,5 @@
 use super::matching::{Instruction, Program};
+use crate::error::Error;
 use unbounded_interval_tree::IntervalTree;
 
 #[cfg(test)]
@@ -197,7 +198,7 @@ mod tests {
             if let Err((pos, msg)) = read(regex, 0) {
                 assert_eq!(pos, p);
             } else {
-                panic!(format!("/{}/ shouldn't succeed.", regex));
+                panic!("(/{}/ shouldn't succeed.", regex);
             }
         }
     }
@@ -334,34 +335,34 @@ mod tests {
 
     #[test]
     fn build_string() {
+        use std::collections::Bound::Included;
         use Instruction::*;
-	use std::collections::Bound::Included;
         let program = compile(r"'(([^'\\]|\\[^\\]|\\\\)*)'", 0).unwrap();
-	let mut first_char_class = IntervalTree::default();
-	first_char_class.insert((Included('\''), Included('\'')));
-	first_char_class.insert((Included('\\'), Included('\\')));
-	let mut second_char_class = IntervalTree::default();
-	second_char_class.insert((Included('\\'), Included('\\')));
-	let correct = vec![
-	    Char('\''),
-	    Save(0),
-	    Split(3,15),
-	    Save(2),
-	    Split(5, 11),
-	    Split(6, 8),
-	    CharacterClass(first_char_class, true),
-	    Jump(10),
-	    Char('\\'),
-	    CharacterClass(second_char_class, true),
-	    Jump(13),
-	    Char('\\'),
-	    Char('\\'),
-	    Save(3),
-	    Jump(2),
-	    Save(1),
-	    Char('\''),
-	    Match(0)
-	];
+        let mut first_char_class = IntervalTree::default();
+        first_char_class.insert((Included('\''), Included('\'')));
+        first_char_class.insert((Included('\\'), Included('\\')));
+        let mut second_char_class = IntervalTree::default();
+        second_char_class.insert((Included('\\'), Included('\\')));
+        let correct = vec![
+            Char('\''),
+            Save(0),
+            Split(3, 15),
+            Save(2),
+            Split(5, 11),
+            Split(6, 8),
+            CharacterClass(first_char_class, true),
+            Jump(10),
+            Char('\\'),
+            CharacterClass(second_char_class, true),
+            Jump(13),
+            Char('\\'),
+            Char('\\'),
+            Save(3),
+            Jump(2),
+            Save(1),
+            Char('\''),
+            Match(0),
+        ];
         assert_eq!(program, (correct, 2));
     }
 }

@@ -37,6 +37,6 @@ Statement ::=
   IfStatement@this <s: "if">
   WhileStatement@this <s: "while">;
 
-StatementList ::=
+@StatementList ::=
   StatementList@left Statement@right <s: "concatenate">
   Statement@this <>;

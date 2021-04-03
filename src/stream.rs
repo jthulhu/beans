@@ -17,26 +17,22 @@ mod tests {
                 if let Char::Char(chr) = chr {
                     assert_eq!(chr, string.chars().nth(i).unwrap());
                 } else {
-                    panic!(format!(
+                    panic!(
                         "There is a char at position {} of {}, and yet it was not in the stream",
                         i, &string
-                    ));
+                    );
                 }
                 let location = Location::from_stream_pos(origin.clone(), &string, i, i);
                 assert_eq!(location, loc);
             } else {
                 if let Char::Char(_) = chr {
-                    panic!(format!(
+                    panic!(
                         "There is no char at position {} of {}, and yet there is one in the stream",
                         i, &string
-                    ));
+                    );
                 }
-                let location = Location::from_stream_pos(
-                    origin.clone(),
-                    &string,
-                    string.len(),
-                    string.len(),
-                );
+                let location =
+                    Location::from_stream_pos(origin.clone(), &string, string.len(), string.len());
                 assert_eq!(location, loc);
             }
         }

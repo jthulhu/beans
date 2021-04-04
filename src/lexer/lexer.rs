@@ -1,5 +1,9 @@
 use super::grammarparser::{LexerGrammar, LexerGrammarBuilder};
-use crate::error::{Error, ErrorType, WResult, WarningSet};
+use crate::error::{
+    Error, ErrorType,
+    WResult::{self, WErr, WOk},
+    WarningSet,
+};
 use crate::location::{CharLocation, Location, LocationBuilder};
 use crate::stream::{Stream, StreamObject, StringStream};
 use crate::{ctry, retrieve};
@@ -66,36 +70,8 @@ mod tests {
     fn lexer_builder() {
         // No options: fails
         assert!(LexerBuilder::new().build().is_err());
-
-        // Only a grammar: fails
-        assert!(LexerBuilder::new()
-            .with_grammar(
-                LexerGrammarBuilder::new()
-                    .with_stream(StringStream::new(
-                        String::from("grammar file"),
-                        String::from("A ::= blue")
-                    ))
-                    .build()
-                    .unwrap()
-            )
-            .build()
-            .is_err());
-
-        // Only a stream: fails
-        assert!(LexerBuilder::new()
-            .with_stream(StringStream::new(
-                String::from("input file"),
-                String::from("blu")
-            ))
-            .build()
-            .is_err());
-
-        // A grammar and a stream: succeeds
+        // A grammar: succeeds
         LexerBuilder::new()
-            .with_stream(StringStream::new(
-                String::from("input file"),
-                String::from("blu"),
-            ))
             .with_grammar(
                 LexerGrammarBuilder::new()
                     .with_stream(StringStream::new(
@@ -112,10 +88,6 @@ mod tests {
     #[test]
     fn lex_basic() {
         let mut lexer = LexerBuilder::new()
-            .with_stream(StringStream::new(
-                String::from("input file"),
-                String::from("blu"),
-            ))
             .with_grammar(
                 LexerGrammarBuilder::new()
                     .with_stream(StringStream::new(
@@ -127,21 +99,22 @@ mod tests {
             )
             .build()
             .unwrap();
-        let (token, loc) = lexer.get().unwrap();
-        assert_eq!(*token.location(), loc);
-        assert_eq!(loc.start(), (0, 0));
-        assert_eq!(loc.end(), (0, 3));
-        lexer.pos_pp();
-        assert!(lexer.get().is_none());
+        let mut input = StringStream::new(String::from("input file"), String::from("blu"));
+        let mut lexed_input = lexer.lex(&mut input);
+
+        let token = lexed_input.get().unwrap().unwrap();
+        assert_eq!(token.location().start(), (0, 0));
+        assert_eq!(token.location().end(), (0, 3));
+        lexed_input.pos_pp();
+        assert!(lexed_input.get().unwrap().is_none());
     }
 
-    fn verify_input(lexer: Lexer, result: &[(CharLocation, CharLocation, &str)]) {
+    fn verify_input(mut lexed_input: LexedStream, result: &[(CharLocation, CharLocation, &str)]) {
         let mut i = 0;
-        while let Some((token, loc)) = lexer.get_at(i) {
-            assert_eq!(*token.location(), loc);
+        while let Some(token) = lexed_input.get_at(i).unwrap() {
             let (start, end, name) = result[i];
-            assert_eq!(loc.start(), start);
-            assert_eq!(loc.end(), end);
+            assert_eq!(token.location().start(), start);
+            assert_eq!(token.location().end(), end);
             assert_eq!(token.name(), name);
             i += 1;
         }
@@ -154,10 +127,6 @@ mod tests {
         let lexer = LexerBuilder::new()
             .with_grammar_file(String::from("gmrs/lexer.lx"))
             .unwrap()
-            .with_stream(StringStream::new(
-                String::from("<input>"),
-                String::from("one + two"),
-            ))
             .build()
             .unwrap();
 
@@ -166,17 +135,14 @@ mod tests {
             ((0, 4), (0, 5), "PLUS"),
             ((0, 6), (0, 9), "ID"),
         ];
-        verify_input(lexer, &result);
-
-        let lexer = LexerBuilder::new()
-            .with_grammar_file(String::from("gmrs/lexer.lx"))
-            .unwrap()
-            .with_stream(StringStream::new(
+        verify_input(
+            lexer.lex(&mut StringStream::new(
                 String::from("<input>"),
-                String::from("if true and false {\n\tifeat(\"something\")\n}"),
-            ))
-            .build()
-            .unwrap();
+                String::from("one + two"),
+            )),
+            &result,
+        );
+
         let result = [
             ((0, 0), (0, 2), "IF"),
             ((0, 3), (0, 7), "TRUE"),
@@ -189,7 +155,13 @@ mod tests {
             ((1, 18), (1, 19), "RPAR"),
             ((2, 0), (2, 1), "RBRACE"),
         ];
-        verify_input(lexer, &result);
+        verify_input(
+            lexer.lex(&mut StringStream::new(
+                String::from("<input>"),
+                String::from("if true and false {\n\tifeat(\"something\")\n}"),
+            )),
+            &result,
+        );
     }
 
     #[test]
@@ -197,9 +169,11 @@ mod tests {
         let mut lexer = LexerBuilder::new()
             .with_grammar_file(String::from("gmrs/parser.lx"))
             .unwrap()
-            .with_stream(StringStream::from_file(String::from("gmrs/parser.gmr")).unwrap())
             .build()
             .unwrap();
+        let mut input = StringStream::from_file(String::from("gmrs/parser.gmr")).unwrap();
+        let mut lexed_input = lexer.lex(&mut input);
+
         let result = [
             // IfStatement
             id_token!(IfStatement),
@@ -432,25 +406,26 @@ mod tests {
         ];
 
         for (i, tok) in result.iter().enumerate() {
-            let (token, loc) = lexer
+            let token = lexed_input
                 .next()
+                .unwrap()
                 .expect(format!("Expected token named {}, found EOF", tok.name).as_str());
             assert_eq!(
                 tok,
                 token,
                 "Lexer error @{} {}:{} does not match token #{}",
-                loc.file(),
-                loc.start().0 + 1,
-                loc.end().0 + 1,
+                token.location().file(),
+                token.location().start().0 + 1,
+                token.location().end().0 + 1,
                 i
             );
         }
-        if let Some((tok, loc)) = lexer.next() {
+        if let Some(token) = lexed_input.next().unwrap() {
             panic!(
                 "Lexer error @{} {}:{} does not match token EOF",
-                loc.file(),
-                loc.start().0 + 1,
-                loc.end().0 + 1
+                token.location().file(),
+                token.location().start().0 + 1,
+                token.location().end().0 + 1
             );
         }
     }
@@ -527,28 +502,17 @@ impl Token {
 ///
 /// # Attribute specificators
 ///
-/// `with_stream`: specify the file the lexer will lex.
 /// `with_grammar`: specify the grammar the lexer will use to lex.
 /// `with_grammar_file`: specify the grammar file to build a grammar the lexer will use to lex.
 #[derive(Debug)]
 pub struct LexerBuilder {
-    stream: Option<StringStream>,
     grammar: Option<LexerGrammar>,
 }
 
 impl LexerBuilder {
     /// Instantiate a new `LexerBuilder`.
     pub fn new() -> Self {
-        Self {
-            stream: None,
-            grammar: None,
-        }
-    }
-
-    /// Specify the lexer's stream.
-    pub fn with_stream(mut self, stream: StringStream) -> Self {
-        self.stream = Some(stream);
-        self
+        Self { grammar: None }
     }
 
     /// Specify the lexer's grammar.
@@ -571,15 +535,104 @@ impl LexerBuilder {
     /// Build the lexer.
     pub fn build(mut self) -> WResult<Lexer> {
         let mut warnings = WarningSet::empty();
-        let mut lexer = Lexer::new(
-            retrieve!(self.stream, warnings),
-            retrieve!(self.grammar, warnings),
-        );
-        ctry!(lexer.lex().into(), warnings);
-        WResult::WOk(lexer, warnings)
+        let mut lexer = Lexer::new(retrieve!(self.grammar, warnings));
+        WOk(lexer, warnings)
     }
 }
 
+impl Default for LexerBuilder {
+    fn default() -> Self {
+        Self::new()
+            .with_grammar_file(String::from("gmrs/lexer.lx"))
+            .unwrap()
+    }
+}
+
+pub struct LexedStream<'a> {
+    lexer: &'a Lexer,
+    stream: &'a mut StringStream,
+    pos: usize,
+    tokens: Vec<Token>,
+    last_location: Location,
+}
+
+impl<'a> LexedStream<'a> {
+    pub fn new(lexer: &'a Lexer, stream: &'a mut StringStream) -> Self {
+        Self {
+            last_location: Location::new(stream.origin().to_string(), (0, 0), (0, 0)),
+            lexer,
+            stream,
+            pos: 0,
+            tokens: Vec::new(),
+        }
+    }
+    fn lex_next(&mut self) -> WResult<bool> {
+        let mut warnings = WarningSet::empty();
+        if self.stream.pos() == self.stream.len() {
+            WOk(false, warnings)
+        } else {
+            'lex: loop {
+                if let Some(result) = self
+                    .lexer
+                    .grammar()
+                    .pattern()
+                    .find(&self.stream.borrow()[self.stream.pos()..])
+                {
+                    let start = self.stream.pos();
+                    let end = start + result.length();
+                    self.stream.set_pos(end);
+                    if self.lexer.grammar().ignored(result.id()) {
+                        continue;
+                    }
+                    let location = self.stream.loc_at(start, end);
+                    let name = result.name().to_string();
+                    let mut attributes = HashMap::new();
+                    for (i, attr) in result.groups().iter().enumerate() {
+                        if let Some(a) = attr {
+                            attributes.insert(i, a.text().to_string());
+                        }
+                    }
+                    let token = Token::new(name, attributes, location.clone());
+                    self.last_location = location;
+                    self.tokens.push(token);
+                    break 'lex WOk(true, warnings);
+                } else {
+                    break 'lex WErr(Error::new(
+                        self.stream.get_at(self.stream.pos()).unwrap().1,
+                        ErrorType::LexingError(String::from("cannot recognize a token here")),
+                    ));
+                }
+            }
+        }
+    }
+    pub fn last_location(&self) -> &Location {
+        &self.last_location
+    }
+}
+impl LexedStream<'_> {
+    pub fn get_at(&mut self, pos: usize) -> WResult<Option<&Token>> {
+        let mut warnings = WarningSet::empty();
+        while self.tokens.len() <= pos {
+            if !ctry!(self.lex_next(), warnings) {
+                return WOk(None, warnings);
+            }
+        }
+        match self.tokens.get(pos) {
+            Some(token) => WOk(Some(token), warnings),
+            None => WOk(None, warnings),
+        }
+    }
+    pub fn next(&mut self) -> WResult<Option<&Token>> {
+        self.pos += 1;
+        self.get_at(self.pos - 1)
+    }
+    pub fn get(&mut self) -> WResult<Option<&Token>> {
+        self.get_at(self.pos)
+    }
+    pub fn pos_pp(&mut self) {
+        self.pos += 1;
+    }
+}
 /// # Summary
 ///
 /// `Lexer` is the main object that is used for lexing.
@@ -596,100 +649,21 @@ impl LexerBuilder {
 ///      or raise an error.
 #[derive(Debug)]
 pub struct Lexer {
-    stream: StringStream,
     grammar: LexerGrammar,
-    tokens: Vec<StreamObject<Token>>,
-    pos: usize,
-    last_location: Location,
 }
 
 impl Lexer {
     /// Create a new `Lexer` object.
     /// You may want to use the `LexerBuilder` instead.
-    pub fn new(stream: StringStream, grammar: LexerGrammar) -> Self {
-        Self {
-            last_location: Location::new(stream.origin().to_string(), (0, 0), (0, 0)),
-            stream,
-            grammar,
-            tokens: vec![],
-            pos: 0,
-        }
+    pub fn new(grammar: LexerGrammar) -> Self {
+        Self { grammar }
     }
 
-    /// Consume the input stream until everything could be converted to a token stream or an error was detected.
-    /// You should use instead the methods provided by the `Stream` trait.
-    fn lex(&mut self) -> Result<(), Error> {
-        let mut nb_iterations = 0;
-        self.stream.set_pos(0);
-        let location_builder =
-            LocationBuilder::new(self.stream.origin().to_string(), self.stream.borrow());
-        while self.stream.pos() < self.stream.len() {
-            nb_iterations += 1;
-            if let Some(result) = self
-                .grammar
-                .pattern()
-                .find(&self.stream.borrow()[self.stream.pos()..])
-            {
-                let start = self.stream.pos();
-                let end = start + result.length();
-                self.stream.set_pos(end);
-                if self.grammar.ignored(result.id()) {
-                    continue;
-                }
-		
-                let location = location_builder.from(start, end);
-
-		
-                let name = result.name().to_string();
-                let mut attributes = HashMap::new();
-                for (i, attr) in result.groups().iter().enumerate() {
-                    if let Some(a) = attr {
-                        attributes.insert(i, a.text().to_string());
-                    }
-                }
-                let token = Token::new(name, attributes, location.clone());
-                self.tokens.push((token, location));
-            } else {
-                return Err(Error::new(
-                    self.stream.get_at(self.stream.pos()).unwrap().1,
-                    ErrorType::LexingError(String::from("cannot recognize a token there")),
-                ));
-            }
-        }
-
-        let location = Location::from_stream_pos(
-            self.stream.origin().to_string(),
-            &self.stream.borrow(),
-            self.stream.pos(),
-            self.stream.pos(),
-        );
-
-        self.last_location = location;
-
-        Ok(())
-    }
-
-    pub fn last_location(&self) -> &Location {
-        &self.last_location
+    pub fn lex<'a>(&'a self, stream: &'a mut StringStream) -> LexedStream<'a> {
+        LexedStream::new(self, stream)
     }
 
     pub fn grammar(&self) -> &LexerGrammar {
         &self.grammar
-    }
-}
-
-impl<'a> Stream<'a> for Lexer {
-    type Output = &'a Token;
-    fn pos(&self) -> usize {
-        self.pos
-    }
-    fn set_pos(&mut self, pos: usize) {
-        self.pos = pos
-    }
-    fn get_at(&'a self, pos: usize) -> Option<StreamObject<Self::Output>> {
-        match self.tokens.get(pos) {
-            Some((t, l)) => Some((&t, l.clone())),
-            None => None,
-        }
     }
 }

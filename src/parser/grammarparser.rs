@@ -4,7 +4,7 @@ use crate::error::{
     WResult::{WErr, WOk},
     WarningSet,
 };
-use crate::lexer::{Lexer, LexerBuilder, Token};
+use crate::lexer::{LexedStream, Lexer, LexerBuilder, Token};
 use crate::location::Location;
 use crate::stream::{Stream, StreamObject, StringStream};
 use crate::{ask_case, ctry, retrieve};
@@ -55,7 +55,6 @@ mod tests {
 	};
     }
 
-
     /// # Summary
     ///
     /// `rule!` parses a grammar definition of a single non-terminal
@@ -63,24 +62,30 @@ mod tests {
     ///
     /// # Usage
     /// Call this macro with the following syntax:
-    /// `rule!(NonTerminal ::= token.type value@value ... <proxy> ...)`
+    /// `rule!(NonTerminal ::= terminality token.type value@value ... <proxy> ...)`
     /// **Note that this macro is only used to generate test units.**
+    #[rustfmt::skip]
     macro_rules! rule {
 	(@key) => { None };
 	(@key $key: ident) => { Some(stringify!($key).to_string()) };
 	(@attribute) => { Attribute::None };
 	(@attribute str $attribute: ident) => { Attribute::Named(stringify!($attribute).to_string()) };
 	(@attribute idx $attribute: literal) => { Attribute::Indexed($attribute) };
-	(@element $name: ident $(. $type: ident $attribute: tt)? $(@ $key: tt)?) => {
+	(@terminality t) => { ElementType::Terminal};
+	(@terminality n) => { ElementType::NonTerminal };
+	(@terminality) => { ElementType::NonTerminal };
+	(@element $(! $terminality: tt)? $name: ident $(. $type: ident $attribute: tt)? $(@ $key: tt)?) => {
 	    RuleElement {
 		name: stringify!($name).to_string(),
 		attribute: rule!(@attribute $($type $attribute)?),
-		key: rule!(@key $($key)?)
+		key: rule!(@key $($key)?),
+		element_type: rule!(@terminality $($terminality)?)
 	    }
 	};
 	(
 	    $name: ident ::= $(
 		$(
+		    $(! $terminality: tt)?
 		    $element: ident
 			$(
 			    . $attribute_type: ident $attribute: literal
@@ -100,23 +105,23 @@ mod tests {
 		$(
 		    let mut elements = Vec::new();
 		    $(
-			elements.push(rule!(@element $element $(. $attribute_type $attribute)? $(@ $key)?));
+			elements.push(rule!(@element $(! $terminality)? $element $(. $attribute_type $attribute)? $(@ $key)?));
 		    )*;
 		    let proxy = proxy!(<$($proxy_key = $proxy_type $proxy_value)*>);
 		    result.push(Rule::new(name.to_string(), elements, proxy));
 		)*
-		result
+		    result
 	    }
 	};
     }
-    
+
     macro_rules! collect {
 	($($rules: expr),*) => {
 	    {
 		let mut result = Vec::new();
 		$(
 		    result.extend($rules);
-		)*;
+		)*
 		result
 	    }
 	};
@@ -124,71 +129,73 @@ mod tests {
 
     #[inline]
     fn verify(rules1: Vec<Rule>, rules2: Vec<Rule>) {
-	let length1 = rules1.len();
-	let length2 = rules2.len();
-	if length1 > length2 {
-	    panic!("Grammar 1 is longer");
-	} else if length1 < length2 {
-	    panic!("Grammar 2 is longer");
-	}
-	for (i, (r1, r2)) in rules1.iter().zip(rules2.iter()).enumerate() {
-	    assert_eq!(r1, r2, "rules #{} differ", i);
-	}
+        let length1 = rules1.len();
+        let length2 = rules2.len();
+        if length1 > length2 {
+            panic!("Grammar 1 is longer");
+        } else if length1 < length2 {
+            panic!("Grammar 2 is longer");
+        }
+        for (i, (r1, r2)) in rules1.iter().zip(rules2.iter()).enumerate() {
+            assert_eq!(r1, r2, "rules #{} differ", i);
+        }
     }
-    
-    #[test]
-    fn grammar_builder() {
-        assert!(GrammarBuilder::new().build().is_err());
 
-        let grammar = GrammarBuilder::default().build().unwrap();
+    #[test]
+    #[rustfmt::skip]
+    fn grammar_builder() {
+        let lexer = LexerBuilder::default().build().unwrap();
+        assert!(GrammarBuilder::new().build(&lexer).is_err());
+
+        let grammar = GrammarBuilder::default().build(&lexer).unwrap();
         verify(
-	    grammar.rules,
+            grammar.rules,
             collect!(
                 rule!(
                     IfStatement ::=
-			IF Expression@condition LBRACE StatementList@then RBRACE <haselse = bool false>
-			IF Expression@condition LBRACE StatementList@then RBRACE ELSE LBRACE StatementList@else RBRACE <haselse = bool true>
-			
+			!t IF Expression@condition !t LBRACE StatementList@then !t RBRACE <haselse = bool false>
+			!t IF Expression@condition !t LBRACE StatementList@then !t RBRACE !t ELSE !t LBRACE StatementList@else !t RBRACE <haselse = bool true>
+
                 ),
                 rule!(
                     WhileStatement ::=
-                        WHILE Expression@condition LBRACE StatementList@do RBRACE <>
-                    ),
+			!t WHILE Expression@condition !t LBRACE StatementList@do !t RBRACE <>
+                ),
                 rule!(
                     Assignment ::=
-			ID.idx 0@key EQUALS Expression@value <>
+			!t ID.idx 0@key !t EQUALS Expression@value <>
                 ),
                 rule!(
                     BuiltinType ::=
-			INT.idx 0@value <type = str "int" op = str "builtin">
-			STRING.idx 0@value <type = str "string" op = str "builtin">
-			ID.idx 0@value <type = str "id" op = str "builtin">
-			TRUE <type = str "true" op = str "builtin">
-			FALSE <type = str "false" op = str "builtin">
+			!t INT.idx 0@value <type = str "int" op = str "builtin">
+			!t STRING.idx 0@value <type = str "string" op = str "builtin">
+			!t ID.idx 0@value <type = str "id" op = str "builtin">
+			!t TRUE <type = str "true" op = str "builtin">
+			!t FALSE <type = str "false" op = str "builtin">
                 ),
                 rule!(
                     Atom ::=
 			BuiltinType@this <>
-			LPAR Expression@this RPAR <>
+			!t LPAR Expression@this !t RPAR <>
                 ),
-		rule!(
-		    Expression ::=
-			Expression@left PLUS Expression@right <op = str "add">
-			Expression@left ASTERISK Expression@right <op = str "mul">
+                rule!(
+                    Expression ::=
+			Expression@left !t PLUS Expression@right <op = str "add">
+			Expression@left !t ASTERISK Expression@right <op = str "mul">
 			Atom@this <>
-		),
-		rule!(
-		    Statement ::=
-			Assignment@this SEMICOLON <s = str "assign">
+                ),
+                rule!(
+                    Statement ::=
+			Assignment@this !t SEMICOLON <s = str "assign">
 			IfStatement@this <s = str "if">
 			WhileStatement@this <s = str "while">
-		),
-		rule!(
-		    StatementList ::=
+                ),
+                rule!(
+                    StatementList ::=
 			StatementList@left Statement@right <s = str "concatenate">
 			Statement@this <>
-		)
-            )
+                )
+            ),
         );
     }
 }
@@ -206,10 +213,17 @@ pub enum Attribute {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum ElementType {
+    Terminal,
+    NonTerminal,
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub struct RuleElement {
     pub name: String,
     pub attribute: Attribute,
     pub key: Option<Key>,
+    pub element_type: ElementType,
 }
 pub type Proxy = HashMap<String, Value>;
 
@@ -285,18 +299,22 @@ impl GrammarBuilder {
         self
     }
 
-    fn read_token(&self, lexer: &Lexer, id: &str) -> bool {
-        lexer
-            .get()
-            .and_then(|(tok, _)| if tok.name() == id { Some(()) } else { None })
-            .is_some()
+    fn read_token(&self, lexed_input: &mut LexedStream, id: &str) -> WResult<bool> {
+        let mut warnings = WarningSet::empty();
+        WOk(
+            ctry!(lexed_input.get(), warnings)
+                .and_then(|token| if token.name() == id { Some(()) } else { None })
+                .is_some(),
+            warnings,
+        )
     }
-    fn read_token_walk(&self, lexer: &mut Lexer, id: &str) -> bool {
-        if self.read_token(lexer, id) {
-            lexer.pos_pp();
-            true
+    fn read_token_walk(&self, lexed_input: &mut LexedStream, id: &str) -> WResult<bool> {
+        let mut warnings = WarningSet::empty();
+        if ctry!(self.read_token(lexed_input, id), warnings) {
+            lexed_input.pos_pp();
+            WOk(true, warnings)
         } else {
-            false
+            WOk(false, warnings)
         }
     }
 
@@ -307,27 +325,27 @@ impl GrammarBuilder {
         )
     }
 
-    fn match_now<'a>(&self, lexer: &'a mut Lexer, id: &str) -> WResult<StreamObject<Token>> {
+    fn match_now<'a>(&self, lexed_input: &'a mut LexedStream, id: &str) -> WResult<Token> {
         let mut warnings = WarningSet::empty();
-        match lexer.get() {
-            Some((token, location)) => {
+        match ctry!(lexed_input.get(), warnings) {
+            Some(token) => {
                 if token.name() == id {
                     let token = token.clone();
-                    lexer.pos_pp();
-                    WOk((token.clone(), location), warnings)
+                    lexed_input.pos_pp();
+                    WOk(token.clone(), warnings)
                 } else {
-                    WErr(self.generate_error(location, id, token.name()))
+                    WErr(self.generate_error(token.location().clone(), id, token.name()))
                 }
             }
-            None => WErr(self.generate_error(lexer.last_location().clone(), id, "EOF")),
+            None => WErr(self.generate_error(lexed_input.last_location().clone(), id, "EOF")),
         }
     }
 
-    fn read_proxy_element(&self, lexer: &mut Lexer) -> WResult<(String, Value)> {
+    fn read_proxy_element(&self, lexed_input: &mut LexedStream) -> WResult<(String, Value)> {
         let mut warnings = WarningSet::empty();
-        let (id, _) = ctry!(self.match_now(lexer, "ID"), warnings);
-        ctry!(self.match_now(lexer, "COLON"), warnings);
-        if let Some((token, location)) = lexer.get() {
+        let id = ctry!(self.match_now(lexed_input, "ID"), warnings);
+        ctry!(self.match_now(lexed_input, "COLON"), warnings);
+        if let Some(token) = ctry!(lexed_input.get(), warnings) {
             let result = WOk(
                 (
                     id.content().to_string(),
@@ -338,7 +356,7 @@ impl GrammarBuilder {
                                 .parse::<i32>()
                                 .map_err(|_| {
                                     Error::new(
-                                        location,
+                                        token.location().clone(),
                                         ErrorType::GrammarSyntaxError(format!(
                                             "cannot understand {} as an integer",
                                             token.content()
@@ -355,7 +373,7 @@ impl GrammarBuilder {
                                 .parse::<f32>()
                                 .map_err(|_| {
                                     Error::new(
-                                        location,
+                                        token.location().clone(),
                                         ErrorType::GrammarSyntaxError(format!(
                                             "cannot understand {} as a float",
                                             token.content()
@@ -371,7 +389,7 @@ impl GrammarBuilder {
                                 .parse::<bool>()
                                 .map_err(|_| {
                                     Error::new(
-                                        location,
+                                        token.location().clone(),
                                         ErrorType::GrammarSyntaxError(format!(
                                             "cannot understand {} as a bool",
                                             token.content()
@@ -384,7 +402,7 @@ impl GrammarBuilder {
                         "ID" => Value::Id(token.content().to_string()),
                         x => {
                             return WErr(self.generate_error(
-                                location,
+                                token.location().clone(),
                                 "INT, STRING, FLOAT, BOOL or ID",
                                 x,
                             ))
@@ -393,55 +411,59 @@ impl GrammarBuilder {
                 ),
                 warnings,
             );
-            lexer.pos_pp();
+            lexed_input.pos_pp();
             result
         } else {
             WErr(self.generate_error(
-                lexer.last_location().clone(),
+                lexed_input.last_location().clone(),
                 "INT, STRING, FLOAT, BOOL or ID",
                 "EOF",
             ))
         }
     }
 
-    fn read_proxy(&self, lexer: &mut Lexer) -> WResult<Proxy> {
+    fn read_proxy(&self, lexed_input: &mut LexedStream) -> WResult<Proxy> {
         let mut warnings = WarningSet::empty();
-        self.match_now(lexer, "LPROXY");
+        self.match_now(lexed_input, "LPROXY");
         let mut proxy = HashMap::new();
-        while let Some((token, location)) = lexer.get() {
+        while let Some(token) = ctry!(lexed_input.get(), warnings) {
             match token.name() {
                 "ID" => {
-                    let (key, value) = ctry!(self.read_proxy_element(lexer), warnings);
+                    let (key, value) = ctry!(self.read_proxy_element(lexed_input), warnings);
                     proxy.insert(key, value);
                 }
                 "RPROXY" => {
-                    lexer.pos_pp();
+                    lexed_input.pos_pp();
                     return WOk(proxy, warnings);
                 }
-                x => return WErr(self.generate_error(location, "ID or RPROXY", x)),
+                x => return WErr(self.generate_error(token.location().clone(), "ID or RPROXY", x)),
             }
         }
-        WErr(self.generate_error(lexer.last_location().clone(), "ID or RPROXY", "EOF"))
+        WErr(self.generate_error(lexed_input.last_location().clone(), "ID or RPROXY", "EOF"))
     }
 
-    fn read_rule_element_attribute(&self, lexer: &mut Lexer) -> WResult<Attribute> {
+    fn read_rule_element_attribute(&self, lexed_input: &mut LexedStream) -> WResult<Attribute> {
         let mut warnings = WarningSet::empty();
-        if let Some((token, _)) = lexer.get() {
+        if let Some(token) = ctry!(lexed_input.get(), warnings) {
             if token.name() == "DOT" {
-                lexer.pos_pp();
-                if let Some((token, location)) = lexer.get() {
+                lexed_input.pos_pp();
+                if let Some(token) = ctry!(lexed_input.get(), warnings) {
                     let result = match token.name() {
                         "ID" => WOk(Attribute::Named(token.content().to_string()), warnings),
                         "INT" => WOk(
                             Attribute::Indexed(token.content().parse().unwrap()),
                             warnings,
                         ),
-                        x => WErr(self.generate_error(location, "ID or INT", x)),
+                        x => WErr(self.generate_error(token.location().clone(), "ID or INT", x)),
                     };
-                    lexer.pos_pp();
+                    lexed_input.pos_pp();
                     result
                 } else {
-                    WErr(self.generate_error(lexer.last_location().clone(), "ID or INT", "EOF"))
+                    WErr(self.generate_error(
+                        lexed_input.last_location().clone(),
+                        "ID or INT",
+                        "EOF",
+                    ))
                 }
             } else {
                 WOk(Attribute::None, warnings)
@@ -451,21 +473,21 @@ impl GrammarBuilder {
         }
     }
 
-    fn read_rule_element_key(&self, lexer: &mut Lexer) -> WResult<Option<String>> {
+    fn read_rule_element_key(&self, lexed_input: &mut LexedStream) -> WResult<Option<String>> {
         let mut warnings = WarningSet::empty();
-        if let Some((token, _)) = lexer.get() {
+        if let Some(token) = ctry!(lexed_input.get(), warnings) {
             if token.name() == "AT" {
-                lexer.pos_pp();
-                if let Some((token, location)) = lexer.get() {
+                lexed_input.pos_pp();
+                if let Some(token) = ctry!(lexed_input.get(), warnings) {
                     let result = if token.name() == "ID" {
                         WOk(Some(token.content().to_string()), warnings)
                     } else {
-                        WErr(self.generate_error(location, "ID", token.name()))
+                        WErr(self.generate_error(token.location().clone(), "ID", token.name()))
                     };
-                    lexer.pos_pp();
+                    lexed_input.pos_pp();
                     result
                 } else {
-                    WErr(self.generate_error(lexer.last_location().clone(), "ID", "EOF"))
+                    WErr(self.generate_error(lexed_input.last_location().clone(), "ID", "EOF"))
                 }
             } else {
                 WOk(None, warnings)
@@ -475,29 +497,38 @@ impl GrammarBuilder {
         }
     }
 
-    fn read_rule_element(&self, lexer: &mut Lexer) -> WResult<RuleElement> {
+    fn read_rule_element(
+        &self,
+        lexed_input: &mut LexedStream,
+        lexer: &Lexer,
+    ) -> WResult<RuleElement> {
         let mut warnings = WarningSet::empty();
-        let (id, _) = ctry!(self.match_now(lexer, "ID"), warnings);
-        let attribute = ctry!(self.read_rule_element_attribute(lexer), warnings);
-        let key = ctry!(self.read_rule_element_key(lexer), warnings);
-        let name = id.content().to_string();
+        let id = ctry!(self.match_now(lexed_input, "ID"), warnings);
+        let attribute = ctry!(self.read_rule_element_attribute(lexed_input), warnings);
+        let key = ctry!(self.read_rule_element_key(lexed_input), warnings);
+        let name = id.content();
         WOk(
             RuleElement {
-                name,
+                name: name.to_string(),
                 attribute,
                 key,
+                element_type: if lexer.grammar().contains(name) {
+                    ElementType::Terminal
+                } else {
+                    ElementType::NonTerminal
+                },
             },
             warnings,
         )
     }
 
-    fn read_rule(&self, lexer: &mut Lexer) -> WResult<PartialRule> {
+    fn read_rule(&self, lexed_input: &mut LexedStream, lexer: &Lexer) -> WResult<PartialRule> {
         let mut warnings = WarningSet::empty();
         let mut expected = "ID";
         let mut rule_elements = Vec::new();
-        while let Some((token, position)) = lexer.get() {
+        while let Some(token) = ctry!(lexed_input.get(), warnings) {
             if token.name() == "LPROXY" {
-                let proxy = ctry!(self.read_proxy(lexer), warnings);
+                let proxy = ctry!(self.read_proxy(lexed_input), warnings);
                 return WOk(
                     PartialRule {
                         elements: rule_elements,
@@ -506,35 +537,39 @@ impl GrammarBuilder {
                     warnings,
                 );
             }
-            rule_elements.push(ctry!(self.read_rule_element(lexer), warnings));
+            rule_elements.push(ctry!(self.read_rule_element(lexed_input, lexer), warnings));
         }
-        WErr(self.generate_error(lexer.last_location().clone(), expected, "EOF"))
+        WErr(self.generate_error(lexed_input.last_location().clone(), expected, "EOF"))
     }
 
-    fn read_definition(&self, lexer: &mut Lexer) -> WResult<(bool, String, Vec<Rule>)> {
+    fn read_definition(
+        &self,
+        lexed_input: &mut LexedStream,
+        lexer: &Lexer,
+    ) -> WResult<(bool, String, Vec<Rule>)> {
         let mut warnings = WarningSet::empty();
-        let axiom = self.read_token_walk(lexer, "AT");
-        let (name, mut location) = ctry!(self.match_now(lexer, "ID"), warnings);
-        ctry!(self.match_now(lexer, "ASSIGNMENT"), warnings);
+        let axiom = ctry!(self.read_token_walk(lexed_input, "AT"), warnings);
+        let name = ctry!(self.match_now(lexed_input, "ID"), warnings);
+        ctry!(self.match_now(lexed_input, "ASSIGNMENT"), warnings);
         let name_string = name.content().to_string();
         let mut rules = Vec::new();
-        'read_rules: while let Some((token, _)) = lexer.get() {
+        'read_rules: while let Some(token) = ctry!(lexed_input.get(), warnings) {
             if token.name() == "SEMICOLON" {
-                lexer.pos_pp();
+                lexed_input.pos_pp();
                 break 'read_rules;
             }
-            let rule = ctry!(self.read_rule(lexer), warnings);
+            let rule = ctry!(self.read_rule(lexed_input, lexer), warnings);
             rules.push(Rule::new(name_string.clone(), rule.elements, rule.proxy));
         }
         WOk((axiom, name_string, rules), warnings)
     }
 
-    pub fn build(mut self) -> WResult<Grammar> {
+    pub fn build(mut self, lexer: &Lexer) -> WResult<Grammar> {
         let mut warnings = WarningSet::empty();
         let mut stream = retrieve!(self.stream, warnings);
-        let mut lexer = ctry!(
+        let temp_lexer = ctry!(
             ctry!(
-                LexerBuilder::new().with_stream(stream).with_grammar_file({
+                LexerBuilder::new().with_grammar_file({
                     let grammar = self.grammar;
                     self.grammar = String::new();
                     grammar
@@ -544,16 +579,18 @@ impl GrammarBuilder {
             .build(),
             warnings
         );
+        let mut lexed_input = temp_lexer.lex(&mut stream);
 
         let mut rules = Vec::new();
 
         let mut axioms_vec = Vec::new();
 
         let mut done: HashMap<_, Location> = HashMap::new();
-        while let Some((_, first_position)) = lexer.get() {
-            let (axiom, name, new_rules) = ctry!(self.read_definition(&mut lexer), warnings);
-            let last_position = lexer.get_loc_of(lexer.pos() - 1).unwrap();
-            let location = Location::extend(first_position, last_position);
+        while let Some(token) = ctry!(lexed_input.get(), warnings) {
+            let first_location = token.location().clone();
+            let (axiom, name, new_rules) =
+                ctry!(self.read_definition(&mut lexed_input, lexer), warnings);
+            let location = Location::extend(first_location, lexed_input.last_location().clone());
             if let Some(old_location) = done.get(&name) {
                 return WErr(Error::new(
                     location,
@@ -577,8 +614,8 @@ impl GrammarBuilder {
             axioms.set_range(i..j, true);
         }
 
-	let grammar = ctry!(Grammar::new(rules, axioms, lexer), warnings);
-	
+        let grammar = ctry!(Grammar::new(rules, axioms), warnings);
+
         WOk(grammar, warnings)
     }
 }
@@ -593,10 +630,9 @@ impl Default for GrammarBuilder {
 
 /// # Summary
 ///
-/// `Grammar` represents a complete parser grammar, including a lexer.
-/// Specifically, 
+/// `Grammar` represents a complete parser grammar.
+/// Specifically,
 pub struct Grammar {
-    lexer: Lexer,
     axioms: FixedBitSet,
     rules: Vec<Rule>,
     nonterminals: FixedBitSet,
@@ -605,39 +641,37 @@ pub struct Grammar {
 
 impl Grammar {
     fn is_rule_nullable(&mut self, i: usize) -> bool {
-	false
+        false
     }
     #[inline]
     fn compute_nullables(&mut self) -> WResult<()> {
-	let mut warnings = WarningSet::empty();
-	let mut edited = true;
-	while edited {
-	    edited = false;
-	    for i in 0..self.rules.len() {
-		if self.nullables.contains(i) { continue; }
-		if self.is_rule_nullable(i) {
-		    edited = true;
-		    self.nullables.insert(i);
-		}
-	    }
-	}
-	WOk((), warnings)
+        let mut warnings = WarningSet::empty();
+        let mut edited = true;
+        while edited {
+            edited = false;
+            for i in 0..self.rules.len() {
+                if self.nullables.contains(i) {
+                    continue;
+                }
+                if self.is_rule_nullable(i) {
+                    edited = true;
+                    self.nullables.insert(i);
+                }
+            }
+        }
+        WOk((), warnings)
     }
-    pub fn new(rules: Vec<Rule>, axioms: FixedBitSet, lexer: Lexer) -> WResult<Self> {
-	let mut warnings = WarningSet::empty();
-	let nonterminals = FixedBitSet::with_capacity(axioms.len());
-	let nullables = FixedBitSet::with_capacity(axioms.len());
-	let mut grammar = Self {
-	    nonterminals,
-	    nullables,
-	    lexer,
-	    rules,
-	    axioms,
+    pub fn new(rules: Vec<Rule>, axioms: FixedBitSet) -> WResult<Self> {
+        let mut warnings = WarningSet::empty();
+        let nonterminals = FixedBitSet::with_capacity(axioms.len());
+        let nullables = FixedBitSet::with_capacity(axioms.len());
+        let mut grammar = Self {
+            nonterminals,
+            nullables,
+            rules,
+            axioms,
         };
-	ctry!(grammar.compute_nullables(), warnings);
-        WOk(
-	    grammar,
-	    warnings
-	)
+        ctry!(grammar.compute_nullables(), warnings);
+        WOk(grammar, warnings)
     }
 }

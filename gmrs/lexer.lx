@@ -31,6 +31,10 @@ OR ::= or\b
 XOR ::= xor\b
 NOT ::= not\b
 
+EQUALS ::= =
+ASTERISK ::= \*
 PLUS ::= \+
 
 ID ::= (\w*[a-zA-Z_]\w*)
+
+SEMICOLON ::= ;

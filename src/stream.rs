@@ -1,4 +1,4 @@
-use crate::location::Location;
+use crate::location::{Location, LocationBuilder};
 use std::fs::File;
 use std::io::prelude::*;
 
@@ -118,6 +118,7 @@ pub struct StringStream {
     pos: usize,
     length: usize,
     end_pos: Location,
+    location_builder: LocationBuilder,
 }
 
 impl StringStream {
@@ -141,6 +142,7 @@ impl StringStream {
             stream,
             pos: 0,
             length: string.len(),
+            location_builder: LocationBuilder::new(origin.clone(), string.clone()),
             end_pos: Location::new(
                 origin,
                 (current_line, current_char),
@@ -193,6 +195,10 @@ impl StringStream {
     /// Return is the stream is empty.
     pub fn is_empty(&self) -> bool {
         self.stream.is_empty()
+    }
+
+    pub fn loc_at(&self, start: usize, end: usize) -> Location {
+        self.location_builder.from(start, end)
     }
 }
 

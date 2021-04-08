@@ -167,10 +167,10 @@ mod tests {
     #[test]
     fn default_parser_grammar() {
         let mut lexer = LexerBuilder::new()
-            .with_grammar_file(String::from("gmrs/parser.lx"))
-            .unwrap()
-            .build()
-            .unwrap();
+	    .with_grammar_file(String::from("gmrs/parser.lx"))
+	    .unwrap()
+	    .build()
+	    .unwrap();
         let mut input = StringStream::from_file(String::from("gmrs/parser.gmr")).unwrap();
         let mut lexed_input = lexer.lex(&mut input);
 

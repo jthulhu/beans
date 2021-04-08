@@ -1,9 +1,9 @@
 #![allow(unused)]
+extern crate bincode;
 extern crate fixedbitset;
 extern crate hashbrown;
-extern crate unbounded_interval_tree;
 extern crate serde;
-extern crate bincode;
+extern crate unbounded_interval_tree;
 
 mod case;
 pub mod error;

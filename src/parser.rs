@@ -1,5 +1,5 @@
-mod grammarparser;
 mod earley;
+mod grammarparser;
 #[allow(clippy::module_inception)]
 mod parser;
 

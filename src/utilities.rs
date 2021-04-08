@@ -23,9 +23,9 @@ macro_rules! ctry {
 macro_rules! retrieve {
     ($resource: expr, $warnings: expr) => {{
         use crate::ctry;
-        use crate::error::{Error, WarningSet, ErrorType};
-	use crate::location::Location;
-	use std::mem;
+        use crate::error::{Error, ErrorType, WarningSet};
+        use crate::location::Location;
+        use std::mem;
         let column = column!() as usize;
         let file = file!();
         let line = (line!() + 1) as usize;

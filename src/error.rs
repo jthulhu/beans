@@ -31,7 +31,7 @@ pub enum ErrorType {
 #[derive(Debug)]
 pub enum WarningType {
     CaseConvention(String, Case, Case),
-    UndefinedNonTerminal(String, String)
+    UndefinedNonTerminal(String, String),
 }
 
 #[derive(Debug)]
@@ -65,8 +65,17 @@ impl fmt::Display for Warning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use WarningType::*;
         let (r#type, msg) = match &self.warn_type {
-            CaseConvention(msg, case_found, case_expected) => ("Case convention warning", String::from("Wrong case used. Don't do that.")),
-	    UndefinedNonTerminal(origin, non_terminal) => ("Undefined non-terminal warning", format!("In definition of non-terminal `{}', `{}' has been used but not defined", origin, non_terminal))
+            CaseConvention(msg, case_found, case_expected) => (
+                "Case convention warning",
+                String::from("Wrong case used. Don't do that."),
+            ),
+            UndefinedNonTerminal(origin, non_terminal) => (
+                "Undefined non-terminal warning",
+                format!(
+                    "In definition of non-terminal `{}', `{}' has been used but not defined",
+                    origin, non_terminal
+                ),
+            ),
         };
         if let Some(location) = self.location.as_ref() {
             write!(
@@ -370,8 +379,8 @@ impl fmt::Display for Error {
             LexerGrammarSyntax(msg) => ("Syntax error within the lexer's grammar", msg.clone()),
             LexingError(msg) => ("Error while lexing", msg.clone()),
             InternalError(msg) => ("Internal error, this should not happend", msg.clone()),
-	    SerializationError(msg) => ("Internal error, failed to serialize", msg.clone()),
-	    DeserializationError(msg) => ("Internal error, failed to deserialize", msg.clone()),
+            SerializationError(msg) => ("Internal error, failed to serialize", msg.clone()),
+            DeserializationError(msg) => ("Internal error, failed to deserialize", msg.clone()),
             GrammarDuplicateDefinition(name, pos) => (
                 "Duplicate definition in grammar",
                 format!(

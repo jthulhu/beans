@@ -1,17 +1,15 @@
 [package]
 name = "beans"
 version = "0.1.0"
-authors = ["BlackBeans <adrien.mathieu.net@gmail.com>"]
+authors = ["BlackBeans <adrien.lc.mathieu@gmail.com>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-hashbrown = "0.11.2"
-fixedbitset = "0.4.0"
+hashbrown = { version = "0.11.2", features = ["serde"] }
+fixedbitset = { version = "0.4.0", features = ["serde"] }
 unbounded-interval-tree = "0.2.3"
-# serde = { version = "1.0.123", features = ["derive"] }
-# bincode = "1.3.2"
+serde = { version = "1.0.125", features = ["derive"] }
+bincode = "1.3.2"
 # clap = { version = "~j/2.33.3", features = ["yaml"] }
 
 [dev-dependencies]

@@ -23,12 +23,14 @@ macro_rules! ctry {
 macro_rules! retrieve {
     ($resource: expr, $warnings: expr) => {{
         use crate::ctry;
-        use crate::error::{Error, WarningSet};
+        use crate::error::{Error, WarningSet, ErrorType};
+	use crate::location::Location;
+	use std::mem;
         let column = column!() as usize;
         let file = file!();
         let line = (line!() + 1) as usize;
         let result = ctry!(
-            $resource
+            mem::replace(&mut $resource, None)
                 .ok_or(Error::new(
                     Location::new(String::from(file), (line, column), (line, column)),
                     ErrorType::InternalError(format!("{} missing", stringify!($resource))),
@@ -37,7 +39,6 @@ macro_rules! retrieve {
                 .into(),
             $warnings
         );
-        $resource = None;
         result
     }};
 }

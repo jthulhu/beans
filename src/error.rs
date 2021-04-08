@@ -19,6 +19,8 @@ pub const EMPTY_WARNING_SET: WarningSet = WarningSet::Empty;
 #[derive(Debug, PartialEq)]
 pub enum ErrorType {
     InternalError(String),
+    SerializationError(String),
+    DeserializationError(String),
     LexerGrammarSyntax(String),
     LexingError(String),
     GrammarDuplicateDefinition(String, Location),
@@ -29,6 +31,7 @@ pub enum ErrorType {
 #[derive(Debug)]
 pub enum WarningType {
     CaseConvention(String, Case, Case),
+    UndefinedNonTerminal(String, String)
 }
 
 #[derive(Debug)]
@@ -61,14 +64,15 @@ impl Warning {
 impl fmt::Display for Warning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use WarningType::*;
-        let (type_, msg) = match &self.warn_type {
-            CaseConvention(msg, case_found, case_expected) => ("Case convention warning", ""),
+        let (r#type, msg) = match &self.warn_type {
+            CaseConvention(msg, case_found, case_expected) => ("Case convention warning", String::from("Wrong case used. Don't do that.")),
+	    UndefinedNonTerminal(origin, non_terminal) => ("Undefined non-terminal warning", format!("In definition of non-terminal `{}', `{}' has been used but not defined", origin, non_terminal))
         };
         if let Some(location) = self.location.as_ref() {
             write!(
                 f,
                 "{}\n @{}, from {}:{} to {}:{}\n{}",
-                type_,
+                r#type,
                 location.file(),
                 location.start().0,
                 location.start().1,
@@ -77,7 +81,7 @@ impl fmt::Display for Warning {
                 msg
             )
         } else {
-            write!(f, "{}\n{}", type_, msg)
+            write!(f, "{}\n{}", r#type, msg)
         }
     }
 }
@@ -365,7 +369,9 @@ impl fmt::Display for Error {
         let (type_, msg) = match &self.err_type {
             LexerGrammarSyntax(msg) => ("Syntax error within the lexer's grammar", msg.clone()),
             LexingError(msg) => ("Error while lexing", msg.clone()),
-            InternalError(msg) => ("Internal Error, this should not happend", msg.clone()),
+            InternalError(msg) => ("Internal error, this should not happend", msg.clone()),
+	    SerializationError(msg) => ("Internal error, failed to serialize", msg.clone()),
+	    DeserializationError(msg) => ("Internal error, failed to deserialize", msg.clone()),
             GrammarDuplicateDefinition(name, pos) => (
                 "Duplicate definition in grammar",
                 format!(

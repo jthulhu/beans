@@ -67,14 +67,16 @@ struct PartialRule {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Rule {
     pub name: String,
+    pub id: usize,
     pub elements: Vec<RuleElement>,
     pub proxy: Proxy,
 }
 
 impl Rule {
-    pub fn new(name: String, elements: Vec<RuleElement>, proxy: Proxy) -> Self {
+    pub fn new(name: String, id: usize, elements: Vec<RuleElement>, proxy: Proxy) -> Self {
         Self {
             name,
+            id,
             elements,
             proxy,
         }
@@ -368,6 +370,7 @@ pub trait GrammarBuilder<'a>: Sized {
 
         fn read_definition(
             lexed_input: &mut LexedStream,
+            id: usize,
             lexer: &Lexer,
         ) -> WResult<(bool, String, Vec<Rule>)> {
             let mut warnings = WarningSet::empty();
@@ -381,8 +384,14 @@ pub trait GrammarBuilder<'a>: Sized {
                     lexed_input.pos_pp();
                     break 'read_rules;
                 }
-                let rule = ctry!(read_rule(lexed_input, lexer), warnings);
-                rules.push(Rule::new(name_string.clone(), rule.elements, rule.proxy));
+                let partial_rule = ctry!(read_rule(lexed_input, lexer), warnings);
+                let rule = Rule::new(
+                    name_string.clone(),
+                    id,
+                    partial_rule.elements,
+                    partial_rule.proxy,
+                );
+                rules.push(rule);
             }
             WOk((axiom, name_string, rules), warnings)
         }
@@ -404,10 +413,14 @@ pub trait GrammarBuilder<'a>: Sized {
         let mut axioms_vec = Vec::new();
 
         let mut done: HashMap<_, Location> = HashMap::new();
+        let mut nonterminals = 0;
         while let Some(token) = ctry!(lexed_input.get(), warnings) {
             let first_location = token.location().clone();
-            let (axiom, name, new_rules) =
-                ctry!(read_definition(&mut lexed_input, lexer), warnings);
+            let (axiom, name, new_rules) = ctry!(
+                read_definition(&mut lexed_input, nonterminals, lexer),
+                warnings
+            );
+            nonterminals += 1;
             let location = Location::extend(first_location, lexed_input.last_location().clone());
             if let Some(old_location) = done.get(&name) {
                 return WErr(Error::new(
@@ -436,8 +449,8 @@ pub trait GrammarBuilder<'a>: Sized {
 
         let mut name_map = HashMap::new();
 
-        for (i, rule) in rules.iter().enumerate() {
-            name_map.insert(rule.name.clone(), i);
+        for rule in rules.iter() {
+            name_map.insert(rule.name.clone(), rule.id);
         }
 
         for rule in rules.iter_mut() {

@@ -4,17 +4,16 @@ use unbounded_interval_tree::IntervalTree;
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    
+
     /// Compile a regex into a program executable on the VM.
     /// **This is a private function, please use the API instead.**
     pub fn compile(regex: &str, id: usize) -> Result<(Program, usize), RegexError> {
-	let mut program = Vec::new();
-	let (regex, nb_groups) = read(regex, 0)?;
-	build(regex, &mut program);
-	program.push(Instruction::Match(id));
-	Ok((program, nb_groups))
+        let mut program = Vec::new();
+        let (regex, nb_groups) = read(regex, 0)?;
+        build(regex, &mut program);
+        program.push(Instruction::Match(id));
+        Ok((program, nb_groups))
     }
-
 
     #[test]
     fn read_char() {

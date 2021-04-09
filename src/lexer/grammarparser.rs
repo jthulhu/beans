@@ -145,22 +145,20 @@ impl LexerGrammarBuilder {
     pub fn with_file(self, file: String) -> WResult<Self> {
         let mut warnings = WarningSet::empty();
         WResult::WOk(
-	    self.with_stream(
-		ctry!(
-		    StringStream::from_file(file)
-			.map_err(|x| {
-			    let pos = (line!() as usize, column!() as usize);
-			    Error::new(
-				Location::new(file!().to_string(), pos, pos),
-				ErrorType::InternalError(format!("IO error: {}", x))
-			    )
-			})
-			.into(),
-		    warnings
-		)
-	    ),
-	    warnings
-	)
+            self.with_stream(ctry!(
+                StringStream::from_file(file)
+                    .map_err(|x| {
+                        let pos = (line!() as usize, column!() as usize);
+                        Error::new(
+                            Location::new(file!().to_string(), pos, pos),
+                            ErrorType::InternalError(format!("IO error: {}", x)),
+                        )
+                    })
+                    .into(),
+                warnings
+            )),
+            warnings,
+        )
     }
 
     pub fn with_stream(mut self, stream: StringStream) -> Self {

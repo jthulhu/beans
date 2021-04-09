@@ -1,11 +1,11 @@
 use super::grammarparser::{ElementType, Grammar, GrammarBuilder, Rule};
-use super::parser::{Parser, ParseResult};
+use super::parser::{ParseResult, Parser};
 use crate::error::{
     WResult::{self, WOk},
     WarningSet,
 };
-use crate::stream::StringStream;
 use crate::lexer::LexedStream;
+use crate::stream::StringStream;
 use crate::{ctry, retrieve};
 use fixedbitset::FixedBitSet;
 use hashbrown::HashMap;
@@ -254,6 +254,5 @@ pub struct EarleyParser {}
 impl Parser<'_> for EarleyParser {
     type GrammarBuilder = EarleyGrammarBuilder;
     type Grammar = EarleyGrammar;
-    fn parse(&self, _input: &LexedStream) -> ParseResult {
-    }
+    fn parse(&self, _input: &LexedStream) -> ParseResult {}
 }

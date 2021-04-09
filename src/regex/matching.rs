@@ -3,8 +3,8 @@ use unbounded_interval_tree::IntervalTree;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::parsing::tests::compile;
+    use super::*;
     #[test]
     fn groups() {
         // Test the regexp (a+)(b+)

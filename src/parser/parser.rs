@@ -1,5 +1,5 @@
-use crate::lexer::LexedStream;
 use super::grammarparser::{Grammar, GrammarBuilder};
+use crate::lexer::LexedStream;
 
 pub type ParseResult = ();
 

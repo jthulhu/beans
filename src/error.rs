@@ -64,10 +64,9 @@ impl fmt::Display for Warning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use WarningType::*;
         let (r#type, msg) = match &self.warn_type {
-            CaseConvention(msg, _case_found, _case_expected) => (
-                "Case convention warning",
-                msg.clone(),
-            ),
+            CaseConvention(msg, _case_found, _case_expected) => {
+                ("Case convention warning", msg.clone())
+            }
             UndefinedNonTerminal(origin, non_terminal) => (
                 "Undefined non-terminal warning",
                 format!(
@@ -133,8 +132,8 @@ impl WarningSet {
         }
     }
     pub fn is_empty(&self) -> bool {
-	matches!(self, Self::Empty)
-   }
+        matches!(self, Self::Empty)
+    }
 }
 
 pub enum WResult<T> {
@@ -204,10 +203,10 @@ impl<T> WResult<T> {
         }
     }
     pub fn is_err(&self) -> bool {
-	matches!(self, Self::WErr(..))
+        matches!(self, Self::WErr(..))
     }
     pub fn is_ok(&self) -> bool {
-	matches!(self, Self::WOk(..))
+        matches!(self, Self::WOk(..))
     }
     pub fn map<U, O>(self, f: O) -> WResult<U>
     where

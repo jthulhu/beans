@@ -421,9 +421,9 @@ pub trait GrammarBuilder<'a>: Sized {
                     ErrorType::GrammarNonTerminalDuplicate(name),
                 ));
             }
-	    if axiom {
-		axioms_vec.push((rules.len(), rules.len() + new_rules.len()));
-	    }
+            if axiom {
+                axioms_vec.push((rules.len(), rules.len() + new_rules.len()));
+            }
             rules.extend(new_rules);
             ask_case!(name, PascalCase, warnings);
             done.insert(name, location);

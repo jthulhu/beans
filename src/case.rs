@@ -36,7 +36,7 @@ pub enum Case {
 
 impl Case {
     pub fn case(string: &str) -> Self {
-        if string.len() == 0 {
+        if string.is_empty() {
             return Self::Other;
         }
 
@@ -78,12 +78,10 @@ impl Case {
             } else {
                 Self::PascalCase
             }
+        } else if contains_underscore {
+            Self::ScreamingSnakeCase
         } else {
-            if contains_underscore {
-                Self::ScreamingSnakeCase
-            } else {
-                Self::UpperCase
-            }
+            Self::UpperCase
         }
     }
 }

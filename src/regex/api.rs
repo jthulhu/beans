@@ -338,13 +338,13 @@ impl RegexBuilder {
     }
 
     /// Return the `CompiledRegex`. This consumes the `RegexBuilder`.
-    pub fn build(mut self) -> CompiledRegex {
+    pub fn build(self) -> CompiledRegex {
         if self.regexes.is_empty() {
             return CompiledRegex::new(Vec::new(), self.names, self.groups, self.current);
         }
         let offset = self.regexes.len() - 1;
         let mut program = Vec::new();
-        for i in 0..offset {
+        for _ in 0..offset {
             program.push(Instruction::Split(0, 0));
         }
         for (i, regex) in self.regexes.into_iter().enumerate() {

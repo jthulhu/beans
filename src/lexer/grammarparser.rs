@@ -5,9 +5,6 @@ use crate::stream::{Char, Stream, StringStream};
 use crate::{ctry, retrieve};
 use fixedbitset::FixedBitSet;
 use hashbrown::{HashMap, HashSet};
-use std::error;
-use std::fs::File;
-use std::io::prelude::*;
 
 #[cfg(test)]
 mod tests {
@@ -145,21 +142,25 @@ impl LexerGrammarBuilder {
         Self { stream: None }
     }
 
-    pub fn with_file(mut self, file: String) -> WResult<Self> {
+    pub fn with_file(self, file: String) -> WResult<Self> {
         let mut warnings = WarningSet::empty();
-        self.stream = Some(ctry!(
-            StringStream::from_file(file)
-                .map_err(|x| {
-                    let pos = (line!() as usize, column!() as usize);
-                    Error::new(
-                        Location::new(file!().to_string(), pos, pos),
-                        ErrorType::InternalError(format!("IO error: {}", x)),
-                    )
-                })
-                .into(),
-            warnings
-        ));
-        WResult::WOk(self, warnings)
+        WResult::WOk(
+	    self.with_stream(
+		ctry!(
+		    StringStream::from_file(file)
+			.map_err(|x| {
+			    let pos = (line!() as usize, column!() as usize);
+			    Error::new(
+				Location::new(file!().to_string(), pos, pos),
+				ErrorType::InternalError(format!("IO error: {}", x))
+			    )
+			})
+			.into(),
+		    warnings
+		)
+	    ),
+	    warnings
+	)
     }
 
     pub fn with_stream(mut self, stream: StringStream) -> Self {
@@ -348,6 +349,6 @@ impl LexerGrammar {
     }
 
     pub fn id(&self, name: &str) -> Option<usize> {
-        self.name_map.get(name).and_then(|x| Some(*x))
+        self.name_map.get(name).copied()
     }
 }

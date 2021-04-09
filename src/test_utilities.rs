@@ -8,6 +8,7 @@ macro_rules! rules {
     };
     (@rule proxy $($key: ident = $type: ident $value: literal)*) => {
 	{
+	    #[allow(unused_mut)]
 	    let mut proxy = Proxy::new();
 	    $(
 		rules!(@rule proxy insert proxy $key $type $value);
@@ -58,8 +59,8 @@ macro_rules! rules {
 		    let mut elements = Vec::new();
 		    $(
 			elements.push(rules!(@rule element $(! $terminality)? $element $(. $attribute_type $attribute)? $(@ $key)?));
-		    )*;
-		    let proxy = rules!(@rule proxy $($proxy_key = $proxy_type $proxy_value)*);
+		    )*
+			let proxy = rules!(@rule proxy $($proxy_key = $proxy_type $proxy_value)*);
 		    result.push(TestRule::new(name.to_string(), elements, proxy));
 		)*
 	    })*

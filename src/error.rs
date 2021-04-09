@@ -3,7 +3,6 @@ use crate::location::Location;
 use std::collections::LinkedList;
 use std::error;
 use std::fmt;
-use std::io;
 
 pub const EMPTY_WARNING_SET: WarningSet = WarningSet::Empty;
 
@@ -65,9 +64,9 @@ impl fmt::Display for Warning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use WarningType::*;
         let (r#type, msg) = match &self.warn_type {
-            CaseConvention(msg, case_found, case_expected) => (
+            CaseConvention(msg, _case_found, _case_expected) => (
                 "Case convention warning",
-                String::from("Wrong case used. Don't do that."),
+                msg.clone(),
             ),
             UndefinedNonTerminal(origin, non_terminal) => (
                 "Undefined non-terminal warning",
@@ -134,11 +133,8 @@ impl WarningSet {
         }
     }
     pub fn is_empty(&self) -> bool {
-        match self {
-            Self::Empty => true,
-            _ => false,
-        }
-    }
+	matches!(self, Self::Empty)
+   }
 }
 
 pub enum WResult<T> {
@@ -159,18 +155,18 @@ impl<T> WResult<T> {
             Self::WErr(error) => Err(error),
         }
     }
-    pub fn is_error(self, right: Error) -> bool {
+    pub fn is_error(&self, right: Error) -> bool {
         match self {
-            Self::WErr(result) => result == right,
+            Self::WErr(result) => *result == right,
             _ => false,
         }
     }
 }
 
 impl<T: PartialEq> WResult<T> {
-    pub fn is_value(self, right: T) -> bool {
+    pub fn is_value(&self, right: T) -> bool {
         match self {
-            Self::WOk(result, _) => result == right,
+            Self::WOk(result, _) => *result == right,
             _ => false,
         }
     }
@@ -208,16 +204,10 @@ impl<T> WResult<T> {
         }
     }
     pub fn is_err(&self) -> bool {
-        match self {
-            Self::WErr(..) => true,
-            _ => false,
-        }
+	matches!(self, Self::WErr(..))
     }
     pub fn is_ok(&self) -> bool {
-        match self {
-            Self::WOk(..) => true,
-            _ => false,
-        }
+	matches!(self, Self::WOk(..))
     }
     pub fn map<U, O>(self, f: O) -> WResult<U>
     where

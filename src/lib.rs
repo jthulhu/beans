@@ -1,4 +1,5 @@
-#![allow(unused)]
+#![allow(clippy::upper_case_acronyms)]
+
 extern crate bincode;
 extern crate fixedbitset;
 extern crate hashbrown;
@@ -15,7 +16,6 @@ pub mod stream;
 // Macros
 #[macro_use]
 mod utilities;
+#[cfg(test)]
 #[macro_use]
 mod test_utilities;
-// pub use utilities::*;
-// pub use test_utilities::*;

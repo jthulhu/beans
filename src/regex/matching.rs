@@ -1,13 +1,12 @@
-use super::parsing::Regex;
 use fixedbitset::FixedBitSet;
 use unbounded_interval_tree::IntervalTree;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use super::super::parsing::tests::compile;
     #[test]
     fn groups() {
-        use super::super::parsing::compile;
         // Test the regexp (a+)(b+)
         let (program, nb_groups) = compile("(a+)(b+)", 0).unwrap();
         let (end, idx, results) = find(&program, "aabbb", nb_groups).unwrap();
@@ -18,7 +17,6 @@ mod tests {
 
     #[test]
     fn chars() {
-        use super::super::parsing::compile;
         let (program, nb_groups) = compile("ab", 0).unwrap();
         let (end, idx, results) = find(&program, "abb", nb_groups).unwrap();
         assert_eq!(idx, 0);
@@ -28,7 +26,6 @@ mod tests {
 
     #[test]
     fn escaped() {
-        use super::super::parsing::compile;
         let escaped = vec![
             (
                 r"\w",
@@ -48,7 +45,7 @@ mod tests {
             ),
         ];
         for (regex, tests) in escaped {
-            let (program, nb_groups) = compile(regex, 0).unwrap();
+            let (program, _) = compile(regex, 0).unwrap();
             for (string, result) in tests {
                 assert_eq!(find(&program, string, 0).is_some(), result);
             }
@@ -57,7 +54,6 @@ mod tests {
 
     #[test]
     fn greedy() {
-        use super::super::parsing::compile;
         let (program, nb_groups) = compile("(a+)(a+)", 0).unwrap();
         let (end, idx, results) = find(&program, "aaaa", nb_groups).unwrap();
         assert_eq!(end, 4);
@@ -67,7 +63,6 @@ mod tests {
 
     #[test]
     fn partial() {
-        use super::super::parsing::compile;
         let (program, nb_groups) = compile("a+", 0).unwrap();
         let (end, idx, results) = find(&program, "aaabcd", nb_groups).unwrap();
         assert_eq!(end, 3);
@@ -352,14 +347,14 @@ pub fn find(prog: ProgramRef, input: &str, size: usize) -> Option<Match> {
     let mut last = None;
     for (pos, chr) in input.chars().enumerate() {
         let mut next = ThreadList::new(prog.len());
-        while let Some(mut thread) = current.get() {
+        while let Some(thread) = current.get() {
             match_next(
                 chr,
                 pos,
                 thread,
                 &mut current,
                 Some(&mut next),
-                &prog[..],
+                prog,
                 &mut best_match,
                 last,
             );
@@ -368,14 +363,14 @@ pub fn find(prog: ProgramRef, input: &str, size: usize) -> Option<Match> {
         last = Some(chr);
     }
     let pos = input.len();
-    while let Some(mut thread) = current.get() {
+    while let Some(thread) = current.get() {
         match_next(
             '#',
             pos,
             thread,
             &mut current,
             None,
-            &prog[..],
+            prog,
             &mut best_match,
             last,
         );

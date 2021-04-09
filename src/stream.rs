@@ -78,7 +78,7 @@ pub trait Stream<'a> {
     }
 
     fn get_loc_of(&'a self, pos: usize) -> Option<Location> {
-        self.get_at(pos).and_then(|(_, location)| Some(location))
+        self.get_at(pos).map(|(_, location)| location)
     }
 
     fn next(&'a mut self) -> Option<StreamObject<Self::Output>> {
@@ -142,7 +142,7 @@ impl StringStream {
             stream,
             pos: 0,
             length: string.len(),
-            location_builder: LocationBuilder::new(origin.clone(), string.clone()),
+            location_builder: LocationBuilder::new(origin.clone(), string),
             end_pos: Location::new(
                 origin,
                 (current_line, current_char),

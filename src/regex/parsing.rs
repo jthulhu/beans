@@ -1,10 +1,20 @@
 use super::matching::{Instruction, Program};
-use crate::error::Error;
 use unbounded_interval_tree::IntervalTree;
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
+    
+    /// Compile a regex into a program executable on the VM.
+    /// **This is a private function, please use the API instead.**
+    pub fn compile(regex: &str, id: usize) -> Result<(Program, usize), RegexError> {
+	let mut program = Vec::new();
+	let (regex, nb_groups) = read(regex, 0)?;
+	build(regex, &mut program);
+	program.push(Instruction::Match(id));
+	Ok((program, nb_groups))
+    }
+
 
     #[test]
     fn read_char() {
@@ -195,7 +205,7 @@ mod tests {
             ("+", 0),
         ];
         for &(regex, p) in wrong_regex.iter() {
-            if let Err((pos, msg)) = read(regex, 0) {
+            if let Err((pos, _)) = read(regex, 0) {
                 assert_eq!(pos, p);
             } else {
                 panic!("(/{}/ shouldn't succeed.", regex);
@@ -396,9 +406,9 @@ pub enum Regex {
 /// and the second one is a description of the said error.
 pub type RegexError = (usize, String);
 
-impl Into<Regex> for (Regex, Option<Regex>) {
-    fn into(self) -> Regex {
-        match self {
+impl From<(Regex, Option<Regex>)> for Regex {
+    fn from(t: (Regex, Option<Regex>)) -> Self {
+        match t {
             (r, Some(r2)) => Regex::Option(Box::new(r2), Box::new(r)),
             (r, None) => r,
         }
@@ -466,16 +476,6 @@ pub fn build(regex: Regex, program: &mut Program) {
         Regex::Whitespace => program.push(Instruction::Whitespace),
         Regex::Empty => {}
     };
-}
-
-/// Compile a regex into a program executable on the VM.
-/// **This is a private function, please use the API instead.**
-pub fn compile(regex: &str, id: usize) -> Result<(Program, usize), RegexError> {
-    let mut program = Vec::new();
-    let (regex, nb_groups) = read(regex, 0)?;
-    build(regex, &mut program);
-    program.push(Instruction::Match(id));
-    Ok((program, nb_groups))
 }
 
 /// Parse a regex. The parsing technique is quite efficient,

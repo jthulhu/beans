@@ -4,23 +4,23 @@ use crate::error::{
     WResult::{self, WErr, WOk},
     WarningSet,
 };
-use crate::location::{CharLocation, Location, LocationBuilder};
-use crate::stream::{Stream, StreamObject, StringStream};
+use crate::location::Location;
+use crate::stream::{Stream, StringStream};
 use crate::{ctry, retrieve};
 use hashbrown::HashMap;
 use std::fmt;
-use std::fs::File;
-use std::io::prelude::*;
 use std::ops::Index;
 
 #[cfg(test)]
 mod tests {
+    use crate::location::CharLocation;
     use super::*;
 
     macro_rules! test_token {
 	($name: ident $($key:literal = $value: tt), *) => {
 	    {
 		let name = stringify!($name).to_string();
+		#[allow(unused_mut)]
 		let mut attributes = HashMap::new();
 		$(attributes.insert($key, stringify!($value).to_string());)*
 		TestToken {
@@ -87,7 +87,7 @@ mod tests {
 
     #[test]
     fn lex_basic() {
-        let mut lexer = LexerBuilder::new()
+        let lexer = LexerBuilder::new()
             .with_grammar(
                 LexerGrammarBuilder::new()
                     .with_stream(StringStream::new(
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn default_parser_grammar() {
-        let mut lexer = LexerBuilder::new()
+        let lexer = LexerBuilder::new()
 	    .with_grammar_file(String::from("gmrs/parser.lx"))
 	    .unwrap()
 	    .build()
@@ -474,7 +474,7 @@ impl Token {
     }
 
     pub fn get(&self, key: usize) -> Option<&str> {
-        self.attributes.get(&key).and_then(|x| Some(x.as_str()))
+        self.attributes.get(&key).map(|x| x.as_str())
     }
 
     pub fn content(&self) -> &str {
@@ -535,7 +535,7 @@ impl LexerBuilder {
     /// Build the lexer.
     pub fn build(mut self) -> WResult<Lexer> {
         let mut warnings = WarningSet::empty();
-        let mut lexer = Lexer::new(retrieve!(self.grammar, warnings));
+        let lexer = Lexer::new(retrieve!(self.grammar, warnings));
         WOk(lexer, warnings)
     }
 }
@@ -567,7 +567,7 @@ impl<'a> LexedStream<'a> {
         }
     }
     fn lex_next(&mut self) -> WResult<bool> {
-        let mut warnings = WarningSet::empty();
+        let warnings = WarningSet::empty();
         if self.stream.pos() == self.stream.len() {
             WOk(false, warnings)
         } else {

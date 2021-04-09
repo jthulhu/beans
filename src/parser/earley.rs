@@ -1,11 +1,11 @@
-use super::grammarparser::{self, ElementType, Grammar, GrammarBuilder, Rule};
-use super::parser;
+use super::grammarparser::{ElementType, Grammar, GrammarBuilder, Rule};
+use super::parser::{Parser, ParseResult};
 use crate::error::{
-    Error,
-    WResult::{self, WErr, WOk},
+    WResult::{self, WOk},
     WarningSet,
 };
 use crate::stream::StringStream;
+use crate::lexer::LexedStream;
 use crate::{ctry, retrieve};
 use fixedbitset::FixedBitSet;
 use hashbrown::HashMap;
@@ -204,7 +204,7 @@ impl Grammar<'_> for EarleyGrammar {
         axioms: FixedBitSet,
         name_map: HashMap<String, usize>,
     ) -> WResult<Self> {
-        let mut warnings = WarningSet::empty();
+        let warnings = WarningSet::empty();
         let mut nullables = FixedBitSet::with_capacity(axioms.len());
 
         let mut is_in = vec![Vec::new(); rules.len()];
@@ -251,7 +251,9 @@ impl Grammar<'_> for EarleyGrammar {
 
 pub struct EarleyParser {}
 
-impl parser::Parser<'_> for EarleyParser {
+impl Parser<'_> for EarleyParser {
     type GrammarBuilder = EarleyGrammarBuilder;
     type Grammar = EarleyGrammar;
+    fn parse(&self, _input: &LexedStream) -> ParseResult {
+    }
 }

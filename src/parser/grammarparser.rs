@@ -1,4 +1,3 @@
-use crate::case::Case;
 use crate::error::{
     Error, ErrorType, WResult,
     WResult::{WErr, WOk},
@@ -6,23 +5,17 @@ use crate::error::{
 };
 use crate::lexer::{LexedStream, Lexer, LexerBuilder, Token};
 use crate::location::Location;
-use crate::stream::{Stream, StreamObject, StringStream};
-use crate::{ask_case, ctry, retrieve};
+use crate::stream::StringStream;
+use crate::{ask_case, ctry};
 // use crate::{rule, proxy, collect};
-use super::earley;
 use fixedbitset::FixedBitSet;
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use std::error;
-use std::fs::File;
-use std::io::prelude::*;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-}
+mod tests {}
 
-pub type RuleSet = FixedBitSet;
 pub type Key = String;
 /// # Summary
 ///
@@ -110,7 +103,7 @@ pub enum Value {
 
 pub trait GrammarBuilder<'a>: Sized {
     type Grammar: Grammar<'a>;
-    fn with_file(mut self, file: String) -> Result<Self, Box<dyn error::Error>> {
+    fn with_file(self, file: String) -> Result<Self, Box<dyn error::Error>> {
         Ok(self.with_stream(StringStream::from_file(file)?))
     }
     fn with_stream(self, stream: StringStream) -> Self;
@@ -151,7 +144,7 @@ pub trait GrammarBuilder<'a>: Sized {
                     if token.name() == id {
                         let token = token.clone();
                         lexed_input.pos_pp();
-                        WOk(token.clone(), warnings)
+                        WOk(token, warnings)
                     } else {
                         WErr(generate_error(token.location().clone(), id, token.name()))
                     }
@@ -351,7 +344,7 @@ pub trait GrammarBuilder<'a>: Sized {
 
         fn read_rule(lexed_input: &mut LexedStream, lexer: &Lexer) -> WResult<PartialRule> {
             let mut warnings = WarningSet::empty();
-            let mut expected = "ID";
+            let expected = "ID";
             let mut rule_elements = Vec::new();
             while let Some(token) = ctry!(lexed_input.get(), warnings) {
                 if token.name() == "LPROXY" {
@@ -428,13 +421,15 @@ pub trait GrammarBuilder<'a>: Sized {
                     ErrorType::GrammarNonTerminalDuplicate(name),
                 ));
             }
-            axioms_vec.push((rules.len(), rules.len() + new_rules.len()));
+	    if axiom {
+		axioms_vec.push((rules.len(), rules.len() + new_rules.len()));
+	    }
             rules.extend(new_rules);
             ask_case!(name, PascalCase, warnings);
             done.insert(name, location);
         }
 
-        let mut axioms = RuleSet::with_capacity(rules.len());
+        let mut axioms = FixedBitSet::with_capacity(rules.len());
         for (i, j) in axioms_vec {
             axioms.set_range(i..j, true);
         }

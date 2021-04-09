@@ -1,7 +1,7 @@
-mod earley;
-mod grammarparser;
+pub mod earley;
+pub mod grammarparser;
 #[allow(clippy::module_inception)]
-mod parser;
+pub mod parser;
 
 pub use earley::EarleyGrammar;
 pub use grammarparser::Grammar;

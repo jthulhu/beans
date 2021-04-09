@@ -56,11 +56,13 @@ mod tests {
     fn token() {
         let token = Token::new(
             String::from("wow"),
+            0,
             HashMap::new(),
             Location::new(String::from("test_file"), (3, 0), (3, 3)),
         );
 
         assert_eq!(token.name(), "wow");
+        assert_eq!(*token.id(), 0);
         assert_eq!(token.location().file(), "test_file");
         assert_eq!(token.location().start(), (3, 0));
         assert_eq!(token.location().end(), (3, 3));
@@ -440,6 +442,7 @@ mod tests {
 #[derive(Debug, Clone)]
 pub struct Token {
     name: String,
+    id: usize,
     attributes: HashMap<usize, String>,
     location: Location,
 }
@@ -460,9 +463,15 @@ impl Index<&usize> for Token {
 
 impl Token {
     /// Build a new token.
-    pub fn new(name: String, attributes: HashMap<usize, String>, location: Location) -> Self {
+    pub fn new(
+        name: String,
+        id: usize,
+        attributes: HashMap<usize, String>,
+        location: Location,
+    ) -> Self {
         Self {
             name,
+            id,
             attributes,
             location,
         }
@@ -488,6 +497,10 @@ impl Token {
     /// Return the `name` of the token.
     pub fn name(&self) -> &str {
         &self.name[..]
+    }
+
+    pub fn id(&self) -> &usize {
+        &self.id
     }
 
     /// Return the `location` of the token.
@@ -521,6 +534,16 @@ impl LexerBuilder {
         self
     }
 
+    pub fn with_stream(mut self, stream: StringStream) -> WResult<Self> {
+        let mut warnings = WarningSet::empty();
+        let grammar = ctry!(
+            LexerGrammarBuilder::new().with_stream(stream).build(),
+            warnings
+        );
+        self.grammar = Some(grammar);
+        WOk(self, warnings)
+    }
+
     /// Specify the lexer's grammar file.
     pub fn with_grammar_file(mut self, file: String) -> WResult<Self> {
         let mut warnings = WarningSet::empty();
@@ -529,7 +552,7 @@ impl LexerBuilder {
             warnings
         );
         self.grammar = Some(grammar);
-        WResult::WOk(self, warnings)
+        WOk(self, warnings)
     }
 
     /// Build the lexer.
@@ -592,7 +615,8 @@ impl<'a> LexedStream<'a> {
                             attributes.insert(i, a.text().to_string());
                         }
                     }
-                    let token = Token::new(name, attributes, location.clone());
+                    let id = self.lexer.grammar.id(&name).unwrap();
+                    let token = Token::new(name, id, attributes, location.clone());
                     self.last_location = location;
                     self.tokens.push(token);
                     break 'lex WOk(true, warnings);

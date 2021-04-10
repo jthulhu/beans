@@ -31,22 +31,44 @@ mod tests {
     }
 
     impl TestEarleyItem {
-        fn matches(&self, other: &EarleyItem, parser: &EarleyParser) {
+        fn matches(
+            &self,
+            other: &EarleyItem,
+            parser: &EarleyParser,
+            set_id: usize,
+            item_id: usize,
+        ) {
+            let error_message = format!("Set #{}, item #{}: no match: ", set_id, item_id);
             let item = &parser.grammar().rules[other.rule];
-            assert_eq!(self.name, &item.name);
+            assert_eq!(self.name, &item.name, "{} name.", error_message);
             assert_eq!(
                 self.left_elements.len() + self.right_elements.len(),
-                item.elements.len()
+                item.elements.len(),
+                "{} origin set.",
+                error_message
             );
-            assert_eq!(self.left_elements.len(), other.position);
-            assert_eq!(self.origin, other.origin);
+            assert_eq!(
+                self.left_elements.len(),
+                other.position,
+                "{} {}.",
+                error_message,
+                "fat dot position"
+            );
+            assert_eq!(self.origin, other.origin, "{} origin set.", error_message);
             for i in 0..self.left_elements.len() {
-                assert_eq!(self.left_elements[i], &item.elements[i].name);
+                assert_eq!(
+                    self.left_elements[i], &item.elements[i].name,
+                    "{} element #{}.",
+                    error_message, i
+                );
             }
             for i in 0..self.right_elements.len() {
                 assert_eq!(
                     self.right_elements[i],
-                    &item.elements[i + other.position].name
+                    &item.elements[i + other.position].name,
+                    "{} elements #{}.",
+                    error_message,
+                    i + other.position
                 );
             }
         }
@@ -242,6 +264,47 @@ mod tests {
     }
 
     #[test]
+    fn recognise_handle_empty_rules() {
+        let lexer_input = r#""#;
+        let grammar_input = r#"
+@A ::= <>
+ B <>;
+B ::= A <>;"#;
+        let input = r#""#;
+        let lexer = LexerBuilder::new()
+            .with_stream(StringStream::new(
+                String::from("<lexer input>"),
+                lexer_input.to_string(),
+            ))
+            .unwrap()
+            .build()
+            .unwrap();
+        let grammar = <EarleyParser as Parser>::GrammarBuilder::default()
+            .with_stream(StringStream::new(
+                String::from("<grammar input>"),
+                grammar_input.to_string(),
+            ))
+            .build(&lexer)
+            .unwrap();
+        let parser = EarleyParser::new(grammar);
+        let sets = sets!(
+            ==
+            A -> . (0)
+            A -> . B (0)
+            B -> . A (0)
+            B -> A . (0)
+            A -> B . (0)
+        );
+        let recognised = parser
+            .recognise(&mut lexer.lex(&mut StringStream::new(
+                String::from("<input>"),
+                input.to_string(),
+            )))
+            .unwrap();
+        verify_sets(sets, recognised, &parser);
+    }
+
+    #[test]
     fn recogniser() {
         let lexer_input = r#"
 NUMBER ::= [0-9]
@@ -358,11 +421,26 @@ Factor ::= LPAR Sum RPAR <>
                 input.to_string(),
             )))
             .unwrap();
+        verify_sets(sets, recognised, &parser);
+    }
+
+    fn verify_sets(
+        sets: Vec<Vec<TestEarleyItem>>,
+        recognised: Vec<StateSet>,
+        parser: &EarleyParser,
+    ) {
         assert_eq!(recognised.len(), sets.len());
-        for (expected, recognised) in sets.iter().zip(recognised.iter()) {
-            assert_eq!(expected.len(), recognised.set.len());
-            for (test_item, item) in expected.iter().zip(recognised.set.iter()) {
-                test_item.matches(item, &parser);
+        for (set, (expected, recognised)) in sets.iter().zip(recognised.iter()).enumerate() {
+            assert_eq!(
+                expected.len(),
+                recognised.set.len(),
+                "Set #{} length does not match.",
+                set
+            );
+            for (item_nb, (test_item, item)) in
+                expected.iter().zip(recognised.set.iter()).enumerate()
+            {
+                test_item.matches(item, parser, set, item_nb);
             }
         }
     }
@@ -560,7 +638,14 @@ impl EarleyParser {
                                     rule,
                                     origin: pos,
                                     position: 0,
-                                })
+                                });
+                            }
+                            if self.grammar().nullables.contains(id) {
+                                to_be_added.push(EarleyItem {
+                                    rule: item.rule,
+                                    origin: item.origin,
+                                    position: item.position + 1,
+                                });
                             }
                         }
                         // Scan

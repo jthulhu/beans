@@ -1,5 +1,6 @@
-use super::matching::{find, Instruction, Program};
+use super::matching::{self, find, Instruction, Program};
 use super::parsing::{build, read, Regex, RegexError};
+use fixedbitset::FixedBitSet;
 
 #[cfg(test)]
 mod tests {
@@ -75,7 +76,7 @@ mod tests {
             .unwrap()
             .build();
 
-        let match1 = regex.find("aaacd").unwrap();
+        let match1 = regex.find("aaacd", &Allowed::All).unwrap();
         assert_eq!(match1.length, 3);
         assert_eq!(match1.name, "As");
         assert_eq!(match1.groups.len(), 1);
@@ -85,7 +86,7 @@ mod tests {
         assert_eq!(handle.text, "aaa");
         assert_eq!(match1.text, "aaa");
 
-        let match2 = regex.find("bc").unwrap();
+        let match2 = regex.find("bc", &Allowed::All).unwrap();
         assert_eq!(match2.length, 2);
         assert_eq!(match2.name, "BC");
         assert_eq!(match2.groups.len(), 2);
@@ -99,7 +100,7 @@ mod tests {
         assert_eq!(handle.end, 2);
         assert_eq!(handle.text, "c");
 
-        let match3 = regex.find("cde");
+        let match3 = regex.find("cde", &Allowed::All);
         assert!(match3.is_none());
     }
 
@@ -111,7 +112,7 @@ mod tests {
             .with_named_regex("\"(.*)\"", String::from("STRING"))
             .unwrap()
             .build();
-        let match1 = regex.find("'blabla'").unwrap();
+        let match1 = regex.find("'blabla'", &Allowed::All).unwrap();
         assert_eq!(match1.length, 8);
         assert_eq!(match1.name, "STRING");
         assert_eq!(match1.groups.len(), 1);
@@ -128,9 +129,29 @@ mod tests {
             .with_named_regex(".*", String::from("Default"))
             .unwrap()
             .build();
-        assert_eq!(regex.find("0123456").unwrap().length, 7);
-        assert_eq!(regex.find("012").unwrap().length, 3);
-        assert_eq!(regex.find("").unwrap().length, 0);
+        assert_eq!(regex.find("0123456", &Allowed::All).unwrap().length, 7);
+        assert_eq!(regex.find("012", &Allowed::All).unwrap().length, 3);
+        assert_eq!(regex.find("", &Allowed::All).unwrap().length, 0);
+    }
+}
+
+pub enum Allowed {
+    All,
+    Some(Vec<usize>)
+}
+
+impl Allowed {
+    pub fn convert(&self, size: usize) -> matching::Allowed {
+	match self {
+	    Allowed::All => matching::Allowed::All,
+	    Allowed::Some(rules) => {
+		let mut allowed = FixedBitSet::with_capacity(size);
+		for i in rules {
+		    allowed.insert(*i);
+		}
+		matching::Allowed::Some(allowed)
+	    }
+	}
     }
 }
 
@@ -220,7 +241,7 @@ impl Match<'_> {
     /// Return the groups of the regex. The position of each group is
     /// enforced by its position in the regex. Each group may or may not
     /// have been caught.
-    pub fn groups(&self) -> &[Option<Handle>] {
+    pub fn groups(&self) -> &[Option<Handle<'_>>] {
         &self.groups[..]
     }
 
@@ -261,8 +282,8 @@ impl CompiledRegex {
 
     /// Match against a given input. Will return only one match, if many were possibles,
     /// according to the priority rules.
-    pub fn find<'a>(&'a self, input: &'a str) -> Option<Match<'a>> {
-        if let Some((length, id, groups)) = find(&self.program, input, self.size) {
+    pub fn find<'a>(&'a self, input: &'a str, allowed: &Allowed) -> Option<Match<'a>> {
+        if let Some((length, id, groups)) = find(&self.program, input, self.size, &allowed.convert(self.names.len())) {
             let (begin_groups, end_groups) = self.groups[id];
             let mut grps = Vec::new();
             for i in begin_groups..end_groups {

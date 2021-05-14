@@ -483,7 +483,7 @@ pub fn build(regex: Regex, program: &mut Program) {
 pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError> {
     /// Parse a character class.
     fn read_char_class(
-        input: &mut std::iter::Enumerate<std::str::Chars>,
+        input: &mut std::iter::Enumerate<std::str::Chars<'_>>,
         size: usize,
         actual: usize,
     ) -> Result<Regex, RegexError> {

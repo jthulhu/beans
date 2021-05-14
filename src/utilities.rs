@@ -25,6 +25,7 @@ macro_rules! retrieve {
         use crate::ctry;
         use crate::error::{Error, ErrorType, WarningSet};
         use crate::location::Location;
+	use std::rc::Rc;
         use std::mem;
         let column = column!() as usize;
         let file = file!();
@@ -32,7 +33,7 @@ macro_rules! retrieve {
         let result = ctry!(
             mem::replace(&mut $resource, None)
                 .ok_or(Error::new(
-                    Location::new(String::from(file), (line, column), (line, column)),
+                    Location::new(Rc::new(String::from(file)), (line, column), (line, column)),
                     ErrorType::InternalError(format!("{} missing", stringify!($resource))),
                 ))
                 .and_then(|x| Ok((x, WarningSet::empty())))
@@ -50,15 +51,14 @@ macro_rules! retrieve {
 #[macro_export]
 macro_rules! ask_case {
     ($string: expr, $case: ident, $warnings: expr) => {
-        let string = &$string;
         use crate::{
             case::Case,
             error::{Warning, WarningType},
         };
-        match Case::case(string) {
+        match Case::case(&$string) {
             Case::$case => {}
             c => $warnings.add(Warning::new(WarningType::CaseConvention(
-                string.to_string(),
+                &$string,
                 c,
                 Case::$case,
             ))),

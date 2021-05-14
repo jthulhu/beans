@@ -8,7 +8,9 @@ mod tests {
     use super::*;
     #[test]
     fn string_stream() {
-        let string = Rc::new(String::from("What a nice content,\nall in a single stream!"));
+        let string = Rc::new(String::from(
+            "What a nice content,\nall in a single stream!",
+        ));
         let origin = Rc::new(String::from("somewhere"));
         let stream = StringStream::new(origin.clone(), string.clone());
         assert_eq!(stream.borrow(), string.as_str());
@@ -97,6 +99,7 @@ pub trait Stream<'a> {
 ///
 /// `Char(char)`: a character.
 /// `EOF`: End Of File.
+#[derive(Debug)]
 pub enum Char {
     Char(char),
     EOF,

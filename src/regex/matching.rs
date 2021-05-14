@@ -120,15 +120,15 @@ pub enum Instruction {
 #[derive(Debug)]
 pub enum Allowed {
     All,
-    Some(FixedBitSet)
+    Some(FixedBitSet),
 }
 
 impl Allowed {
     pub fn contains(&self, i: usize) -> bool {
-	match self {
-	    Allowed::All => true,
-	    Allowed::Some(allowed) => allowed.contains(i)
-	}
+        match self {
+            Allowed::All => true,
+            Allowed::Some(allowed) => allowed.contains(i),
+        }
     }
 }
 
@@ -325,15 +325,15 @@ fn match_next(
             thread.save(*idx, pos);
             advance(thread, Some(current));
         }
-	Instruction::Switch(instructions) => {
-	    instructions
-		.iter()
-		.filter(|(id, _, ignored)| *ignored || allowed.contains(*id))
-		.for_each(|(_, ip, _)| {
-		    let mut new = thread.clone();
-		    new.jump(*ip);
-		});
-	}
+        Instruction::Switch(instructions) => {
+            instructions
+                .iter()
+                .filter(|(id, _, ignored)| *ignored || allowed.contains(*id))
+                .for_each(|(_, ip, _)| {
+                    let mut new = thread.clone();
+                    new.jump(*ip);
+                });
+        }
         Instruction::Split(pos1, pos2) => {
             let mut other = thread.clone();
             other.jump(*pos2);
@@ -389,7 +389,7 @@ pub fn find(prog: ProgramRef<'_>, input: &str, size: usize, allowed: &Allowed) -
                 prog,
                 &mut best_match,
                 last,
-		allowed,
+                allowed,
             );
         }
         current = next;
@@ -406,7 +406,7 @@ pub fn find(prog: ProgramRef<'_>, input: &str, size: usize, allowed: &Allowed) -
             prog,
             &mut best_match,
             last,
-	    allowed,
+            allowed,
         );
     }
 

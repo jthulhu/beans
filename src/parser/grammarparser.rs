@@ -36,7 +36,7 @@ pub enum ElementType {
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuleElement {
-    pub name: String,
+    pub name: Rc<String>,
     pub attribute: Attribute,
     pub key: Option<Key>,
     pub element_type: ElementType,
@@ -67,14 +67,14 @@ struct PartialRule {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Rule {
-    pub name: String,
+    pub name: Rc<String>,
     pub id: usize,
     pub elements: Vec<RuleElement>,
     pub proxy: Proxy,
 }
 
 impl Rule {
-    pub fn new(name: String, id: usize, elements: Vec<RuleElement>, proxy: Proxy) -> Self {
+    pub fn new(name: Rc<String>, id: usize, elements: Vec<RuleElement>, proxy: Proxy) -> Self {
         Self {
             name,
             id,
@@ -112,31 +112,31 @@ pub enum Value {
 /// # Summary
 ///
 /// `GrammarBuilder` is a builder for a grammar (ie. a type that implements `Grammar`).
-pub trait GrammarBuilder<'grammar>: Sized {
-    type Grammar: Grammar<'grammar>;
+pub trait GrammarBuilder<'deserializer>: Sized {
+    type Grammar: Grammar<'deserializer>;
     fn with_file(self, file: Rc<String>) -> Result<Self, Box<dyn error::Error>> {
         Ok(self.with_stream(StringStream::from_file(file)?))
     }
     fn with_stream(self, stream: StringStream) -> Self;
     fn with_grammar(self, grammar: Rc<String>) -> Self;
-    fn stream<'ws>(&mut self) -> WResult<'ws, StringStream>;
+    fn stream(&mut self) -> WResult<StringStream>;
     fn grammar(&self) -> Rc<String>;
-    fn build<'ws>(mut self, lexer: &Lexer) -> WResult<'ws, Self::Grammar> {
-	/// Read a token, match it against the provided `id`.
-	/// If it matches, consume the token.
-	/// Return whether the token matched.
-        fn read_token_walk<'warning>(lexed_input: &mut LexedStream<'_>, id: &str) -> WResult<'warning, bool> {
+    fn build(mut self, lexer: &Lexer) -> WResult<Self::Grammar> {
+        /// Read a token, match it against the provided `id`.
+        /// If it matches, consume the token.
+        /// Return whether the token matched.
+        fn read_token_walk(lexed_input: &mut LexedStream<'_>, id: &str) -> WResult<bool> {
             let mut warnings = WarningSet::empty();
             match ctry!(lexed_input.next_any(), warnings) {
-		Some(token) if token.name() == id => WOk(true, warnings),
-		_ => {
-		    lexed_input.drop_last();
-		    WOk(false, warnings)
-		}
+                Some(token) if token.name() == id => WOk(true, warnings),
+                _ => {
+                    lexed_input.drop_last();
+                    WOk(false, warnings)
+                }
             }
         }
 
-	/// Generate an error of type [`GrammarSyntaxError`][beans::error::ErrorType::GrammarSyntaxError].
+        /// Generate an error of type [`GrammarSyntaxError`][beans::error::ErrorType::GrammarSyntaxError].
         fn generate_error(location: Location, expected: &str, found: &str) -> Error {
             Error::new(
                 location,
@@ -144,10 +144,10 @@ pub trait GrammarBuilder<'grammar>: Sized {
             )
         }
 
-	/// Read the token, match it against the provded `id`.
-	/// If it matches, consume the token, fail otherwise.
-	/// Return the token.
-        fn match_now<'li, 'warning>(lexed_input: &'li mut LexedStream<'_>, id: &str) -> WResult<'warning, Token> {
+        /// Read the token, match it against the provded `id`.
+        /// If it matches, consume the token, fail otherwise.
+        /// Return the token.
+        fn match_now<'li>(lexed_input: &'li mut LexedStream<'_>, id: &str) -> WResult<Token> {
             let mut warnings = WarningSet::empty();
             match ctry!(lexed_input.next_any(), warnings) {
                 Some(token) => {
@@ -155,8 +155,8 @@ pub trait GrammarBuilder<'grammar>: Sized {
                         let token = token.clone();
                         WOk(token, warnings)
                     } else {
-			let error = generate_error(token.location().clone(), id, token.name());
-			lexed_input.drop_last();
+                        let error = generate_error(token.location().clone(), id, token.name());
+                        lexed_input.drop_last();
                         WErr(error)
                     }
                 }
@@ -168,11 +168,11 @@ pub trait GrammarBuilder<'grammar>: Sized {
             }
         }
 
-	/// Read a proxy element, of the form `key: value`.
-	/// Consume the tokens.
-	/// Fail if there is no proxy element.
-	/// Return the proxy element as `(key, value)`.
-        fn read_proxy_element<'warning>(lexed_input: &mut LexedStream<'_>) -> WResult<'warning, (String, Value)> {
+        /// Read a proxy element, of the form `key: value`.
+        /// Consume the tokens.
+        /// Fail if there is no proxy element.
+        /// Return the proxy element as `(key, value)`.
+        fn read_proxy_element(lexed_input: &mut LexedStream<'_>) -> WResult<(String, Value)> {
             let mut warnings = WarningSet::empty();
             let id = ctry!(match_now(lexed_input, "ID"), warnings);
             ctry!(match_now(lexed_input, "COLON"), warnings);
@@ -251,18 +251,18 @@ pub trait GrammarBuilder<'grammar>: Sized {
             }
         }
 
-	/// Read a proxy, of the form `<key: value ...>`.
-	/// Consume the tokens.
-	/// Fail if the proxy is malformed.
-	/// Return the proxy.
-        fn read_proxy<'warning>(lexed_input: &mut LexedStream<'_>) -> WResult<'warning, Proxy> {
+        /// Read a proxy, of the form `<key: value ...>`.
+        /// Consume the tokens.
+        /// Fail if the proxy is malformed.
+        /// Return the proxy.
+        fn read_proxy(lexed_input: &mut LexedStream<'_>) -> WResult<Proxy> {
             let mut warnings = WarningSet::empty();
             match_now(lexed_input, "LPROXY");
             let mut proxy = HashMap::new();
             while let Some(token) = ctry!(lexed_input.next_any(), warnings) {
                 match token.name() {
                     "ID" => {
-			lexed_input.drop_last();
+                        lexed_input.drop_last();
                         let (key, value) = ctry!(read_proxy_element(lexed_input), warnings);
                         proxy.insert(key, value);
                     }
@@ -270,10 +270,10 @@ pub trait GrammarBuilder<'grammar>: Sized {
                         return WOk(proxy, warnings);
                     }
                     x => {
-			let error = generate_error(token.location().clone(), "ID or RPROXY", x);
-			lexed_input.drop_last();
-			return WErr(error);
-		    }
+                        let error = generate_error(token.location().clone(), "ID or RPROXY", x);
+                        lexed_input.drop_last();
+                        return WErr(error);
+                    }
                 }
             }
             WErr(generate_error(
@@ -283,14 +283,14 @@ pub trait GrammarBuilder<'grammar>: Sized {
             ))
         }
 
-	/// Read an element attribute, of the form `.attribute`.
-	/// Consume the tokens.
-	/// Fail if there is a dot but no attribute.
-	/// Return the attribute.
-        fn read_rule_element_attribute<'warning>(lexed_input: &mut LexedStream<'_>) -> WResult<'warning, Attribute> {
+        /// Read an element attribute, of the form `.attribute`.
+        /// Consume the tokens.
+        /// Fail if there is a dot but no attribute.
+        /// Return the attribute.
+        fn read_rule_element_attribute(lexed_input: &mut LexedStream<'_>) -> WResult<Attribute> {
             let mut warnings = WarningSet::empty();
-	    if ctry!(read_token_walk(lexed_input, "DOT"), warnings) {
-		if let Some(token) = ctry!(lexed_input.next_any(), warnings) {
+            if ctry!(read_token_walk(lexed_input, "DOT"), warnings) {
+                if let Some(token) = ctry!(lexed_input.next_any(), warnings) {
                     match token.name() {
                         "ID" => WOk(Attribute::Named(token.content().to_string()), warnings),
                         "INT" => WOk(
@@ -298,43 +298,46 @@ pub trait GrammarBuilder<'grammar>: Sized {
                             warnings,
                         ),
                         x => {
-			    let error = generate_error(token.location().clone(), "ID or INT", x);
-			    lexed_input.drop_last();
-			    WErr(error)
-			}
+                            let error = generate_error(token.location().clone(), "ID or INT", x);
+                            lexed_input.drop_last();
+                            WErr(error)
+                        }
                     }
                 } else {
-		    lexed_input.drop_last();
+                    lexed_input.drop_last();
                     WErr(generate_error(
                         lexed_input.last_location().clone(),
                         "ID or INT",
                         "EOF",
                     ))
                 }
-	    } else {
-		WOk(Attribute::None, warnings)
-	    }
+            } else {
+                WOk(Attribute::None, warnings)
+            }
         }
 
-	/// Read an element key, of the form `@key`.
-	/// Consume the tokens.
-	/// Fail if there is an at but no key.
-	/// Return the key.
-        fn read_rule_element_key<'warning>(lexed_input: &mut LexedStream<'_>) -> WResult<'warning, Option<String>> {
+        /// Read an element key, of the form `@key`.
+        /// Consume the tokens.
+        /// Fail if there is an at but no key.
+        /// Return the key.
+        fn read_rule_element_key(lexed_input: &mut LexedStream<'_>) -> WResult<Option<String>> {
             let mut warnings = WarningSet::empty();
-	    if ctry!(read_token_walk(lexed_input, "AT"), warnings) {
-		let token = ctry!(match_now(lexed_input, "ID"), warnings);
-		WOk(Some(token.content().to_string()), warnings)
-	    } else {
-		WOk(None, warnings)
-	    }
+            if ctry!(read_token_walk(lexed_input, "AT"), warnings) {
+                let token = ctry!(match_now(lexed_input, "ID"), warnings);
+                WOk(Some(token.content().to_string()), warnings)
+            } else {
+                WOk(None, warnings)
+            }
         }
 
-	/// Read an element, of the form `Token(.attribute)?(@key)?`.
-	/// Consume the tokens.
-	/// Fail if the element is malformed.
-	/// Return the element.
-        fn read_rule_element<'warning>(lexed_input: &mut LexedStream<'_>, lexer: &Lexer) -> WResult<'warning, RuleElement> {
+        /// Read an element, of the form `Token(.attribute)?(@key)?`.
+        /// Consume the tokens.
+        /// Fail if the element is malformed.
+        /// Return the element.
+        fn read_rule_element(
+            lexed_input: &mut LexedStream<'_>,
+            lexer: &Lexer,
+        ) -> WResult<RuleElement> {
             let mut warnings = WarningSet::empty();
             let id = ctry!(match_now(lexed_input, "ID"), warnings);
             let attribute = ctry!(read_rule_element_attribute(lexed_input), warnings);
@@ -342,7 +345,7 @@ pub trait GrammarBuilder<'grammar>: Sized {
             let name = id.content();
             WOk(
                 RuleElement {
-                    name: name.to_string(),
+                    name: Rc::new(name.to_string()),
                     attribute,
                     key,
                     element_type: if let Some(id) = lexer.grammar().id(name) {
@@ -355,17 +358,20 @@ pub trait GrammarBuilder<'grammar>: Sized {
             )
         }
 
-	/// Read a rule, of the form `Token(.attribute)?(@key)? ... <key: value ...>`.
-	/// Consume the tokens.
-	/// Fails if the rule is malformed.
-	/// Return the rule.
-        fn read_rule<'warning>(lexed_input: &mut LexedStream<'_>, lexer: &Lexer) -> WResult<'warning, PartialRule> {
+        /// Read a rule, of the form `Token(.attribute)?(@key)? ... <key: value ...>`.
+        /// Consume the tokens.
+        /// Fails if the rule is malformed.
+        /// Return the rule.
+        fn read_rule(
+            lexed_input: &mut LexedStream<'_>,
+            lexer: &Lexer,
+        ) -> WResult<PartialRule> {
             let mut warnings = WarningSet::empty();
             let expected = "ID";
             let mut rule_elements = Vec::new();
             while let Some(token) = ctry!(lexed_input.next_any(), warnings) {
                 if token.name() == "LPROXY" {
-		    lexed_input.drop_last();
+                    lexed_input.drop_last();
                     let proxy = ctry!(read_proxy(lexed_input), warnings);
                     return WOk(
                         PartialRule {
@@ -375,8 +381,8 @@ pub trait GrammarBuilder<'grammar>: Sized {
                         warnings,
                     );
                 } else {
-		    lexed_input.drop_last();
-		}
+                    lexed_input.drop_last();
+                }
                 rule_elements.push(ctry!(read_rule_element(lexed_input, lexer), warnings));
             }
             WErr(generate_error(
@@ -386,37 +392,37 @@ pub trait GrammarBuilder<'grammar>: Sized {
             ))
         }
 
-	/// Read a definition, of the form `NonTerminal ::= Token(.attribute)?(@key)? ... <key: value ...> ...;`.
-	/// Take as argument the `id` of the defined `NonTerminal`.
-	/// Consume the tokens.
-	/// Fails is malformed.
-	/// Return the definition.
-        fn read_definition<'warning>(
+        /// Read a definition, of the form `NonTerminal ::= Token(.attribute)?(@key)? ... <key: value ...> ...;`.
+        /// Take as argument the `id` of the defined `NonTerminal`.
+        /// Consume the tokens.
+        /// Fails is malformed.
+        /// Return the definition.
+        fn read_definition(
             lexed_input: &mut LexedStream<'_>,
             id: usize,
             lexer: &Lexer,
-        ) -> WResult<'warning, (bool, String, Vec<Rule>)> {
+        ) -> WResult<(bool, String, Vec<Rule>)> {
             let mut warnings = WarningSet::empty();
             let axiom = ctry!(read_token_walk(lexed_input, "AT"), warnings);
             let name = ctry!(match_now(lexed_input, "ID"), warnings);
             ctry!(match_now(lexed_input, "ASSIGNMENT"), warnings);
-            let name_string = name.content().to_string();
+            let name_string = name.content();
             let mut rules = Vec::new();
             'read_rules: while let Some(token) = ctry!(lexed_input.next_any(), warnings) {
                 if token.name() == "SEMICOLON" {
                     break 'read_rules;
                 }
-		lexed_input.drop_last();
+                lexed_input.drop_last();
                 let partial_rule = ctry!(read_rule(lexed_input, lexer), warnings);
                 let rule = Rule::new(
-                    name_string.clone(),
+                    Rc::new(name_string.to_string()),
                     id,
                     partial_rule.elements,
                     partial_rule.proxy,
                 );
                 rules.push(rule);
             }
-            WOk((axiom, name_string, rules), warnings)
+            WOk((axiom, name_string.to_string(), rules), warnings)
         }
 
         let mut warnings = WarningSet::empty();
@@ -439,7 +445,7 @@ pub trait GrammarBuilder<'grammar>: Sized {
         let mut nonterminals = 0;
         while let Some(token) = ctry!(lexed_input.next_any(), warnings) {
             let first_location = token.location().clone();
-	    lexed_input.drop_last();
+            lexed_input.drop_last();
             let (axiom, name, new_rules) = ctry!(
                 read_definition(&mut lexed_input, nonterminals, lexer),
                 warnings
@@ -462,10 +468,10 @@ pub trait GrammarBuilder<'grammar>: Sized {
                 axioms_vec.push((rules.len(), rules.len() + new_rules.len()));
             }
             rules.extend(new_rules);
-            ask_case!(name, PascalCase, warnings);
-            done.insert(&name, location);
+            ask_case!(&name, PascalCase, warnings);
+            done.insert(name, location);
         }
-	
+
         let mut axioms = FixedBitSet::with_capacity(rules.len());
         for (i, j) in axioms_vec {
             axioms.set_range(i..j, true);
@@ -474,7 +480,7 @@ pub trait GrammarBuilder<'grammar>: Sized {
         let mut name_map = HashMap::new();
 
         for rule in rules.iter() {
-            name_map.insert(rule.name.clone(), rule.id);
+            name_map.insert(rule.name.as_str().into(), rule.id);
         }
 
         for rule in rules.iter_mut() {
@@ -482,11 +488,11 @@ pub trait GrammarBuilder<'grammar>: Sized {
                 if element.is_terminal() {
                     continue;
                 }
-                match name_map.get(&element.name) {
+                match name_map.get(element.name.as_str()) {
                     Some(&id) => element.element_type = ElementType::NonTerminal(Some(id)),
                     None => warnings.add(Warning::new(WarningType::UndefinedNonTerminal(
-                        &rule.name,
-                        &element.name,
+                        rule.name.clone(),
+                        element.name.clone(),
                     ))),
                 }
             }
@@ -499,13 +505,13 @@ pub trait GrammarBuilder<'grammar>: Sized {
 }
 
 pub trait Grammar<'deserializer>: Sized + Serialize + Deserialize<'deserializer> {
-    fn new<'warning>(
+    fn new(
         rules: Vec<Rule>,
         axioms: FixedBitSet,
-        name_map: HashMap<String, usize>,
-    ) -> WResult<'warning, Self>;
-    
-    fn from<'warning>(bytes: &'deserializer [u8]) -> WResult<'warning, Self> {
+        name_map: HashMap<Rc<str>, usize>,
+    ) -> WResult<Self>;
+
+    fn from(bytes: &'deserializer [u8]) -> WResult<Self> {
         bincode::deserialize::<'_, Self>(bytes)
             .map_err(|x| {
                 Error::new(
@@ -519,7 +525,7 @@ pub trait Grammar<'deserializer>: Sized + Serialize + Deserialize<'deserializer>
             })
             .into()
     }
-    fn serialize(&self) -> WResult<'_, Vec<u8>> {
+    fn serialize(&self) -> WResult<Vec<u8>> {
         bincode::serialize(self)
             .map_err(|x| {
                 Error::new(

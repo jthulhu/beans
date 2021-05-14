@@ -137,21 +137,21 @@ mod tests {
 
 pub enum Allowed {
     All,
-    Some(Vec<usize>)
+    Some(Vec<usize>),
 }
 
 impl Allowed {
     pub fn convert(&self, size: usize) -> matching::Allowed {
-	match self {
-	    Allowed::All => matching::Allowed::All,
-	    Allowed::Some(rules) => {
-		let mut allowed = FixedBitSet::with_capacity(size);
-		for i in rules {
-		    allowed.insert(*i);
-		}
-		matching::Allowed::Some(allowed)
-	    }
-	}
+        match self {
+            Allowed::All => matching::Allowed::All,
+            Allowed::Some(rules) => {
+                let mut allowed = FixedBitSet::with_capacity(size);
+                for i in rules {
+                    allowed.insert(*i);
+                }
+                matching::Allowed::Some(allowed)
+            }
+        }
     }
 }
 
@@ -283,7 +283,12 @@ impl CompiledRegex {
     /// Match against a given input. Will return only one match, if many were possibles,
     /// according to the priority rules.
     pub fn find<'a>(&'a self, input: &'a str, allowed: &Allowed) -> Option<Match<'a>> {
-        if let Some((length, id, groups)) = find(&self.program, input, self.size, &allowed.convert(self.names.len())) {
+        if let Some((length, id, groups)) = find(
+            &self.program,
+            input,
+            self.size,
+            &allowed.convert(self.names.len()),
+        ) {
             let (begin_groups, end_groups) = self.groups[id];
             let mut grps = Vec::new();
             for i in begin_groups..end_groups {

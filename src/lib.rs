@@ -3,7 +3,7 @@
 #![allow(unused_extern_crates)]
 
 //! # Beans
-//! 
+//!
 //! Language-oriented programming and scripting language.
 //! This library contains an API to parse grammars, compile them and compile source code.
 

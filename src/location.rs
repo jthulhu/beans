@@ -71,6 +71,7 @@ mod tests {
 ///
 /// ```rust
 /// # use beans::location::Location;
+/// # use std::rc::Rc;
 /// Location::new(
 ///   Rc::new(String::from("afile")),
 ///   (0, 4),
@@ -101,7 +102,12 @@ impl Location {
     /// Generate of new `Location` object.
     /// Take the locations as index of the stream,
     /// and convert them as actual locations in the file.
-    pub fn from_stream_pos(file: Rc<String>, stream: &str, start_pos: usize, end_pos: usize) -> Self {
+    pub fn from_stream_pos(
+        file: Rc<String>,
+        stream: &str,
+        start_pos: usize,
+        end_pos: usize,
+    ) -> Self {
         let mut current_char = 0;
         let mut current_line = 0;
         let mut current_pos = 0;

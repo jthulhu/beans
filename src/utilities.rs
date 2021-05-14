@@ -25,8 +25,8 @@ macro_rules! retrieve {
         use crate::ctry;
         use crate::error::{Error, ErrorType, WarningSet};
         use crate::location::Location;
-	use std::rc::Rc;
         use std::mem;
+        use std::rc::Rc;
         let column = column!() as usize;
         let file = file!();
         let line = (line!() + 1) as usize;
@@ -55,10 +55,11 @@ macro_rules! ask_case {
             case::Case,
             error::{Warning, WarningType},
         };
-        match Case::case(&$string) {
+	use std::rc::Rc;
+        match Case::case($string) {
             Case::$case => {}
             c => $warnings.add(Warning::new(WarningType::CaseConvention(
-                &$string,
+                Rc::new($string.to_string()),
                 c,
                 Case::$case,
             ))),

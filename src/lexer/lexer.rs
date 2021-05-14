@@ -5,9 +5,9 @@ use crate::error::{
     WarningSet,
 };
 use crate::location::Location;
+use crate::regex::Allowed;
 use crate::stream::{Stream, StringStream};
 use crate::{ctry, retrieve};
-use crate::regex::Allowed;
 use hashbrown::HashMap;
 use std::fmt;
 use std::ops::Index;
@@ -103,7 +103,10 @@ mod tests {
             )
             .build()
             .unwrap();
-        let mut input = StringStream::new(Rc::new(String::from("input file")), Rc::new(String::from("blu")));
+        let mut input = StringStream::new(
+            Rc::new(String::from("input file")),
+            Rc::new(String::from("blu")),
+        );
         let mut lexed_input = lexer.lex(&mut input);
 
         let token = lexed_input.next(Allowed::All).unwrap().unwrap();
@@ -112,7 +115,10 @@ mod tests {
         assert!(lexed_input.next(Allowed::All).unwrap().is_none());
     }
 
-    fn verify_input(mut lexed_input: LexedStream<'_>, result: &[(CharLocation, CharLocation, &str)]) {
+    fn verify_input(
+        mut lexed_input: LexedStream<'_>,
+        result: &[(CharLocation, CharLocation, &str)],
+    ) {
         let mut i = 0;
         while let Some(token) = lexed_input.next_any().unwrap() {
             let (start, end, name) = result[i];
@@ -161,7 +167,9 @@ mod tests {
         verify_input(
             lexer.lex(&mut StringStream::new(
                 Rc::new(String::from("<input>")),
-                Rc::new(String::from("if true and false {\n\tifeat(\"something\")\n}")),
+                Rc::new(String::from(
+                    "if true and false {\n\tifeat(\"something\")\n}",
+                )),
             )),
             &result,
         );
@@ -535,7 +543,7 @@ impl LexerBuilder {
         self
     }
 
-    pub fn with_stream(mut self, stream: StringStream) -> WResult<'static, Self> {
+    pub fn with_stream(mut self, stream: StringStream) -> WResult<Self> {
         let mut warnings = WarningSet::empty();
         let grammar = ctry!(
             LexerGrammarBuilder::new().with_stream(stream).build(),
@@ -546,7 +554,7 @@ impl LexerBuilder {
     }
 
     /// Specify the lexer's grammar file.
-    pub fn with_grammar_file<'warning>(mut self, file: Rc<String>) -> WResult<'warning, Self> {
+    pub fn with_grammar_file<'warning>(mut self, file: Rc<String>) -> WResult<Self> {
         let mut warnings = WarningSet::empty();
         let grammar = ctry!(
             ctry!(LexerGrammarBuilder::new().with_file(file), warnings).build(),
@@ -557,7 +565,7 @@ impl LexerBuilder {
     }
 
     /// Build the lexer.
-    pub fn build(mut self) -> WResult<'static, Lexer> {
+    pub fn build(mut self) -> WResult<Lexer> {
         let mut warnings = WarningSet::empty();
         let lexer = Lexer::new(retrieve!(self.grammar, warnings));
         WOk(lexer, warnings)
@@ -574,7 +582,7 @@ impl Default for LexerBuilder {
 
 /// # Summary
 ///
-/// [`LexedStream`] is the interface used to tokenize a stream. To do so, you first create a [`Lexer`] 
+/// [`LexedStream`] is the interface used to tokenize a stream. To do so, you first create a [`Lexer`]
 /// which defines the lexing grammar. You then create the [`LexedStream`] with an exclusive
 /// reference to a [`StringStream`][beans::stream::StringStream]. Then, you get the tokens through [`LexedStream`], which will
 /// consume the stream but only for as much as you require. This allows you to use a [`Lexer`] for
@@ -599,8 +607,8 @@ impl<'a> LexedStream<'a> {
             tokens: Vec::new(),
         }
     }
-    
-    fn lex_next<'warning>(&mut self, allowed: Allowed) -> WResult<'warning, bool> {
+
+    fn lex_next<'warning>(&mut self, allowed: Allowed) -> WResult<bool> {
         let warnings = WarningSet::empty();
         if self.stream.pos() == self.stream.len() {
             WOk(false, warnings)
@@ -640,38 +648,38 @@ impl<'a> LexedStream<'a> {
             }
         }
     }
-    
+
     pub fn last_location(&self) -> &Location {
         &self.last_location
     }
 }
 impl LexedStream<'_> {
-    pub fn next_any<'ws>(&mut self) -> WResult<'ws, Option<&Token>> {
-	self.next(Allowed::All)
+    pub fn next_any(&mut self) -> WResult<Option<&Token>> {
+        self.next(Allowed::All)
     }
-    
-    pub fn next<'warning>(&mut self, allowed: Allowed) -> WResult<'warning, Option<&Token>> {
-	let mut warnings = WarningSet::empty();
+
+    pub fn next(&mut self, allowed: Allowed) -> WResult<Option<&Token>> {
+        let mut warnings = WarningSet::empty();
         self.pos += 1;
         if ctry!(self.lex_next(allowed), warnings) {
-	    match self.tokens.last() {
-		Some((_, token)) => WOk(Some(token), warnings),
-		None => WOk(None, warnings)
-	    }
-	} else {
-	    WOk(None, warnings)
-	}
+            match self.tokens.last() {
+                Some((_, token)) => WOk(Some(token), warnings),
+                None => WOk(None, warnings),
+            }
+        } else {
+            WOk(None, warnings)
+        }
     }
-    
+
     pub fn peek(&self) -> Option<&Token> {
-	self.tokens.last().map(|(_, token)| token)
+        self.tokens.last().map(|(_, token)| token)
     }
-    
+
     pub fn drop_last(&mut self) {
-	if let Some((pos, _)) = self.tokens.pop() {
-	    self.pos -= 1;
-	    self.stream.set_pos(pos);
-	}
+        if let Some((pos, _)) = self.tokens.pop() {
+            self.pos -= 1;
+            self.stream.set_pos(pos);
+        }
     }
 }
 /// # Summary

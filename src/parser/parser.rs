@@ -4,12 +4,13 @@ use crate::lexer::LexedStream;
 
 pub type ParseResult = ();
 
-pub trait Parser<'grammar> {
-    type Grammar: Grammar<'grammar>;
-    type GrammarBuilder: GrammarBuilder<'grammar, Grammar = Self::Grammar>;
+pub trait Parser<'deserializer> {
+    type Grammar: Grammar<'deserializer>;
+    type GrammarBuilder: GrammarBuilder<'deserializer, Grammar = Self::Grammar>;
     fn grammar(&self) -> &Self::Grammar;
     fn new(grammar: Self::Grammar) -> Self;
-    fn parse<'warning, 'input>(&self, input: &'input mut LexedStream<'input>) -> WResult<'warning, ParseResult>
-    where
-	'input: 'warning;
+    fn parse<'input>(
+        &self,
+        input: &'input mut LexedStream<'input>,
+    ) -> WResult<ParseResult>;
 }

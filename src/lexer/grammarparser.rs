@@ -13,7 +13,10 @@ mod tests {
 
     #[test]
     fn grammar_parser_read_keyword() {
-        let mut stream = StringStream::new(Rc::new(String::from("whatever")), Rc::new(String::from("ignore")));
+        let mut stream = StringStream::new(
+            Rc::new(String::from("whatever")),
+            Rc::new(String::from("ignore")),
+        );
         assert_eq!(stream.pos(), 0);
         assert_eq!(
             LexerGrammarBuilder::read_keyword(&mut stream, "something"),
@@ -29,7 +32,10 @@ mod tests {
 
     #[test]
     fn grammar_parser_read_id() {
-        let mut stream = StringStream::new(Rc::new(String::from("whatever")), Rc::new(String::from("to del")));
+        let mut stream = StringStream::new(
+            Rc::new(String::from("whatever")),
+            Rc::new(String::from("to del")),
+        );
         assert_eq!(stream.pos(), 0);
         assert!(LexerGrammarBuilder::read_id(&mut stream).is_value(String::from("to")));
         assert_eq!(stream.pos(), 2);
@@ -107,7 +113,9 @@ mod tests {
         let grammar = LexerGrammarBuilder::new()
             .with_stream(StringStream::new(
                 Rc::new(String::from("whatever")),
-                Rc::new(String::from("ignore A ::= [ ]\nignore B ::= bbb\nC ::= ccc")),
+                Rc::new(String::from(
+                    "ignore A ::= [ ]\nignore B ::= bbb\nC ::= ccc",
+                )),
             ))
             .build()
             .unwrap();
@@ -143,7 +151,7 @@ impl LexerGrammarBuilder {
         Self { stream: None }
     }
 
-    pub fn with_file(self, file: Rc<String>) -> WResult<'static, Self> {
+    pub fn with_file(self, file: Rc<String>) -> WResult<Self> {
         let mut warnings = WarningSet::empty();
         WResult::WOk(
             self.with_stream(ctry!(
@@ -167,7 +175,7 @@ impl LexerGrammarBuilder {
         self
     }
 
-    pub fn build(mut self) -> WResult<'static, LexerGrammar> {
+    pub fn build(mut self) -> WResult<LexerGrammar> {
         let mut warnings = WarningSet::empty();
         let mut stream: StringStream = retrieve!(self.stream, warnings);
         let size = stream.len();
@@ -240,7 +248,7 @@ impl LexerGrammarBuilder {
         }
     }
 
-    fn ignore_assignment(stream: &mut StringStream) -> WResult<'static, ()> {
+    fn ignore_assignment(stream: &mut StringStream) -> WResult<()> {
         if Self::read_keyword(stream, "::=") {
             WResult::WOk((), WarningSet::empty())
         } else {
@@ -280,7 +288,7 @@ impl LexerGrammarBuilder {
         )
     }
 
-    fn read_id(stream: &mut StringStream) -> WResult<'static, String> {
+    fn read_id(stream: &mut StringStream) -> WResult<String> {
         let mut result = String::new();
         while let (Char::Char(chr), _) = stream.get().unwrap() {
             if !chr.is_ascii_alphabetic() {

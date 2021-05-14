@@ -40,7 +40,7 @@ mod tests {
         ) {
             let error_message = format!("Set #{}, item #{}: no match: ", set_id, item_id);
             let item = &parser.grammar().rules[other.rule];
-            assert_eq!(self.name, &item.name, "{} name.", error_message);
+            assert_eq!(self.name, *item.name, "{} name.", error_message);
             assert_eq!(
                 self.left_elements.len() + self.right_elements.len(),
                 item.elements.len(),
@@ -57,7 +57,7 @@ mod tests {
             assert_eq!(self.origin, other.origin, "{} origin set.", error_message);
             for i in 0..self.left_elements.len() {
                 assert_eq!(
-                    self.left_elements[i], &item.elements[i].name,
+                    self.left_elements[i], *item.elements[i].name,
                     "{} element #{}.",
                     error_message, i
                 );
@@ -65,7 +65,7 @@ mod tests {
             for i in 0..self.right_elements.len() {
                 assert_eq!(
                     self.right_elements[i],
-                    &item.elements[i + other.position].name,
+                    *item.elements[i + other.position].name,
                     "{} elements #{}.",
                     error_message,
                     i + other.position
@@ -147,7 +147,7 @@ mod tests {
 
     impl PartialEq<RuleElement> for TestElement {
         fn eq(&self, other: &RuleElement) -> bool {
-            self.name == other.name
+            self.name == *other.name
                 && self.key == other.key
                 && self.attribute == other.attribute
                 && self.element_type == other.element_type
@@ -173,7 +173,7 @@ mod tests {
 
     impl PartialEq<Rule> for TestRule {
         fn eq(&self, other: &Rule) -> bool {
-            self.name == other.name && self.proxy == other.proxy && self.elements == other.elements
+            self.name == *other.name && self.proxy == other.proxy && self.elements == other.elements
         }
     }
 
@@ -463,25 +463,25 @@ impl EarleyGrammarBuilder {
 
 impl GrammarBuilder<'_> for EarleyGrammarBuilder {
     type Grammar = EarleyGrammar;
-    
+
     fn with_stream(mut self, stream: StringStream) -> Self {
         self.stream = Some(stream);
         self
     }
-    
+
     fn with_grammar(mut self, grammar: Rc<String>) -> Self {
         self.grammar = grammar;
         self
     }
-    
-    fn stream<'ws>(&mut self) -> WResult<'ws, StringStream> {
+
+    fn stream<'ws>(&mut self) -> WResult<StringStream> {
         let mut warnings = WarningSet::empty();
         let stream = retrieve!(self.stream, warnings);
         WOk(stream, warnings)
     }
-    
+
     fn grammar(&self) -> Rc<String> {
-	self.grammar.clone()
+        self.grammar.clone()
     }
 }
 
@@ -518,7 +518,7 @@ pub struct EarleyGrammar {
     axioms: FixedBitSet,
     rules: Vec<Rule>,
     nullables: FixedBitSet,
-    name_map: HashMap<String, usize>,
+    name_map: HashMap<Rc<str>, usize>,
     rules_map: Vec<Vec<usize>>,
 }
 
@@ -532,8 +532,8 @@ impl Grammar<'_> for EarleyGrammar {
     fn new<'warning>(
         rules: Vec<Rule>,
         axioms: FixedBitSet,
-        name_map: HashMap<String, usize>,
-    ) -> WResult<'warning, Self> {
+        name_map: HashMap<Rc<str>, usize>,
+    ) -> WResult<Self> {
         let warnings = WarningSet::empty();
         let mut nullables = FixedBitSet::with_capacity(axioms.len());
         let mut rules_map = Vec::new();
@@ -629,10 +629,7 @@ pub struct EarleyParser {
 }
 
 impl EarleyParser {
-    fn recognise<'warning, 'input>(&self, input: &'input mut LexedStream<'input>) -> WResult<'warning, Vec<StateSet>>
-    where
-	'input: 'warning
-    {
+    fn recognise<'input>(&self, input: &'input mut LexedStream<'input>) -> WResult<Vec<StateSet>> {
         let mut warnings = WarningSet::empty();
         let mut sets = Vec::new();
         let mut first_state = StateSet::new();
@@ -723,19 +720,16 @@ impl EarleyParser {
 impl Parser<'_> for EarleyParser {
     type GrammarBuilder = EarleyGrammarBuilder;
     type Grammar = EarleyGrammar;
-    
+
     fn new(grammar: Self::Grammar) -> Self {
         Self { grammar }
     }
-    
+
     fn grammar(&self) -> &Self::Grammar {
         &self.grammar
     }
-    
-    fn parse<'warning, 'input>(&self, input: &'input mut LexedStream<'input>) -> WResult<'warning, ParseResult>
-    where
-	'input: 'warning
-    {
+
+    fn parse<'input>(&self, input: &'input mut LexedStream<'input>) -> WResult<ParseResult> {
         let mut warnings = WarningSet::empty();
         ctry!(self.recognise(input), warnings);
         WOk((), warnings)

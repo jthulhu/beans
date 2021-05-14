@@ -7,7 +7,7 @@
 
 use crate::case::Case;
 use crate::location::Location;
-use std::collections::{LinkedList, linked_list};
+use std::collections::{linked_list, LinkedList};
 use std::error;
 use std::fmt;
 use std::rc::Rc;
@@ -15,7 +15,7 @@ use std::rc::Rc;
 /// [`EMPTY_WARNING_SET`] is a warning set without any warnings.
 /// It is useful to use this set as an empty warning set
 /// instead of creating a new one each time.
-const EMPTY_WARNING_SET: WarningSet<'static> = WarningSet::Empty;
+const EMPTY_WARNING_SET: WarningSet = WarningSet::Empty;
 
 /// # Summary
 ///
@@ -48,7 +48,7 @@ pub enum ErrorType {
 }
 
 /// # Summary
-/// 
+///
 /// Possible type of a warning.
 #[derive(Debug, PartialEq, Eq)]
 pub enum WarningType {
@@ -56,7 +56,7 @@ pub enum WarningType {
     /// Code does not respect case convention, which is bad.
     CaseConvention(Rc<String>, Case, Case),
     /// `UndefinedNonTerminal(definition: String, non_terminal: String)`
-    /// 
+    ///
     /// Rule defined in `definition` refers to the undefined non-terminal `non_terminal`,
     /// which means it will never be constructed.
     /// This is not an error to allow users to add rules that don't work yes,
@@ -65,28 +65,28 @@ pub enum WarningType {
     /// NullWarning
     /// Empty warning that is used only in example. It does not mean anything besides
     /// there is a warning. Please consider using a more excplicit warning type in real code.
-    NullWarning
+    NullWarning,
 }
 
 /// # Summary
-/// 
+///
 /// `Warning` is a non-fatal error.
 #[derive(Debug, PartialEq, Eq)]
-pub struct Warning<'a> {
+pub struct Warning {
     location: Option<Location>,
-    warn_type: WarningType<'a>,
+    warn_type: WarningType,
 }
 
-impl<'a> Warning<'a> {
+impl Warning {
     /// Build a new warning of type `warn_type`.
-    pub fn new(warn_type: WarningType<'a>) -> Self {
+    pub fn new(warn_type: WarningType) -> Self {
         Self {
             warn_type,
             location: None,
         }
     }
     /// Build a new warning of type `warn_type` with `location`.
-    pub fn with_location(warn_type: WarningType<'a>, location: Location) -> Self {
+    pub fn with_location(warn_type: WarningType, location: Location) -> Self {
         Self {
             warn_type,
             location: Some(location),
@@ -94,7 +94,7 @@ impl<'a> Warning<'a> {
     }
 
     /// Get the type of the warning.
-    pub fn warn_type(&self) -> &WarningType<'a> {
+    pub fn warn_type(&self) -> &WarningType {
         &self.warn_type
     }
 
@@ -104,24 +104,27 @@ impl<'a> Warning<'a> {
     }
 }
 
-impl fmt::Display for Warning<'_> {
+impl fmt::Display for Warning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use WarningType::*;
-	let r#type;
-	let message: Box<dyn AsRef<str>>;
+        let r#type;
+        let message: Box<dyn AsRef<str>>;
         match &self.warn_type {
             CaseConvention(msg, _case_found, _case_expected) => {
-		r#type = "Case convention warning";
-		message = Box::new(*msg);
-	    }
-            UndefinedNonTerminal(origin, non_terminal) => {
-		r#type = "Undefined non-terminal warning";
-		message = Box::new(format!("In definition of non-terminal `{}', `{}' has been used but not defined", origin, non_terminal));
+                r#type = "Case convention warning";
+                message = Box::new(msg.as_ref());
             }
-	    NullWarning => {
-		r#type = "Warning";
-		message = Box::new("Empty warning");
-	    }
+            UndefinedNonTerminal(origin, non_terminal) => {
+                r#type = "Undefined non-terminal warning";
+                message = Box::new(format!(
+                    "In definition of non-terminal `{}', `{}' has been used but not defined",
+                    origin, non_terminal
+                ));
+            }
+            NullWarning => {
+                r#type = "Warning";
+                message = Box::new("Empty warning");
+            }
         };
         if let Some(location) = self.location.as_ref() {
             write!(
@@ -142,42 +145,40 @@ impl fmt::Display for Warning<'_> {
 }
 
 /// # Summary
-/// 
+///
 /// Iterator over a warning set.
 #[derive(Debug)]
-pub struct WarningIterator<'iter, 'warning> {
-    warnings: Option<linked_list::Iter<'iter, Warning<'warning>>>
+pub struct WarningIterator<'iter> {
+    warnings: Option<linked_list::Iter<'iter, Warning>>,
 }
 
-impl<'iter, 'warning> WarningIterator<'iter, 'warning> {
-    fn new(warnings: Option<linked_list::Iter<'iter, Warning<'warning>>>) -> Self {
-	Self {
-	    warnings
-	}
+impl<'iter> WarningIterator<'iter> {
+    fn new(warnings: Option<linked_list::Iter<'iter, Warning>>) -> Self {
+        Self { warnings }
     }
 }
 
-impl<'iter, 'warning> Iterator for WarningIterator<'iter, 'warning> {
-    type Item = &'iter Warning<'warning>;
+impl<'iter> Iterator for WarningIterator<'iter> {
+    type Item = &'iter Warning;
     fn next(&mut self) -> Option<Self::Item> {
-	self.warnings.as_mut().and_then(|iterator| iterator.next())
+        self.warnings.as_mut().and_then(|iterator| iterator.next())
     }
 }
 
 /// # Summary
-/// 
+///
 /// [`WarningSet`] is an abstract type for a [`Warning`] collection.
 /// It should optimize empty creation (because most of the code will build a warning set without using it).
 /// It should also allow constant time union (or at least fast union) of two sets.
 #[derive(Debug, PartialEq, Eq)]
-pub enum WarningSet<'warning> {
+pub enum WarningSet {
     /// A set of warnings that actually contains some warnings.
-    Set(LinkedList<Warning<'warning>>),
+    Set(LinkedList<Warning>),
     /// An empty set of warnings.
     Empty,
 }
 
-impl<'warning> WarningSet<'warning> {
+impl WarningSet {
     /// Create an empty set.
     #[inline]
     pub fn empty() -> Self {
@@ -185,7 +186,7 @@ impl<'warning> WarningSet<'warning> {
     }
 
     /// Add a warning to the set.
-    pub fn add(&mut self, warning: Warning<'warning>) {
+    pub fn add(&mut self, warning: Warning) {
         match self {
             Self::Set(warnings) => warnings.push_back(warning),
             Self::Empty => {
@@ -197,17 +198,15 @@ impl<'warning> WarningSet<'warning> {
     }
 
     /// Iterate over warnings in the set.
-    pub fn iter(&self) -> WarningIterator<'_, 'warning> {
-	WarningIterator::new(
-            match self {
-		Self::Set(warnings) => Some(warnings.iter()),
-		Self::Empty => None,
-            }
-	)
+    pub fn iter(&self) -> WarningIterator<'_> {
+        WarningIterator::new(match self {
+            Self::Set(warnings) => Some(warnings.iter()),
+            Self::Empty => None,
+        })
     }
 
     /// Unify two warning sets. `self` gets updated, and consumes the other warning set.
-    pub fn extend(&mut self, warningset: WarningSet<'warning>) {
+    pub fn extend(&mut self, warningset: WarningSet) {
         match self {
             Self::Set(selfwarnings) => match warningset {
                 Self::Set(mut otherwarnings) => selfwarnings.append(&mut otherwarnings),
@@ -226,25 +225,25 @@ impl<'warning> WarningSet<'warning> {
     }
 }
 
-impl Default for WarningSet<'_> {
+impl Default for WarningSet {
     fn default() -> Self {
-	Self::empty()
+        Self::empty()
     }
 }
 
 /// # Summary
-/// 
+///
 /// `WResult<T>` is a wrapper to `Result<(T, WarningSet), Error>` that allows easy manipulation
 /// of the type without bothering the warnings.
 #[derive(Debug, PartialEq, Eq)]
-pub enum WResult<'ws, T> {
+pub enum WResult<T> {
     /// `WResult` variant for `Ok`.
-    WOk(T, WarningSet<'ws>),
+    WOk(T, WarningSet),
     /// `WResult` variant for `Err`.
     WErr(Error),
 }
 
-impl<'ws, T> WResult<'ws, T> {
+impl<T> WResult<T> {
     /// Convert to a `Result`, ignoring any warnings.
     /// `WOk(result, warnings)` maps to `Ok(result)` and `WErr(errors)` maps to `Err(errors)`.
     pub fn flatten(self) -> Result<T, Error> {
@@ -256,7 +255,7 @@ impl<'ws, T> WResult<'ws, T> {
 
     /// Convert to a `Result`, taking into account warnings.
     /// `WOk(result, warnings)` maps to `Ok((result, warnings))` and `WErr(errors)` maps to `Err(errors)`.
-    pub fn flatten_with(self) -> Result<(T, WarningSet<'ws>), Error> {
+    pub fn flatten_with(self) -> Result<(T, WarningSet), Error> {
         match self {
             Self::WOk(result, warnings) => Ok((result, warnings)),
             Self::WErr(error) => Err(error),
@@ -272,7 +271,7 @@ impl<'ws, T> WResult<'ws, T> {
     }
 }
 
-impl<T: PartialEq> WResult<'_, T> {
+impl<T: PartialEq> WResult<T> {
     /// Return whether `self` is `WOk` and matches the given value.
     pub fn is_value(&self, right: T) -> bool {
         match self {
@@ -282,14 +281,14 @@ impl<T: PartialEq> WResult<'_, T> {
     }
 }
 
-impl<'ws, T> WResult<'ws, T> {
+impl<T> WResult<T> {
     /// If `self` is a `WOk`, return res. Otherwise return `self`.
     /// ```rust
     /// # use beans::error::WResult::{WOk, WErr};
     /// # use beans::error::WarningSet;
     /// assert_eq!(WOk(5, WarningSet::default()).and(WOk(6, WarningSet::default())).unwrap(), 6);
     /// ```
-    pub fn and(self, res: WResult<'ws, T>) -> WResult<'ws, T> {
+    pub fn and(self, res: WResult<T>) -> WResult<T> {
         match self {
             Self::WOk(..) => res,
             Self::WErr(..) => self,
@@ -310,7 +309,7 @@ impl<'ws, T> WResult<'ws, T> {
     /// If `self` is `WOk(content, warnings)`, return `ok_handler(result, warnings)`. Otherwise return `self`.
     pub fn and_then_warn<O>(self, ok_handler: O) -> Self
     where
-        O: FnOnce(T, WarningSet<'_>) -> Self,
+        O: FnOnce(T, WarningSet) -> Self,
     {
         match self {
             Self::WOk(result, warnings) => ok_handler(result, warnings),
@@ -319,7 +318,7 @@ impl<'ws, T> WResult<'ws, T> {
     }
 
     /// Unwrap the result, panicking with the given message if it was an error, and returning `(result, warnings)` otherwise.
-    pub fn expect(self, msg: &str) -> (T, WarningSet<'ws>) {
+    pub fn expect(self, msg: &str) -> (T, WarningSet) {
         match self {
             Self::WOk(result, warnings) => (result, warnings),
             Self::WErr(error) => panic!("{}: {}", msg, error),
@@ -341,7 +340,7 @@ impl<'ws, T> WResult<'ws, T> {
     /// # use beans::error::{WResult::{WOk, WErr}, WarningSet};
     /// assert_eq!(WOk(5, WarningSet::default()).map(|x| x+1), WOk(6, WarningSet::default()));
     /// ```
-    pub fn map<U, O>(self, f: O) -> WResult<'ws, U>
+    pub fn map<U, O>(self, f: O) -> WResult<U>
     where
         O: FnOnce(T) -> U,
     {
@@ -353,32 +352,32 @@ impl<'ws, T> WResult<'ws, T> {
 
     /// Map the content and the warnings of the result, ignoring the error.
     /// ```rust
-    /// # use beans::error::{WResult::{WOk, WErr}, WarningSet};
+    /// # use beans::error::{WResult::{WOk, WErr}, WarningSet, WarningType, Warning};
     /// assert_eq!(
     ///   WOk(5, WarningSet::default())
     ///     .map_warn(
-    ///       |content, warnings| {
-    ///         warnings.add(Warning::new(WarningType::NullWarning);
+    ///       |content, mut warnings| {
+    ///         warnings.add(Warning::new(WarningType::NullWarning));
     ///         (content, warnings)
     ///       }
     ///     ),
     ///   WOk(5, {
     ///       let mut warnings = WarningSet::default();
-    ///       warnings.add(Warning::new(WarningType::NullWarning);
+    ///       warnings.add(Warning::new(WarningType::NullWarning));
     ///       warnings
     ///     }
     ///   )
     /// );
     /// ```
-    pub fn map_warn<'rws, U, O>(self, ok_handler: O) -> WResult<'rws, U>
+    pub fn map_warn<U, O>(self, ok_handler: O) -> WResult<U>
     where
-        O: FnOnce(T, WarningSet<'_>) -> (U, WarningSet<'rws>),
+        O: FnOnce(T, WarningSet) -> (U, WarningSet),
     {
         match self {
             Self::WOk(result, warnings) => {
-		let (content, warnings) = ok_handler(result, warnings);
-		WResult::WOk(content, warnings)
-	    }
+                let (content, warnings) = ok_handler(result, warnings);
+                WResult::WOk(content, warnings)
+            }
             Self::WErr(error) => WResult::WErr(error),
         }
     }
@@ -393,8 +392,8 @@ impl<'ws, T> WResult<'ws, T> {
             Self::WErr(error) => Self::WErr(f(error)),
         }
     }
-    
-    pub fn map_or<U, O>(self, default: (U, WarningSet<'ws>), ok_handler: O) -> (U, WarningSet<'ws>)
+
+    pub fn map_or<U, O>(self, default: (U, WarningSet), ok_handler: O) -> (U, WarningSet)
     where
         O: FnOnce(T) -> U,
     {
@@ -404,20 +403,19 @@ impl<'ws, T> WResult<'ws, T> {
         }
     }
 
-    
-    pub fn map_or_warn<U, O>(self, default: (U, WarningSet<'ws>), ok_handler: O) -> (U, WarningSet<'ws>)
+    pub fn map_or_warn<U, O>(self, default: (U, WarningSet), ok_handler: O) -> (U, WarningSet)
     where
-        O: FnOnce(T, WarningSet<'_>) -> (U, WarningSet<'_>),
+        O: FnOnce(T, WarningSet) -> (U, WarningSet),
     {
         match self {
             Self::WOk(result, warnings) => ok_handler(result, warnings),
             Self::WErr(..) => default,
         }
     }
-    
-    pub fn map_or_else<U, E, O>(self, err_handler: E, ok_handler: O) -> (U, WarningSet<'ws>)
+
+    pub fn map_or_else<U, E, O>(self, err_handler: E, ok_handler: O) -> (U, WarningSet)
     where
-        E: FnOnce(Error) -> (U, WarningSet<'ws>),
+        E: FnOnce(Error) -> (U, WarningSet),
         O: FnOnce(T) -> U,
     {
         match self {
@@ -426,25 +424,24 @@ impl<'ws, T> WResult<'ws, T> {
         }
     }
 
-    
-    pub fn map_or_else_warn<U, E, O>(self, err_handler: E, ok_handler: O) -> (U, WarningSet<'ws>)
+    pub fn map_or_else_warn<U, E, O>(self, err_handler: E, ok_handler: O) -> (U, WarningSet)
     where
-        E: FnOnce(Error) -> (U, WarningSet<'ws>),
-        O: FnOnce(T, WarningSet<'_>) -> (U, WarningSet<'_>),
+        E: FnOnce(Error) -> (U, WarningSet),
+        O: FnOnce(T, WarningSet) -> (U, WarningSet),
     {
         match self {
             Self::WOk(result, warnings) => ok_handler(result, warnings),
             Self::WErr(error) => err_handler(error),
         }
     }
-    
+
     pub fn or(self, res: Self) -> Self {
         match self {
             Self::WOk(..) => self,
             Self::WErr(..) => res,
         }
     }
-    
+
     pub fn or_else<E>(self, err_handler: E) -> Self
     where
         E: FnOnce(Error) -> Self,
@@ -454,15 +451,15 @@ impl<'ws, T> WResult<'ws, T> {
             Self::WErr(error) => err_handler(error),
         }
     }
-    
+
     pub fn unwrap(self) -> T {
         match self {
             Self::WOk(result, _) => result,
             Self::WErr(error) => panic!("called `WResult::unwrap` on an `WErr` value: {}", error),
         }
     }
-    
-    pub fn unwrap_warns(self) -> (T, WarningSet<'ws>) {
+
+    pub fn unwrap_warns(self) -> (T, WarningSet) {
         match self {
             Self::WOk(result, warnings) => (result, warnings),
             Self::WErr(error) => panic!(
@@ -471,17 +468,17 @@ impl<'ws, T> WResult<'ws, T> {
             ),
         }
     }
-    
-    pub fn unwrap_or(self, default: (T, WarningSet<'ws>)) -> (T, WarningSet<'ws>) {
+
+    pub fn unwrap_or(self, default: (T, WarningSet)) -> (T, WarningSet) {
         match self {
             Self::WOk(result, warnings) => (result, warnings),
             Self::WErr(..) => default,
         }
     }
-    
-    pub fn unwrap_or_else<E>(self, err_handler: E) -> (T, WarningSet<'ws>)
+
+    pub fn unwrap_or_else<E>(self, err_handler: E) -> (T, WarningSet)
     where
-        E: FnOnce(Error) -> (T, WarningSet<'ws>),
+        E: FnOnce(Error) -> (T, WarningSet),
     {
         match self {
             Self::WOk(result, warnings) => (result, warnings),
@@ -490,14 +487,14 @@ impl<'ws, T> WResult<'ws, T> {
     }
 }
 
-impl<'ws, T> From<WResult<'ws, T>> for Result<(T, WarningSet<'ws>), Error> {
-    fn from(wresult: WResult<'ws, T>) -> Self {
+impl<T> From<WResult<T>> for Result<(T, WarningSet), Error> {
+    fn from(wresult: WResult<T>) -> Self {
         wresult.flatten_with()
     }
 }
 
-impl<'ws, T> From<Result<(T, WarningSet<'ws>), Error>> for WResult<'ws, T> {
-    fn from(result: Result<(T, WarningSet<'ws>), Error>) -> Self {
+impl<T> From<Result<(T, WarningSet), Error>> for WResult<T> {
+    fn from(result: Result<(T, WarningSet), Error>) -> Self {
         match result {
             Ok((res, warnings)) => Self::WOk(res, warnings),
             Err(error) => Self::WErr(error),
@@ -505,7 +502,7 @@ impl<'ws, T> From<Result<(T, WarningSet<'ws>), Error>> for WResult<'ws, T> {
     }
 }
 
-impl<T> From<Result<T, Error>> for WResult<'_, T> {
+impl<T> From<Result<T, Error>> for WResult<T> {
     fn from(result: Result<T, Error>) -> Self {
         match result {
             Ok(res) => Self::WOk(res, WarningSet::empty()),

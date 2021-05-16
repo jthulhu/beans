@@ -1,3 +1,8 @@
+//! # Case
+//!
+//! This module contains primitives about case.
+//! It provides an interface to compute the case of a given string.
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -17,20 +22,24 @@ mod tests {
     }
 }
 
+/// # Summary
+///
+/// Indicate which type of case a certain string is written in.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Case {
-    // snakecase, snake_case
+    /// snakecase, snake_case
     SnakeCase,
-    // PascalCase
+    /// PascalCase
     PascalCase,
-    // camelCase,
+    /// camelCase,
     CamelCase,
-    // Pascal_Snake_Case,
+    /// Pascal_Snake_Case,
     PascalSnakeCase,
-    // UPPERCASE
+    /// UPPERCASE
     UpperCase,
-    // SCREAMING_SNAKE_CASE,
+    /// SCREAMING_SNAKE_CASE,
     ScreamingSnakeCase,
+    /// Not a known case
     Other,
 }
 

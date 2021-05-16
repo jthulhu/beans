@@ -418,7 +418,7 @@ mod tests {
 
         for (i, tok) in result.iter().enumerate() {
             let token = lexed_input
-                .next()
+                .next(Allowed::All)
                 .unwrap()
                 .expect(format!("Expected token named {}, found EOF", tok.name).as_str());
             assert_eq!(
@@ -431,7 +431,7 @@ mod tests {
                 i
             );
         }
-        if let Some(token) = lexed_input.next().unwrap() {
+        if let Some(token) = lexed_input.next(Allowed::All).unwrap() {
             panic!(
                 "Lexer error @{} {}:{} does not match token EOF",
                 token.location().file(),
@@ -618,7 +618,7 @@ impl<'a> LexedStream<'a> {
                     .lexer
                     .grammar()
                     .pattern()
-                    .find(&self.stream.borrow()[self.stream.pos()..])
+                    .find(&self.stream.borrow()[self.stream.pos()..], &allowed)
                 {
                     let start = self.stream.pos();
                     let end = start + result.length();
@@ -637,7 +637,7 @@ impl<'a> LexedStream<'a> {
                     let id = self.lexer.grammar.id(&name).unwrap();
                     let token = Token::new(name, id, attributes, location.clone());
                     self.last_location = location;
-                    self.tokens.push(token);
+                    self.tokens.push((start, token));
                     break 'lex WOk(true, warnings);
                 } else {
                     break 'lex WErr(Error::new(
@@ -648,32 +648,38 @@ impl<'a> LexedStream<'a> {
             }
         }
     }
+
     pub fn last_location(&self) -> &Location {
         &self.last_location
     }
 }
 impl LexedStream<'_> {
-    pub fn get_at(&mut self, pos: usize) -> WResult<Option<&Token>> {
+    pub fn next_any(&mut self) -> WResult<Option<&Token>> {
+        self.next(Allowed::All)
+    }
+
+    pub fn next(&mut self, allowed: Allowed) -> WResult<Option<&Token>> {
         let mut warnings = WarningSet::empty();
-        while self.tokens.len() <= pos {
-            if !ctry!(self.lex_next(), warnings) {
-                return WOk(None, warnings);
+        self.pos += 1;
+        if ctry!(self.lex_next(allowed), warnings) {
+            match self.tokens.last() {
+                Some((_, token)) => WOk(Some(token), warnings),
+                None => WOk(None, warnings),
             }
-        }
-        match self.tokens.get(pos) {
-            Some(token) => WOk(Some(token), warnings),
-            None => WOk(None, warnings),
+        } else {
+            WOk(None, warnings)
         }
     }
-    pub fn next(&mut self) -> WResult<Option<&Token>> {
-        self.pos += 1;
-        self.get_at(self.pos - 1)
+
+    pub fn peek(&self) -> Option<&Token> {
+        self.tokens.last().map(|(_, token)| token)
     }
-    pub fn get(&mut self) -> WResult<Option<&Token>> {
-        self.get_at(self.pos)
-    }
-    pub fn pos_pp(&mut self) {
-        self.pos += 1;
+
+    pub fn drop_last(&mut self) {
+        if let Some((pos, _)) = self.tokens.pop() {
+            self.pos -= 1;
+            self.stream.set_pos(pos);
+        }
     }
 }
 /// # Summary

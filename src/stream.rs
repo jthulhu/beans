@@ -60,6 +60,7 @@ pub type StreamObject<T> = (T, Location);
 /// `pos_inc`: increment the current position by a given (positive) ammount.
 /// `get`: get the object at the current position.
 pub trait Stream<'a> {
+    /// The type that this is a stream of.
     type Output: 'a;
     /// Get the object at the given position.
     fn get_at(&'a self, pos: usize) -> Option<StreamObject<Self::Output>>;
@@ -80,10 +81,12 @@ pub trait Stream<'a> {
         self.get_at(self.pos())
     }
 
+    /// Get the location of the object at position `pos`.
     fn get_loc_of(&'a self, pos: usize) -> Option<Location> {
         self.get_at(pos).map(|(_, location)| location)
     }
 
+    /// Advance the stream to the next position, and return the object at that position.
     fn next(&'a mut self) -> Option<StreamObject<Self::Output>> {
         let pos = self.pos();
         self.pos_pp();
@@ -99,8 +102,11 @@ pub trait Stream<'a> {
 ///
 /// `Char(char)`: a character.
 /// `EOF`: End Of File.
+#[derive(Debug)]
 pub enum Char {
+    /// A character
     Char(char),
+    /// End Of File
     EOF,
 }
 
@@ -202,6 +208,7 @@ impl StringStream {
         self.stream.is_empty()
     }
 
+    /// Return a [`Location`] struct that represents a span of text, specified by the beginning and ending character in the stream.
     pub fn loc_at(&self, start: usize, end: usize) -> Location {
         self.location_builder.from(start, end)
     }

@@ -65,7 +65,7 @@ mod tests {
             for i in 0..self.right_elements.len() {
                 assert_eq!(
                     self.right_elements[i],
-                    &item.elements[i + other.position].name,
+                    *item.elements[i + other.position].name,
                     "{} elements #{}.",
                     error_message,
                     i + other.position
@@ -147,7 +147,7 @@ mod tests {
 
     impl PartialEq<RuleElement> for TestElement {
         fn eq(&self, other: &RuleElement) -> bool {
-            self.name == other.name
+            self.name == *other.name
                 && self.key == other.key
                 && self.attribute == other.attribute
                 && self.element_type == other.element_type
@@ -173,7 +173,7 @@ mod tests {
 
     impl PartialEq<Rule> for TestRule {
         fn eq(&self, other: &Rule) -> bool {
-            self.name == other.name && self.proxy == other.proxy && self.elements == other.elements
+            self.name == *other.name && self.proxy == other.proxy && self.elements == other.elements
         }
     }
 
@@ -703,7 +703,7 @@ impl EarleyParser {
                     sets.last_mut().unwrap().add(item);
                 }
             }
-            if let Some(token) = ctry!(input.next(), warnings) {
+            if let Some(token) = ctry!(input.next_any(), warnings) {
                 for item in scans.entry(token.id()).or_default() {
                     next_state.add(*item);
                 }

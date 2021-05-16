@@ -329,9 +329,11 @@ fn match_next(
             instructions
                 .iter()
                 .filter(|(id, _, ignored)| *ignored || allowed.contains(*id))
+                .rev()
                 .for_each(|(_, ip, _)| {
                     let mut new = thread.clone();
                     new.jump(*ip);
+                    current.add(new);
                 });
         }
         Instruction::Split(pos1, pos2) => {

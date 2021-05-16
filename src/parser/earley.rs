@@ -629,7 +629,7 @@ pub struct EarleyParser {
 }
 
 impl EarleyParser {
-    fn recognise<'input>(&self, input: &'input mut LexedStream<'input>) -> WResult<Vec<StateSet>> {
+    fn recognise<'input>(&self, input: &'input mut LexedStream<'input, 'input>) -> WResult<Vec<StateSet>> {
         let mut warnings = WarningSet::empty();
         let mut sets = Vec::new();
         let mut first_state = StateSet::new();
@@ -729,7 +729,7 @@ impl Parser<'_> for EarleyParser {
         &self.grammar
     }
 
-    fn parse<'input>(&self, input: &'input mut LexedStream<'input>) -> WResult<ParseResult> {
+    fn parse<'input>(&self, input: &'input mut LexedStream<'input, 'input>) -> WResult<ParseResult> {
         let mut warnings = WarningSet::empty();
         ctry!(self.recognise(input), warnings);
         WOk((), warnings)

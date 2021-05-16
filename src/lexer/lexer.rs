@@ -116,7 +116,7 @@ mod tests {
     }
 
     fn verify_input(
-        mut lexed_input: LexedStream<'_>,
+        mut lexed_input: LexedStream<'_, '_>,
         result: &[(CharLocation, CharLocation, &str)],
     ) {
         let mut i = 0;
@@ -589,16 +589,17 @@ impl Default for LexerBuilder {
 /// many [`StringStream`][beans::stream::StringStream], and conversely to tokenize a single [`StringStream`][beans::stream::StringStream] with different
 /// [`Lexer`].
 #[derive(Debug)]
-pub struct LexedStream<'stream> {
-    lexer: &'stream Lexer,
+pub struct LexedStream<'lexer, 'stream> {
+    lexer: &'lexer Lexer,
     stream: &'stream mut StringStream,
     pos: usize,
     tokens: Vec<(usize, Token)>,
     last_location: Location,
 }
 
-impl<'a> LexedStream<'a> {
-    pub fn new(lexer: &'a Lexer, stream: &'a mut StringStream) -> Self {
+impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
+    /// Create a new [`LexedStream`] instance.
+    pub fn new(lexer: &'lexer Lexer, stream: &'stream mut StringStream) -> Self {
         Self {
             last_location: Location::new(stream.origin(), (0, 0), (0, 0)),
             lexer,
@@ -653,7 +654,7 @@ impl<'a> LexedStream<'a> {
         &self.last_location
     }
 }
-impl LexedStream<'_> {
+impl LexedStream<'_, '_> {
     pub fn next_any(&mut self) -> WResult<Option<&Token>> {
         self.next(Allowed::All)
     }
@@ -708,7 +709,7 @@ impl Lexer {
         Self { grammar }
     }
 
-    pub fn lex<'a>(&'a self, stream: &'a mut StringStream) -> LexedStream<'a> {
+    pub fn lex<'lexer, 'stream>(&'lexer self, stream: &'stream mut StringStream) -> LexedStream<'lexer, 'stream> {
         LexedStream::new(self, stream)
     }
 

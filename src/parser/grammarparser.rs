@@ -125,7 +125,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Read a token, match it against the provided `id`.
         /// If it matches, consume the token.
         /// Return whether the token matched.
-        fn read_token_walk(lexed_input: &mut LexedStream<'_>, id: &str) -> WResult<bool> {
+        fn read_token_walk(lexed_input: &mut LexedStream<'_, '_>, id: &str) -> WResult<bool> {
             let mut warnings = WarningSet::empty();
             match ctry!(lexed_input.next_any(), warnings) {
                 Some(token) if token.name() == id => WOk(true, warnings),
@@ -147,7 +147,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Read the token, match it against the provded `id`.
         /// If it matches, consume the token, fail otherwise.
         /// Return the token.
-        fn match_now<'li>(lexed_input: &'li mut LexedStream<'_>, id: &str) -> WResult<Token> {
+        fn match_now<'li>(lexed_input: &'li mut LexedStream<'_, '_>, id: &str) -> WResult<Token> {
             let mut warnings = WarningSet::empty();
             match ctry!(lexed_input.next_any(), warnings) {
                 Some(token) => {
@@ -172,7 +172,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Consume the tokens.
         /// Fail if there is no proxy element.
         /// Return the proxy element as `(key, value)`.
-        fn read_proxy_element(lexed_input: &mut LexedStream<'_>) -> WResult<(String, Value)> {
+        fn read_proxy_element(lexed_input: &mut LexedStream<'_, '_>) -> WResult<(String, Value)> {
             let mut warnings = WarningSet::empty();
             let id = ctry!(match_now(lexed_input, "ID"), warnings);
             ctry!(match_now(lexed_input, "COLON"), warnings);
@@ -255,7 +255,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Consume the tokens.
         /// Fail if the proxy is malformed.
         /// Return the proxy.
-        fn read_proxy(lexed_input: &mut LexedStream<'_>) -> WResult<Proxy> {
+        fn read_proxy(lexed_input: &mut LexedStream<'_, '_>) -> WResult<Proxy> {
             let mut warnings = WarningSet::empty();
             match_now(lexed_input, "LPROXY");
             let mut proxy = HashMap::new();
@@ -287,7 +287,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Consume the tokens.
         /// Fail if there is a dot but no attribute.
         /// Return the attribute.
-        fn read_rule_element_attribute(lexed_input: &mut LexedStream<'_>) -> WResult<Attribute> {
+        fn read_rule_element_attribute(lexed_input: &mut LexedStream<'_, '_>) -> WResult<Attribute> {
             let mut warnings = WarningSet::empty();
             if ctry!(read_token_walk(lexed_input, "DOT"), warnings) {
                 if let Some(token) = ctry!(lexed_input.next_any(), warnings) {
@@ -320,7 +320,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Consume the tokens.
         /// Fail if there is an at but no key.
         /// Return the key.
-        fn read_rule_element_key(lexed_input: &mut LexedStream<'_>) -> WResult<Option<String>> {
+        fn read_rule_element_key(lexed_input: &mut LexedStream<'_, '_>) -> WResult<Option<String>> {
             let mut warnings = WarningSet::empty();
             if ctry!(read_token_walk(lexed_input, "AT"), warnings) {
                 let token = ctry!(match_now(lexed_input, "ID"), warnings);
@@ -335,7 +335,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Fail if the element is malformed.
         /// Return the element.
         fn read_rule_element(
-            lexed_input: &mut LexedStream<'_>,
+            lexed_input: &mut LexedStream<'_, '_>,
             lexer: &Lexer,
         ) -> WResult<RuleElement> {
             let mut warnings = WarningSet::empty();
@@ -362,7 +362,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Consume the tokens.
         /// Fails if the rule is malformed.
         /// Return the rule.
-        fn read_rule(lexed_input: &mut LexedStream<'_>, lexer: &Lexer) -> WResult<PartialRule> {
+        fn read_rule(lexed_input: &mut LexedStream<'_, '_>, lexer: &Lexer) -> WResult<PartialRule> {
             let mut warnings = WarningSet::empty();
             let expected = "ID";
             let mut rule_elements = Vec::new();
@@ -395,7 +395,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Fails is malformed.
         /// Return the definition.
         fn read_definition(
-            lexed_input: &mut LexedStream<'_>,
+            lexed_input: &mut LexedStream<'_, '_>,
             id: usize,
             lexer: &Lexer,
         ) -> WResult<(bool, String, Vec<Rule>)> {

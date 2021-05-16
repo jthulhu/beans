@@ -155,6 +155,7 @@ impl StringStream {
         }
     }
 
+    /// Create a [`StringStream`] directly from a file. This will try to read the content of the file right away.
     pub fn from_file(file: Rc<String>) -> Result<Self, Box<dyn std::error::Error>> {
         let mut file_stream = File::open(file.as_str())?;
         let mut stream_buffer = String::new();
@@ -187,6 +188,7 @@ impl StringStream {
         self.stream.iter().map(|(chr, _)| chr).collect()
     }
 
+    /// Return the origin file of the [`StringStream`].
     pub fn origin(&self) -> Rc<String> {
         self.origin.clone()
     }

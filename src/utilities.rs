@@ -55,7 +55,7 @@ macro_rules! ask_case {
             case::Case,
             error::{Warning, WarningType},
         };
-	use std::rc::Rc;
+        use std::rc::Rc;
         match Case::case($string) {
             Case::$case => {}
             c => $warnings.add(Warning::new(WarningType::CaseConvention(

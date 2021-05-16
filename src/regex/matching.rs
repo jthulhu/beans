@@ -9,7 +9,7 @@ mod tests {
     fn groups() {
         // Test the regexp (a+)(b+)
         let (program, nb_groups) = compile("(a+)(b+)", 0).unwrap();
-        let (end, idx, results) = find(&program, "aabbb", nb_groups).unwrap();
+        let (end, idx, results) = find(&program, "aabbb", nb_groups, &Allowed::All).unwrap();
         assert_eq!(idx, 0);
         assert_eq!(end, 5);
         assert_eq!(results, vec![Some(0), Some(2), Some(2), Some(5)]);
@@ -18,7 +18,7 @@ mod tests {
     #[test]
     fn chars() {
         let (program, nb_groups) = compile("ab", 0).unwrap();
-        let (end, idx, results) = find(&program, "abb", nb_groups).unwrap();
+        let (end, idx, results) = find(&program, "abb", nb_groups, &Allowed::All).unwrap();
         assert_eq!(idx, 0);
         assert_eq!(end, 2);
         assert_eq!(results, vec![]);
@@ -47,7 +47,7 @@ mod tests {
         for (regex, tests) in escaped {
             let (program, _) = compile(regex, 0).unwrap();
             for (string, result) in tests {
-                assert_eq!(find(&program, string, 0).is_some(), result);
+                assert_eq!(find(&program, string, 0, &Allowed::All).is_some(), result);
             }
         }
     }
@@ -55,7 +55,7 @@ mod tests {
     #[test]
     fn greedy() {
         let (program, nb_groups) = compile("(a+)(a+)", 0).unwrap();
-        let (end, idx, results) = find(&program, "aaaa", nb_groups).unwrap();
+        let (end, idx, results) = find(&program, "aaaa", nb_groups, &Allowed::All).unwrap();
         assert_eq!(end, 4);
         assert_eq!(idx, 0);
         assert_eq!(results, vec![Some(0), Some(3), Some(3), Some(4)]);
@@ -64,7 +64,7 @@ mod tests {
     #[test]
     fn partial() {
         let (program, nb_groups) = compile("a+", 0).unwrap();
-        let (end, idx, results) = find(&program, "aaabcd", nb_groups).unwrap();
+        let (end, idx, results) = find(&program, "aaabcd", nb_groups, &Allowed::All).unwrap();
         assert_eq!(end, 3);
         assert_eq!(idx, 0);
         assert_eq!(results, Vec::new());
@@ -77,6 +77,9 @@ mod tests {
 ///
 /// # Variants
 ///
+/// `Switch(ips: Vec<(usize, usize, bool)>)`: fork the current thread once for each `(id, ip)` in `ips`,
+///                                         and set the instruction pointer of each new thread to `ip`, but only
+///                                         if the regex `id` is allowed, or if `ignored`.
 /// `Save(reg: usize)`: save the current location in register `reg`
 /// `Split(ip1: usize, ip2: usize)`: fork the current thread, and set the instruction pointer
 ///                                of both thread respectivly to `ip1` and `ip2`
@@ -96,6 +99,7 @@ mod tests {
 /// `Any`: match any character at the current location
 #[derive(PartialEq, Debug)]
 pub enum Instruction {
+    Switch(Vec<(usize, usize)>),
     Save(usize),
     Split(usize, usize),
     Char(char),
@@ -108,6 +112,24 @@ pub enum Instruction {
     CharacterClass(IntervalTree<char>, bool),
     EOF,
     Any,
+}
+
+/// # Summary
+/// Set the allowed rules for the regex engine. It can either be `Allowed::All`, to allow
+/// all rules, or `Allowed::Some(rules: FixedBitSet)`, in which case only `rules` are allowed.
+#[derive(Debug)]
+pub enum Allowed {
+    All,
+    Some(FixedBitSet),
+}
+
+impl Allowed {
+    pub fn contains(&self, i: usize) -> bool {
+        match self {
+            Allowed::All => true,
+            Allowed::Some(allowed) => allowed.contains(i),
+        }
+    }
 }
 
 /// # Summary
@@ -241,9 +263,10 @@ fn match_next(
     mut thread: Thread,
     current: &mut ThreadList,
     next: Option<&mut ThreadList>,
-    prog: ProgramRef,
+    prog: ProgramRef<'_>,
     best_match: &mut Option<Match>,
     last: Option<char>,
+    allowed: &Allowed,
 ) {
     /// Return whether `chr` is a word char,
     /// matched by /[a-zA-Z0-9_]/.
@@ -302,6 +325,17 @@ fn match_next(
             thread.save(*idx, pos);
             advance(thread, Some(current));
         }
+        Instruction::Switch(instructions) => {
+            instructions
+                .iter()
+                .rev()
+                .filter(|(id, _)| allowed.contains(*id))
+                .for_each(|(_, ip)| {
+                    let mut new = thread.clone();
+                    new.jump(*ip);
+                    current.add(new);
+                });
+        }
         Instruction::Split(pos1, pos2) => {
             let mut other = thread.clone();
             other.jump(*pos2);
@@ -341,7 +375,7 @@ fn match_next(
 }
 
 /// Simulate a VM with program `prog` on `input`. There should be `size` groups.
-pub fn find(prog: ProgramRef, input: &str, size: usize) -> Option<Match> {
+pub fn find(prog: ProgramRef<'_>, input: &str, size: usize, allowed: &Allowed) -> Option<Match> {
     let mut current = ThreadList::from(vec![Thread::new(0, size)], prog.len());
     let mut best_match = None;
     let mut last = None;
@@ -357,6 +391,7 @@ pub fn find(prog: ProgramRef, input: &str, size: usize) -> Option<Match> {
                 prog,
                 &mut best_match,
                 last,
+                allowed,
             );
         }
         current = next;
@@ -373,6 +408,7 @@ pub fn find(prog: ProgramRef, input: &str, size: usize) -> Option<Match> {
             prog,
             &mut best_match,
             last,
+            allowed,
         );
     }
 

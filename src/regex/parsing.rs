@@ -6,7 +6,6 @@ pub mod tests {
     use super::*;
 
     /// Compile a regex into a program executable on the VM.
-    /// **This is a private function, please use the API instead.**
     pub fn compile(regex: &str, id: usize) -> Result<(Program, usize), RegexError> {
         let mut program = Vec::new();
         let (regex, nb_groups) = read(regex, 0)?;
@@ -483,7 +482,7 @@ pub fn build(regex: Regex, program: &mut Program) {
 pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError> {
     /// Parse a character class.
     fn read_char_class(
-        input: &mut std::iter::Enumerate<std::str::Chars>,
+        input: &mut std::iter::Enumerate<std::str::Chars<'_>>,
         size: usize,
         actual: usize,
     ) -> Result<Regex, RegexError> {

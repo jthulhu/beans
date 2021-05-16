@@ -1,5 +1,6 @@
-use super::matching::{find, Instruction, Program};
+use super::matching::{self, find, Instruction, Program};
 use super::parsing::{build, read, Regex, RegexError};
+use fixedbitset::FixedBitSet;
 
 #[cfg(test)]
 mod tests {
@@ -23,7 +24,7 @@ mod tests {
         assert_eq!(
             regex.program,
             vec![
-                Split(1, 4),
+                Switch(vec![(0, 1), (1, 4)]),
                 Char('a'),
                 Split(1, 3),
                 Match(0),
@@ -43,7 +44,7 @@ mod tests {
         assert_eq!(
             regex.program,
             vec![
-                Split(1, 6),
+                Switch(vec![(0, 1), (1, 6)]),
                 Save(0),
                 Char('a'),
                 Split(2, 4),
@@ -75,7 +76,7 @@ mod tests {
             .unwrap()
             .build();
 
-        let match1 = regex.find("aaacd").unwrap();
+        let match1 = regex.find("aaacd", &Allowed::All).unwrap();
         assert_eq!(match1.length, 3);
         assert_eq!(match1.name, "As");
         assert_eq!(match1.groups.len(), 1);
@@ -85,7 +86,7 @@ mod tests {
         assert_eq!(handle.text, "aaa");
         assert_eq!(match1.text, "aaa");
 
-        let match2 = regex.find("bc").unwrap();
+        let match2 = regex.find("bc", &Allowed::All).unwrap();
         assert_eq!(match2.length, 2);
         assert_eq!(match2.name, "BC");
         assert_eq!(match2.groups.len(), 2);
@@ -99,7 +100,7 @@ mod tests {
         assert_eq!(handle.end, 2);
         assert_eq!(handle.text, "c");
 
-        let match3 = regex.find("cde");
+        let match3 = regex.find("cde", &Allowed::All);
         assert!(match3.is_none());
     }
 
@@ -111,7 +112,7 @@ mod tests {
             .with_named_regex("\"(.*)\"", String::from("STRING"))
             .unwrap()
             .build();
-        let match1 = regex.find("'blabla'").unwrap();
+        let match1 = regex.find("'blabla'", &Allowed::All).unwrap();
         assert_eq!(match1.length, 8);
         assert_eq!(match1.name, "STRING");
         assert_eq!(match1.groups.len(), 1);
@@ -128,9 +129,37 @@ mod tests {
             .with_named_regex(".*", String::from("Default"))
             .unwrap()
             .build();
-        assert_eq!(regex.find("0123456").unwrap().length, 7);
-        assert_eq!(regex.find("012").unwrap().length, 3);
-        assert_eq!(regex.find("").unwrap().length, 0);
+        assert_eq!(regex.find("0123456", &Allowed::All).unwrap().length, 7);
+        assert_eq!(regex.find("012", &Allowed::All).unwrap().length, 3);
+        assert_eq!(regex.find("", &Allowed::All).unwrap().length, 0);
+    }
+}
+
+/// The allowed named regex in a single match.
+/// This is useful is you want to prevent the engine from matching certain regex by not allowing them.
+/// It is very efficient in the sense that the complexity of a match depends only on the number of allowed regex,
+/// not on the number of compiled regex, which means it is a good idea to compile all regex at once, into a single
+/// engine, and then filter the one used for a certain match.
+#[derive(Debug)]
+pub enum Allowed {
+    /// Allow all regex.
+    All,
+    /// Allow only regex whose id is the one in the vector.
+    Some(Vec<usize>),
+}
+
+impl Allowed {
+    fn convert(&self, size: usize) -> matching::Allowed {
+        match self {
+            Allowed::All => matching::Allowed::All,
+            Allowed::Some(rules) => {
+                let mut allowed = FixedBitSet::with_capacity(size);
+                for i in rules {
+                    allowed.insert(*i);
+                }
+                matching::Allowed::Some(allowed)
+            }
+        }
     }
 }
 
@@ -261,8 +290,17 @@ impl CompiledRegex {
 
     /// Match against a given input. Will return only one match, if many were possibles,
     /// according to the priority rules.
-    pub fn find<'a>(&'a self, input: &'a str) -> Option<Match<'a>> {
-        if let Some((length, id, groups)) = find(&self.program, input, self.size) {
+    pub fn find<'pattern, 'text>(
+        &'pattern self,
+        input: &'text str,
+        allowed: &Allowed,
+    ) -> Option<Match<'pattern, 'text>> {
+        if let Some((length, id, groups)) = find(
+            &self.program,
+            input,
+            self.size,
+            &allowed.convert(self.names.len()),
+        ) {
             let (begin_groups, end_groups) = self.groups[id];
             let mut grps = Vec::new();
             for i in begin_groups..end_groups {
@@ -342,22 +380,17 @@ impl RegexBuilder {
         if self.regexes.is_empty() {
             return CompiledRegex::new(Vec::new(), self.names, self.groups, self.current);
         }
-        let offset = self.regexes.len() - 1;
         let mut program = Vec::new();
-        for _ in 0..offset {
-            program.push(Instruction::Split(0, 0));
-        }
-        for (i, regex) in self.regexes.into_iter().enumerate() {
-            if i < offset {
-                program[i] = Instruction::Split(program.len(), i + 1);
-            } else if offset != 0 {
-                if let Instruction::Split(next, _) = program[i - 1] {
-                    program[i - 1] = Instruction::Split(next, program.len());
-                }
-            }
+        let mut switch = Vec::new();
+        program.push(Instruction::Split(0, 0)); // Fake instruction that is going to be replaced later with a `Switch`.
+        for (id, regex) in self.regexes.into_iter().enumerate() {
+            let ip = program.len();
+            switch.push((id, ip));
             build(regex, &mut program);
-            program.push(Instruction::Match(i));
+            program.push(Instruction::Match(id));
         }
+
+        program[0] = Instruction::Switch(switch);
         CompiledRegex::new(program, self.names, self.groups, self.current)
     }
 }

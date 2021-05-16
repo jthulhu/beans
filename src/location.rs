@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 /// # Summary
 ///
 /// Information about a position in a file,
@@ -19,11 +21,11 @@ mod tests {
     use super::*;
     #[test]
     fn location() {
-        let location = Location::new(String::from("a cool filename"), (0, 3), (1, 6));
+        let location = Location::new(Rc::new(String::from("a cool filename")), (0, 3), (1, 6));
         assert_eq!(location.file(), "a cool filename");
         assert_eq!(location.start(), (0, 3));
         assert_eq!(location.end(), (1, 6));
-        let location = Location::new(String::from(""), (0, 0), (0, 0));
+        let location = Location::new(Rc::new(String::from("")), (0, 0), (0, 0));
         assert_eq!(location.file(), "");
         assert_eq!(location.start(), (0, 0));
         assert_eq!(location.end(), (0, 0));
@@ -31,12 +33,12 @@ mod tests {
     #[test]
     #[should_panic]
     fn wrong_location() {
-        Location::new(String::from("some file"), (1, 0), (0, 0));
+        Location::new(Rc::new(String::from("some file")), (1, 0), (0, 0));
     }
     #[test]
     #[should_panic]
     fn wrong_location2() {
-        Location::new(String::from("some file"), (1, 5), (1, 3));
+        Location::new(Rc::new(String::from("some file")), (1, 5), (1, 3));
     }
 }
 
@@ -54,7 +56,8 @@ mod tests {
 ///
 /// ```rust
 /// # use beans::location::Location;
-/// let location = Location::new(String::from("myfile"), (0, 0), (0, 1));
+/// # use std::rc::Rc;
+/// let location = Location::new(Rc::new(String::from("myfile")), (0, 0), (0, 1));
 /// ```
 ///
 /// Example 2 -- `afile`
@@ -68,16 +71,17 @@ mod tests {
 ///
 /// ```rust
 /// # use beans::location::Location;
+/// # use std::rc::Rc;
 /// Location::new(
-///   String::from("afile"),
+///   Rc::new(String::from("afile")),
 ///   (0, 4),
 ///   (1, 2)
 /// )
 /// # ;
 /// ```
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Location {
-    file: String,
+    file: Rc<String>,
     start: CharLocation,
     end: CharLocation,
 }
@@ -90,7 +94,7 @@ impl Location {
     ///  * end: the location (exclusive) of the end of the data.
     ///
     /// Panic if start > end (lexicographic order)
-    pub fn new(file: String, start: CharLocation, end: CharLocation) -> Self {
+    pub fn new(file: Rc<String>, start: CharLocation, end: CharLocation) -> Self {
         assert!(start.0 < end.0 || (start.0 == end.0 && start.1 <= end.1));
         Self { file, start, end }
     }
@@ -98,7 +102,12 @@ impl Location {
     /// Generate of new `Location` object.
     /// Take the locations as index of the stream,
     /// and convert them as actual locations in the file.
-    pub fn from_stream_pos(file: String, stream: &str, start_pos: usize, end_pos: usize) -> Self {
+    pub fn from_stream_pos(
+        file: Rc<String>,
+        stream: &str,
+        start_pos: usize,
+        end_pos: usize,
+    ) -> Self {
         let mut current_char = 0;
         let mut current_line = 0;
         let mut current_pos = 0;
@@ -164,13 +173,16 @@ impl Location {
     }
 }
 
+/// # Summary
+/// `LocationBuilder` allows building locations from a source stream faster.
+#[derive(Debug)]
 pub struct LocationBuilder {
-    file: String,
-    stream: String,
+    file: Rc<String>,
+    stream: Rc<String>,
 }
 
 impl LocationBuilder {
-    pub fn new(file: String, stream: String) -> Self {
+    pub fn new(file: Rc<String>, stream: Rc<String>) -> Self {
         Self { file, stream }
     }
 

@@ -11,7 +11,7 @@ use fixedbitset::FixedBitSet;
 use hashbrown::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
-use std::mem;
+use std::rc::Rc;
 
 #[cfg(test)]
 mod tests {
@@ -40,7 +40,7 @@ mod tests {
         ) {
             let error_message = format!("Set #{}, item #{}: no match: ", set_id, item_id);
             let item = &parser.grammar().rules[other.rule];
-            assert_eq!(self.name, &item.name, "{} name.", error_message);
+            assert_eq!(self.name, *item.name, "{} name.", error_message);
             assert_eq!(
                 self.left_elements.len() + self.right_elements.len(),
                 item.elements.len(),
@@ -57,7 +57,7 @@ mod tests {
             assert_eq!(self.origin, other.origin, "{} origin set.", error_message);
             for i in 0..self.left_elements.len() {
                 assert_eq!(
-                    self.left_elements[i], &item.elements[i].name,
+                    self.left_elements[i], *item.elements[i].name,
                     "{} element #{}.",
                     error_message, i
                 );
@@ -259,7 +259,7 @@ mod tests {
                 line.extend(format!("({})", item.origin).chars());
                 println!("{}", line);
             }
-            println!("");
+            println!();
         }
     }
 
@@ -273,16 +273,16 @@ B ::= A <>;"#;
         let input = r#""#;
         let lexer = LexerBuilder::new()
             .with_stream(StringStream::new(
-                String::from("<lexer input>"),
-                lexer_input.to_string(),
+                Rc::new(String::from("<lexer input>")),
+                Rc::new(lexer_input.to_string()),
             ))
             .unwrap()
             .build()
             .unwrap();
-        let grammar = <EarleyParser as Parser>::GrammarBuilder::default()
+        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
             .with_stream(StringStream::new(
-                String::from("<grammar input>"),
-                grammar_input.to_string(),
+                Rc::new(String::from("<grammar input>")),
+                Rc::new(grammar_input.to_string()),
             ))
             .build(&lexer)
             .unwrap();
@@ -297,8 +297,8 @@ B ::= A <>;"#;
         );
         let recognised = parser
             .recognise(&mut lexer.lex(&mut StringStream::new(
-                String::from("<input>"),
-                input.to_string(),
+                Rc::new(String::from("<input>")),
+                Rc::new(input.to_string()),
             )))
             .unwrap();
         verify_sets(sets, recognised, &parser);
@@ -326,16 +326,16 @@ Factor ::= LPAR Sum RPAR <>
 
         let lexer = LexerBuilder::new()
             .with_stream(StringStream::new(
-                String::from("<lexer input>"),
-                lexer_input.to_string(),
+                Rc::new(String::from("<lexer input>")),
+                Rc::new(lexer_input.to_string()),
             ))
             .unwrap()
             .build()
             .unwrap();
-        let grammar = <EarleyParser as Parser>::GrammarBuilder::default()
+        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
             .with_stream(StringStream::new(
-                String::from("<grammar input>"),
-                grammar_input.to_string(),
+                Rc::new(String::from("<grammar input>")),
+                Rc::new(grammar_input.to_string()),
             ))
             .build(&lexer)
             .unwrap();
@@ -417,8 +417,8 @@ Factor ::= LPAR Sum RPAR <>
         );
         let recognised = parser
             .recognise(&mut lexer.lex(&mut StringStream::new(
-                String::from("<input>"),
-                input.to_string(),
+                Rc::new(String::from("<input>")),
+                Rc::new(input.to_string()),
             )))
             .unwrap();
         verify_sets(sets, recognised, &parser);
@@ -449,11 +449,11 @@ Factor ::= LPAR Sum RPAR <>
 #[derive(Debug)]
 pub struct EarleyGrammarBuilder {
     stream: Option<StringStream>,
-    grammar: String,
+    grammar: Rc<String>,
 }
 
 impl EarleyGrammarBuilder {
-    pub fn new(grammar: String) -> Self {
+    pub fn new(grammar: Rc<String>) -> Self {
         Self {
             stream: None,
             grammar,
@@ -463,45 +463,62 @@ impl EarleyGrammarBuilder {
 
 impl GrammarBuilder<'_> for EarleyGrammarBuilder {
     type Grammar = EarleyGrammar;
+
     fn with_stream(mut self, stream: StringStream) -> Self {
         self.stream = Some(stream);
         self
     }
-    fn with_grammar(mut self, grammar: String) -> Self {
+
+    fn with_grammar(mut self, grammar: Rc<String>) -> Self {
         self.grammar = grammar;
         self
     }
-    fn stream(&mut self) -> WResult<StringStream> {
+
+    fn stream<'ws>(&mut self) -> WResult<StringStream> {
         let mut warnings = WarningSet::empty();
         let stream = retrieve!(self.stream, warnings);
         WOk(stream, warnings)
     }
-    fn grammar(&mut self) -> String {
-        mem::replace(&mut self.grammar, String::new())
+
+    fn grammar(&self) -> Rc<String> {
+        self.grammar.clone()
     }
 }
 
 impl Default for EarleyGrammarBuilder {
     fn default() -> Self {
-        Self::new(String::from("gmrs/parser.lx"))
-            .with_file(String::from("gmrs/parser.gmr"))
+        Self::new(Rc::new(String::from("gmrs/parser.lx")))
+            .with_file(Rc::new(String::from("gmrs/parser.gmr")))
             .unwrap()
     }
 }
 
+/// # Summary
+/// `EarleyItem` is partially recognized handle.
+/// If `item.rule` refers to `β → α_1…α_n`, the item is `β → α_1…α_{i-1} · α_i…α_n (j)`
+/// where `i=item.position` and `j=item.origin`.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub struct EarleyItem {
+    /// `rule` is the identifier of the associated `Rule`.
     pub rule: usize,
+    /// `origin` is the identifier of the `EarleySet` this item was originated in.
     pub origin: usize,
+    /// `position` is the advancement of the current item. It corresponds to the position of the fat dot.
     pub position: usize,
 }
 
-#[derive(Serialize, Deserialize)]
+/// # Summary
+/// `EarleyGrammar` is a grammar that uses the Earley algorithm.
+/// The general worst-time complexity for a context-free grammar is `O(n³)`.
+/// For an unambiguous grammar, the worst-time complexity is `O(n²)`.
+/// For an `LR(k)` grammar, if the Johnson algorithm is applied (which is currently not), the complexity is `O(n)`.
+/// If it is not applied, the complexity is `O(n)` unless there is right-recursion, in which case the complexity is `O(n²)`.
+#[derive(Serialize, Deserialize, Debug)]
 pub struct EarleyGrammar {
     axioms: FixedBitSet,
     rules: Vec<Rule>,
     nullables: FixedBitSet,
-    name_map: HashMap<String, usize>,
+    name_map: HashMap<Rc<str>, usize>,
     rules_map: Vec<Vec<usize>>,
 }
 
@@ -512,10 +529,10 @@ impl EarleyGrammar {
 }
 
 impl Grammar<'_> for EarleyGrammar {
-    fn new(
+    fn new<'warning>(
         rules: Vec<Rule>,
         axioms: FixedBitSet,
-        name_map: HashMap<String, usize>,
+        name_map: HashMap<Rc<str>, usize>,
     ) -> WResult<Self> {
         let warnings = WarningSet::empty();
         let mut nullables = FixedBitSet::with_capacity(axioms.len());
@@ -604,12 +621,15 @@ impl StateSet {
     }
 }
 
+/// # Summary
+/// `EarleyParser` is the parser related to the [`EarleyGrammar`](EarleyGrammar).
+#[derive(Debug)]
 pub struct EarleyParser {
     grammar: EarleyGrammar,
 }
 
 impl EarleyParser {
-    fn recognise(&self, input: &mut LexedStream) -> WResult<Vec<StateSet>> {
+    fn recognise<'input>(&self, input: &'input mut LexedStream<'input>) -> WResult<Vec<StateSet>> {
         let mut warnings = WarningSet::empty();
         let mut sets = Vec::new();
         let mut first_state = StateSet::new();
@@ -700,13 +720,16 @@ impl EarleyParser {
 impl Parser<'_> for EarleyParser {
     type GrammarBuilder = EarleyGrammarBuilder;
     type Grammar = EarleyGrammar;
+
     fn new(grammar: Self::Grammar) -> Self {
         Self { grammar }
     }
+
     fn grammar(&self) -> &Self::Grammar {
         &self.grammar
     }
-    fn parse(&self, input: &mut LexedStream) -> WResult<ParseResult> {
+
+    fn parse<'input>(&self, input: &'input mut LexedStream<'input>) -> WResult<ParseResult> {
         let mut warnings = WarningSet::empty();
         ctry!(self.recognise(input), warnings);
         WOk((), warnings)

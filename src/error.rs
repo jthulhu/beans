@@ -63,17 +63,24 @@ impl Warning {
 impl fmt::Display for Warning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use WarningType::*;
-        let (r#type, msg) = match &self.warn_type {
+        let r#type;
+        let message: Box<dyn AsRef<str>>;
+        match &self.warn_type {
             CaseConvention(msg, _case_found, _case_expected) => {
-                ("Case convention warning", msg.clone())
+                r#type = "Case convention warning";
+                message = Box::new(msg.as_ref());
             }
-            UndefinedNonTerminal(origin, non_terminal) => (
-                "Undefined non-terminal warning",
-                format!(
+            UndefinedNonTerminal(origin, non_terminal) => {
+                r#type = "Undefined non-terminal warning";
+                message = Box::new(format!(
                     "In definition of non-terminal `{}', `{}' has been used but not defined",
                     origin, non_terminal
-                ),
-            ),
+                ));
+            }
+            NullWarning => {
+                r#type = "Warning";
+                message = Box::new("Empty warning");
+            }
         };
         if let Some(location) = self.location.as_ref() {
             write!(
@@ -85,24 +92,56 @@ impl fmt::Display for Warning {
                 location.start().1,
                 location.end().0,
                 location.end().1,
-                msg
+                (*message).as_ref()
             )
         } else {
-            write!(f, "{}\n{}", r#type, msg)
+            write!(f, "{}\n{}", r#type, (*message).as_ref())
         }
     }
 }
 
+/// # Summary
+///
+/// Iterator over a warning set.
+#[derive(Debug)]
+pub struct WarningIterator<'iter> {
+    warnings: Option<linked_list::Iter<'iter, Warning>>,
+}
+
+impl<'iter> WarningIterator<'iter> {
+    fn new(warnings: Option<linked_list::Iter<'iter, Warning>>) -> Self {
+        Self { warnings }
+    }
+}
+
+impl<'iter> Iterator for WarningIterator<'iter> {
+    type Item = &'iter Warning;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.warnings.as_mut().and_then(|iterator| iterator.next())
+    }
+}
+
+/// # Summary
+///
+/// [`WarningSet`] is an abstract type for a [`Warning`] collection.
+/// It should optimize empty creation (because most of the code will build a warning set without using it).
+/// It should also allow constant time union (or at least fast union) of two sets.
+#[derive(Debug, PartialEq, Eq)]
 pub enum WarningSet {
+    /// A set of warnings that actually contains some warnings.
     Set(LinkedList<Warning>),
+    /// An empty set of warnings.
     Empty,
 }
 
 impl WarningSet {
+    /// Create an empty set.
     #[inline]
     pub fn empty() -> Self {
         EMPTY_WARNING_SET
     }
+
+    /// Add a warning to the set.
     pub fn add(&mut self, warning: Warning) {
         match self {
             Self::Set(warnings) => warnings.push_back(warning),

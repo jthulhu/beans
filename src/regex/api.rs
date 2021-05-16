@@ -145,15 +145,15 @@ mod tests {
 /// `text`: return the captured region as a slice of the input
 /// `length`: return the length of the captured region
 #[derive(Debug)]
-pub struct Handle<'a> {
+pub struct Handle<'text> {
     start: usize,
     end: usize,
-    text: &'a str,
+    text: &'text str,
 }
 
-impl<'a> Handle<'a> {
+impl<'text> Handle<'text> {
     /// Create a new `Handle`
-    pub fn new(start: usize, end: usize, text: &'a str) -> Self {
+    pub fn new(start: usize, end: usize, text: &'text str) -> Self {
         Self { start, end, text }
     }
     /// Return the start position of the region (inclusive).
@@ -193,15 +193,15 @@ impl<'a> Handle<'a> {
 /// `groups`: return the groups of the regex
 /// `text`: return the substring of the input that corresponds to the match
 #[derive(Debug)]
-pub struct Match<'a> {
+pub struct Match<'pattern, 'text> {
     length: usize,
-    name: &'a str,
+    name: &'pattern str,
     id: usize,
-    groups: Vec<Option<Handle<'a>>>,
-    text: &'a str,
+    groups: Vec<Option<Handle<'text>>>,
+    text: &'text str,
 }
 
-impl Match<'_> {
+impl Match<'_, '_> {
     /// Return the length of the match.
     pub fn length(&self) -> usize {
         self.length
@@ -220,7 +220,7 @@ impl Match<'_> {
     /// Return the groups of the regex. The position of each group is
     /// enforced by its position in the regex. Each group may or may not
     /// have been caught.
-    pub fn groups(&self) -> &[Option<Handle>] {
+    pub fn groups(&self) -> &[Option<Handle<'_>>] {
         &self.groups[..]
     }
 

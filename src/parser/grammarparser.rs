@@ -86,15 +86,15 @@ impl Rule {
 
 /// # Summary
 ///
-/// `Value` is an typed value that may be present in a grammar.
+/// [`Value`] is an typed value that may be present in a grammar.
 ///
 /// # Variants
 ///
-/// `Int` is a signed integer (on 32 bits).
-/// `Str` is a string.
-/// `Id` is an identifier.
-/// `Float` is a floating point number (on 32 bits).
-/// `Bool` is a boolean.
+/// [`Int`] is a signed integer (on 32 bits).
+/// [`Str`] is a string.
+/// [`Id`] is an identifier.
+/// [`Float`] is a floating point number (on 32 bits).
+/// [`Bool`] is a boolean.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     /// Signed integer
@@ -111,16 +111,23 @@ pub enum Value {
 
 /// # Summary
 ///
-/// `GrammarBuilder` is a builder for a grammar (ie. a type that implements `Grammar`).
+/// [`GrammarBuilder`] is a builder for a grammar (ie. a type that implements [`Grammar`]).
 pub trait GrammarBuilder<'deserializer>: Sized {
+    /// [`Grammar`] that will be built by the [`GrammarBuilder`]
     type Grammar: Grammar<'deserializer>;
+    /// Build with the given file as stream.
     fn with_file(self, file: Rc<String>) -> Result<Self, Box<dyn error::Error>> {
         Ok(self.with_stream(StringStream::from_file(file)?))
     }
+    /// Build with the given stream.
     fn with_stream(self, stream: StringStream) -> Self;
+    /// Build with the given grammar.
     fn with_grammar(self, grammar: Rc<String>) -> Self;
+    /// Retrieve the stream from the builder.
     fn stream(&mut self) -> WResult<StringStream>;
+    /// Retrieve the grammar from the builder.
     fn grammar(&self) -> Rc<String>;
+    /// Build the grammar.
     fn build(mut self, lexer: &Lexer) -> WResult<Self::Grammar> {
         /// Read a token, match it against the provided `id`.
         /// If it matches, consume the token.

@@ -1,4 +1,4 @@
-use beans::regex::RegexBuilder;
+use beans::regex::{RegexBuilder, Allowed};
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::{distributions::Alphanumeric, Rng};
 use regex::Regex;
@@ -21,7 +21,7 @@ pub fn regex_email(criterion: &mut Criterion) {
     content.push_str("some.address.mail@some.domain");
     // Start benchmark
     group.bench_function("Regex email: beans engine", |b| {
-        b.iter(|| beans_engine.find(&content))
+        b.iter(|| beans_engine.find(&content, &Allowed::All))
     });
     group.bench_function("Regex email: std engine", |b| {
         b.iter(|| std_engine.captures(&content))

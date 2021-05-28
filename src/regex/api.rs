@@ -135,6 +135,7 @@ mod tests {
     }
 }
 
+#[derive(Debug)]
 pub enum Allowed {
     All,
     Some(Vec<usize>),
@@ -332,7 +333,7 @@ impl CompiledRegex {
 /// `new`: create a new `RegexBuilder`
 /// `with_named_regex`: add a regex, and bind it to the given name
 /// `build`: consume the `RegexBuilder` and return the `CompiledRegex`
-///
+#[derive(Debug)]
 pub struct RegexBuilder {
     names: Vec<String>,
     regexes: Vec<Regex>,

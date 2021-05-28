@@ -24,7 +24,7 @@ mod tests {
         assert_eq!(
             regex.program,
             vec![
-                Split(1, 4),
+                Switch(vec![(0, 1), (1, 4)]),
                 Char('a'),
                 Split(1, 3),
                 Match(0),
@@ -44,7 +44,7 @@ mod tests {
         assert_eq!(
             regex.program,
             vec![
-                Split(1, 6),
+                Switch(vec![(0, 1), (1, 6)]),
                 Save(0),
                 Char('a'),
                 Split(2, 4),
@@ -135,14 +135,21 @@ mod tests {
     }
 }
 
+/// The allowed named regex in a single match.
+/// This is useful is you want to prevent the engine from matching certain regex by not allowing them.
+/// It is very efficient in the sense that the complexity of a match depends only on the number of allowed regex,
+/// not on the number of compiled regex, which means it is a good idea to compile all regex at once, into a single
+/// engine, and then filter the one used for a certain match.
 #[derive(Debug)]
 pub enum Allowed {
+    /// Allow all regex.
     All,
+    /// Allow only regex whose id is the one in the vector.
     Some(Vec<usize>),
 }
 
 impl Allowed {
-    pub fn convert(&self, size: usize) -> matching::Allowed {
+    fn convert(&self, size: usize) -> matching::Allowed {
         match self {
             Allowed::All => matching::Allowed::All,
             Allowed::Some(rules) => {
@@ -167,15 +174,15 @@ impl Allowed {
 /// `text`: return the captured region as a slice of the input
 /// `length`: return the length of the captured region
 #[derive(Debug)]
-pub struct Handle<'a> {
+pub struct Handle<'text> {
     start: usize,
     end: usize,
-    text: &'a str,
+    text: &'text str,
 }
 
-impl<'a> Handle<'a> {
+impl<'text> Handle<'text> {
     /// Create a new `Handle`
-    pub fn new(start: usize, end: usize, text: &'a str) -> Self {
+    pub fn new(start: usize, end: usize, text: &'text str) -> Self {
         Self { start, end, text }
     }
     /// Return the start position of the region (inclusive).
@@ -215,15 +222,15 @@ impl<'a> Handle<'a> {
 /// `groups`: return the groups of the regex
 /// `text`: return the substring of the input that corresponds to the match
 #[derive(Debug)]
-pub struct Match<'a> {
+pub struct Match<'pattern, 'text> {
     length: usize,
-    name: &'a str,
+    name: &'pattern str,
     id: usize,
-    groups: Vec<Option<Handle<'a>>>,
-    text: &'a str,
+    groups: Vec<Option<Handle<'text>>>,
+    text: &'text str,
 }
 
-impl Match<'_> {
+impl Match<'_, '_> {
     /// Return the length of the match.
     pub fn length(&self) -> usize {
         self.length
@@ -283,7 +290,11 @@ impl CompiledRegex {
 
     /// Match against a given input. Will return only one match, if many were possibles,
     /// according to the priority rules.
-    pub fn find<'a>(&'a self, input: &'a str, allowed: &Allowed) -> Option<Match<'a>> {
+    pub fn find<'pattern, 'text>(
+        &'pattern self,
+        input: &'text str,
+        allowed: &Allowed,
+    ) -> Option<Match<'pattern, 'text>> {
         if let Some((length, id, groups)) = find(
             &self.program,
             input,
@@ -369,22 +380,17 @@ impl RegexBuilder {
         if self.regexes.is_empty() {
             return CompiledRegex::new(Vec::new(), self.names, self.groups, self.current);
         }
-        let offset = self.regexes.len() - 1;
         let mut program = Vec::new();
-        for _ in 0..offset {
-            program.push(Instruction::Split(0, 0));
-        }
-        for (i, regex) in self.regexes.into_iter().enumerate() {
-            if i < offset {
-                program[i] = Instruction::Split(program.len(), i + 1);
-            } else if offset != 0 {
-                if let Instruction::Split(next, _) = program[i - 1] {
-                    program[i - 1] = Instruction::Split(next, program.len());
-                }
-            }
+        let mut switch = Vec::new();
+        program.push(Instruction::Split(0, 0)); // Fake instruction that is going to be replaced later with a `Switch`.
+        for (id, regex) in self.regexes.into_iter().enumerate() {
+            let ip = program.len();
+            switch.push((id, ip));
             build(regex, &mut program);
-            program.push(Instruction::Match(i));
+            program.push(Instruction::Match(id));
         }
+
+        program[0] = Instruction::Switch(switch);
         CompiledRegex::new(program, self.names, self.groups, self.current)
     }
 }

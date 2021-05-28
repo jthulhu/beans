@@ -77,7 +77,7 @@ mod tests {
 ///
 /// # Variants
 ///
-/// `Switch(ips: Vec<(usize, usize, bool)>)`: fork the current thread once for each `(id, ip, ignored)` in `ips`,
+/// `Switch(ips: Vec<(usize, usize)>)`: fork the current thread once for each `(id, ip)` in `ips`,
 ///                                         and set the instruction pointer of each new thread to `ip`, but only
 ///                                         if the regex `id` is allowed, or if `ignored`.
 /// `Save(reg: usize)`: save the current location in register `reg`
@@ -99,7 +99,7 @@ mod tests {
 /// `Any`: match any character at the current location
 #[derive(PartialEq, Debug)]
 pub enum Instruction {
-    Switch(Vec<(usize, usize, bool)>),
+    Switch(Vec<(usize, usize)>),
     Save(usize),
     Split(usize, usize),
     Char(char),
@@ -328,10 +328,12 @@ fn match_next(
         Instruction::Switch(instructions) => {
             instructions
                 .iter()
-                .filter(|(id, _, ignored)| *ignored || allowed.contains(*id))
-                .for_each(|(_, ip, _)| {
+                .rev()
+                .filter(|(id, _)| allowed.contains(*id))
+                .for_each(|(_, ip)| {
                     let mut new = thread.clone();
                     new.jump(*ip);
+                    current.add(new);
                 });
         }
         Instruction::Split(pos1, pos2) => {

@@ -17,8 +17,6 @@ use std::rc::Rc;
 /// instead of creating a new one each time.
 const EMPTY_WARNING_SET: WarningSet = WarningSet::Empty;
 
-/// # Summary
-///
 /// `ErrorType` is an enum that contains all the possible errors
 /// that `beans` might encounter when parsing.
 ///
@@ -45,6 +43,12 @@ pub enum ErrorType {
     GrammarNonTerminalDuplicate(String),
     /// `GrammarSyntaxError(message: String)`: syntax error in the grammar.
     GrammarSyntaxError(String),
+}
+
+impl Default for ErrorType {
+    fn default() -> Self {
+        Self::InternalError(String::from("Default error"))
+    }
 }
 
 /// # Summary
@@ -282,38 +286,91 @@ impl<T: PartialEq> WResult<T> {
 }
 
 impl<T> WResult<T> {
-    /// If `self` is a `WOk`, return res. Otherwise return `self`.
+    /// Return `res` if the result is [`WOk`][WResult::WOk], otherwise return the [`WErr`][WResult::WErr] value of `self`.
+    ///
+    /// # Examples
+    /// Basic usage:
     /// ```rust
-    /// # use beans::error::WResult::{WOk, WErr};
-    /// # use beans::error::WarningSet;
-    /// assert_eq!(WOk(5, WarningSet::default()).and(WOk(6, WarningSet::default())).unwrap(), 6);
+    /// # use beans::{error::{WResult::{self, WOk, WErr}, WarningSet, Error, ErrorType}, location::Location};
+    /// let x: WResult<u32> = WOk(2, WarningSet::default());
+    /// let y: WResult<&str> = WErr(Error::new(Location::default(), ErrorType::InternalError(String::from("late error"))));
+    /// let z: WResult<&str> = WErr(Error::new(Location::default(), ErrorType::InternalError(String::from("late error"))));
+    /// assert_eq!(x.and(y), z);
+    ///
+    /// let x: WResult<u32> = WErr(Error::new(Location::default(), ErrorType::InternalError(String::from("early error"))));
+    /// let y: WResult<&str> = WOk("foo", WarningSet::default());
+    /// let z: WResult<&str> = WErr(Error::new(Location::default(), ErrorType::InternalError(String::from("early error"))));
+    /// assert_eq!(x.and(y), z);
+    ///
+    /// let x: WResult<u32> = WErr(Error::new(Location::default(), ErrorType::InternalError(String::from("early error"))));
+    /// let y: WResult<&str> = WErr(Error::new(Location::default(), ErrorType::InternalError(String::from("late error"))));
+    /// let z: WResult<&str> = WErr(Error::new(Location::default(), ErrorType::InternalError(String::from("early error"))));
+    /// assert_eq!(x.and(y), z);
+    ///
+    /// let x: WResult<u32> = WOk(2, WarningSet::default());
+    /// let y: WResult<&str> = WOk("different result type", WarningSet::default());
+    /// let z: WResult<&str> = WOk("different result type", WarningSet::default());
+    /// assert_eq!(x.and(y), z);
     /// ```
-    pub fn and(self, res: WResult<T>) -> WResult<T> {
+    pub fn and<U>(self, res: WResult<U>) -> WResult<U> {
         match self {
             Self::WOk(..) => res,
-            Self::WErr(..) => self,
+            Self::WErr(error) => WResult::WErr(error),
         }
     }
 
-    /// If `self` is `WOk(content, warnings)`, return `WOk(ok_handler(content), warnings)`. Otherwise return `self`.
-    pub fn and_then<O>(self, ok_handler: O) -> Self
+    /// Call `ok_handler` if the result is [`WOk`][WResult::WOk], otherwise return the [`WErr`][WResult::WErr] value of `self`.
+    ///
+    /// This function can be used for control flow based on [`WResult`] values.
+    ///
+    /// # Examples
+    /// Basic usage:
+    /// ```rust
+    /// # use beans::{error::{WResult::{self, WOk, WErr}, WarningSet, Error, ErrorType}, location::Location};
+    /// fn sq(x: u32) -> Result<u32, Error> { Ok(x*x) }
+    /// fn err(x: u32) -> Result<u32, Error> { Err(Error::new(Location::default(), ErrorType::InternalError(x.to_string()))) }
+    ///
+    /// assert_eq!(WOk(2, WarningSet::default()).and_then(sq).and_then(sq), WOk(16, WarningSet::default()));
+    /// assert_eq!(WOk(2, WarningSet::default()).and_then(sq).and_then(err), WErr(Error::new(Location::default(), ErrorType::InternalError(4.to_string()))));
+    /// assert_eq!(WOk(2, WarningSet::default()).and_then(err).and_then(sq), WErr(Error::new(Location::default(), ErrorType::InternalError(2.to_string()))));
+    /// assert_eq!(WErr(Error::new(Location::default(), ErrorType::InternalError(3.to_string()))).and_then(sq).and_then(sq), WErr(Error::new(Location::default(), ErrorType::InternalError(3.to_string()))));
+    /// ```
+    pub fn and_then<F, U>(self, ok_handler: F) -> WResult<U>
     where
-        O: FnOnce(T) -> T,
+        F: FnOnce(T) -> Result<U, Error>,
     {
         match self {
-            Self::WOk(result, warnings) => Self::WOk(ok_handler(result), warnings),
-            Self::WErr(..) => self,
+            Self::WOk(result, warnings) => match ok_handler(result) {
+                Ok(res) => WResult::WOk(res, warnings),
+                Err(error) => WResult::WErr(error),
+            },
+            Self::WErr(error) => WResult::WErr(error),
         }
     }
 
-    /// If `self` is `WOk(content, warnings)`, return `ok_handler(result, warnings)`. Otherwise return `self`.
-    pub fn and_then_warn<O>(self, ok_handler: O) -> Self
+    /// Call `ok_handler` if the result is [`WOk`][WResult::WOk], otherwise return the [`WErr`][WResult::WErr] value of `self`.
+    ///
+    /// This function can be used for control flow based on [`WResult`] values.
+    ///
+    /// # Examples
+    /// Basic usage:
+    /// ```rust
+    /// # use beans::{error::{WResult::{self, WOk, WErr}, WarningSet, Error, ErrorType}, location::Location};
+    /// fn sq(x: u32, ws: WarningSet) -> WResult<u32> { WOk(x*x, ws) }
+    /// fn err(x: u32, _: WarningSet) -> WResult<u32> { WErr(Error::new(Location::default(), ErrorType::InternalError(x.to_string()))) }
+    ///
+    /// assert_eq!(WOk(2, WarningSet::default()).and_then_warn(sq).and_then_warn(sq), WOk(16, WarningSet::default()));
+    /// assert_eq!(WOk(2, WarningSet::default()).and_then_warn(sq).and_then_warn(err), WErr(Error::new(Location::default(), ErrorType::InternalError(4.to_string()))));
+    /// assert_eq!(WOk(2, WarningSet::default()).and_then_warn(err).and_then_warn(sq), WErr(Error::new(Location::default(), ErrorType::InternalError(2.to_string()))));
+    /// assert_eq!(WErr(Error::new(Location::default(), ErrorType::InternalError(3.to_string()))).and_then_warn(sq).and_then_warn(sq), WErr(Error::new(Location::default(), ErrorType::InternalError(3.to_string()))));
+    /// ```
+    pub fn and_then_warn<U, F>(self, ok_handler: F) -> WResult<U>
     where
-        O: FnOnce(T, WarningSet) -> Self,
+        F: FnOnce(T, WarningSet) -> WResult<U>,
     {
         match self {
             Self::WOk(result, warnings) => ok_handler(result, warnings),
-            Self::WErr(..) => self,
+            Self::WErr(error) => WResult::WErr(error),
         }
     }
 
@@ -393,6 +450,11 @@ impl<T> WResult<T> {
         }
     }
 
+    /// Apply a function to the contained value (if [`WOk`][WResult::WOk]), or return
+    /// the provided default (if [`WErr`][WResult::WErr]).
+    ///
+    /// Arguments passed to `map_or` are eagerly evaluated; if you are passing the result of a function call,
+    /// it is recommended to use [`map_or_else`][WResult::map_or_else], which is lazily evaluated.
     pub fn map_or<U, O>(self, default: (U, WarningSet), ok_handler: O) -> (U, WarningSet)
     where
         O: FnOnce(T) -> U,
@@ -403,6 +465,11 @@ impl<T> WResult<T> {
         }
     }
 
+    /// Apply a function to the contained value and the warnings (if [`WOk`][WResult::WOk]),
+    /// or return the provided default (if [`WErr`][WResult::WErr]).
+    ///
+    /// Arguments passed to `map_or_warn` are eagerly evaluated; if you are passing the result of a function call,
+    /// it is recommended to use [`map_or_else_warn`][WResult::map_or_else_warn], which is lazily evaluated.
     pub fn map_or_warn<U, O>(self, default: (U, WarningSet), ok_handler: O) -> (U, WarningSet)
     where
         O: FnOnce(T, WarningSet) -> (U, WarningSet),
@@ -516,7 +583,7 @@ impl<T> From<Result<T, Error>> for WResult<T> {
 /// `Error` is a type representing all information required
 /// about a given error. It is a tuple containing a `Location`
 /// and an `ErrorType`.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Default)]
 pub struct Error {
     location: Location,
     err_type: ErrorType,

@@ -11,6 +11,6 @@ pub trait Parser<'deserializer> {
     fn new(grammar: Self::Grammar) -> Self;
     fn parse<'input>(
         &self,
-        input: &'input mut LexedStream<'input>,
+        input: &'input mut LexedStream<'input, 'input>,
     ) -> WResult<ParseResult>;
 }

@@ -79,7 +79,7 @@ mod tests {
 /// )
 /// # ;
 /// ```
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Location {
     file: Rc<String>,
     start: CharLocation,

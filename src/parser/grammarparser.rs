@@ -294,7 +294,9 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Consume the tokens.
         /// Fail if there is a dot but no attribute.
         /// Return the attribute.
-        fn read_rule_element_attribute(lexed_input: &mut LexedStream<'_, '_>) -> WResult<Attribute> {
+        fn read_rule_element_attribute(
+            lexed_input: &mut LexedStream<'_, '_>,
+        ) -> WResult<Attribute> {
             let mut warnings = WarningSet::empty();
             if ctry!(read_token_walk(lexed_input, "DOT"), warnings) {
                 if let Some(token) = ctry!(lexed_input.next_any(), warnings) {

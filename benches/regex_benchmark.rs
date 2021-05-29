@@ -1,4 +1,4 @@
-use beans::regex::{RegexBuilder, Allowed};
+use beans::regex::{Allowed, RegexBuilder};
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::{distributions::Alphanumeric, Rng};
 use regex::Regex;

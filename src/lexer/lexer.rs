@@ -709,7 +709,10 @@ impl Lexer {
         Self { grammar }
     }
 
-    pub fn lex<'lexer, 'stream>(&'lexer self, stream: &'stream mut StringStream) -> LexedStream<'lexer, 'stream> {
+    pub fn lex<'lexer, 'stream>(
+        &'lexer self,
+        stream: &'stream mut StringStream,
+    ) -> LexedStream<'lexer, 'stream> {
         LexedStream::new(self, stream)
     }
 

@@ -480,6 +480,24 @@ impl<T> WResult<T> {
         }
     }
 
+    /// Maps a [`WResult<T>`] to a `(U, WarningSet)` by applying a function to a
+    /// contained [`WOk`] value, or a fallback function to a
+    /// contained [`WErr`] value.
+    ///
+    /// This function can be used to unpack a successful result
+    /// while handling an error.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use beans::error::{WResult::{WOk, WErr}, WarningSet};
+    /// let k = 21;
+    ///
+    /// let x = WOk("foo", WarningSet::default());
+    /// assert_eq!(x.map_or_else(|_| (k * 2, WarningSet::default()), |v| v.len()), (3, WarningSet::default()));
+    /// ```
     pub fn map_or_else<U, E, O>(self, err_handler: E, ok_handler: O) -> (U, WarningSet)
     where
         E: FnOnce(Error) -> (U, WarningSet),
@@ -489,6 +507,35 @@ impl<T> WResult<T> {
             Self::WOk(result, warnings) => (ok_handler(result), warnings),
             Self::WErr(error) => err_handler(error),
         }
+    }
+
+    /// Maps a [`WResult<T>`] to a `(U, WarningSet)` by applying a function to a
+    /// contained [`WOk`] value, or a fallback function to a
+    /// contained [`WErr`] value.
+    ///
+    /// This function can be used to unpack a successful result
+    /// while handling an error.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use beans::error::{WResult::{WOk, WErr}, WarningSet};
+    /// let k = 21;
+    ///
+    /// let x = WOk("foo", WarningSet::default());
+    /// assert_eq!(x.map_or_else_warnless(|_| k * 2, |v| v.len()), (3, WarningSet::default()));
+    /// ```
+    pub fn map_or_else_warnless<U, E, O>(self, err_handler: E, ok_handler: O) -> (U, WarningSet)
+    where
+	E: FnOnce(Error) -> U,
+	O: FnOnce(T) -> U,
+    {
+	match self {
+	    Self::WOk(result, warnings) => (ok_handler(result), warnings),
+	    Self::WErr(error) => (err_handler(error), WarningSet::default())
+	}
     }
 
     pub fn map_or_else_warn<U, E, O>(self, err_handler: E, ok_handler: O) -> (U, WarningSet)

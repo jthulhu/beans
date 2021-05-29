@@ -1,10 +1,14 @@
+use crate::parser::parser::AST;
 use super::grammarparser::{ElementType, Grammar, GrammarBuilder, Rule, RuleElement};
 use super::parser::{ParseResult, Parser};
 use crate::error::{
     WResult::{self, WOk},
     WarningSet,
+    Error,
+    ErrorType
 };
 use crate::lexer::LexedStream;
+use crate::regex::Allowed;
 use crate::stream::StringStream;
 use crate::{ctry, retrieve};
 use fixedbitset::FixedBitSet;
@@ -22,6 +26,24 @@ mod tests {
     use crate::parser::grammarparser::{
         Attribute, ElementType, Key, Proxy, Rule, RuleElement, Value,
     };
+
+    const GRAMMAR_NUMBERS_LEXER: &str = r#"
+NUMBER ::= [0-9]
+PM ::= [-+]
+TD ::= [*/]
+LPAR ::= \(
+RPAR ::= \)
+"#;
+
+    const GRAMMAR_NUMBERS: &str = r#"
+@Sum ::= Sum PM Product <>
+ Product <>;
+
+Product ::= Product TD Factor <>
+ Factor <>;
+
+Factor ::= LPAR Sum RPAR <>
+ NUMBER <>;"#;
 
     struct TestEarleyItem {
         name: &'static str,
@@ -119,6 +141,53 @@ mod tests {
 		    }
 	    }
 	};
+    }
+
+    macro_rules! final_sets {
+	(
+	    ($grammar: expr)
+	    $(
+		== $(
+		    $name: ident -> $($element: ident)* ($end: literal)
+		)*
+	    )*
+	) => {{
+	    #[allow(unused_mut)]
+	    let mut sets = Vec::new();
+	    fn find_item(grammar: &EarleyGrammar, name: &str, elements: &[&str], end: usize) -> FinalItem {
+		for &rule_identifier in grammar
+		    .name_map
+		    .get(&Rc::from(name))
+		    .map(|&identifier| &grammar.rules_map[identifier])
+		    .expect(format!("The non-terminal {} does not exist.", name).as_str())
+		    .iter()
+		{
+		    if elements.len() == grammar
+			.rules[rule_identifier]
+			.elements.len()
+			&& elements
+			.iter()
+			.zip(grammar.rules[rule_identifier].elements.iter())
+			.all(|(left, right)| left == &*right.name)
+		    {
+			return FinalItem {
+			    rule: rule_identifier,
+			    end
+			};
+		    }
+		}
+		panic!("The rule {} -> {} is not in the grammar.", name, elements.join(" "));
+	    }
+	    $(
+		#[allow(unused_mut)]
+		let mut set = FinalSet::default();
+		$(
+		    set.add(find_item($grammar, stringify!($name), &[$(stringify!($element)),*], $end));
+		)*
+		sets.push(set);
+	    )*
+	    sets
+	}};
     }
 
     #[derive(Debug)]
@@ -305,29 +374,13 @@ B ::= A <>;"#;
     }
 
     #[test]
-    fn recogniser() {
-        let lexer_input = r#"
-NUMBER ::= [0-9]
-PM ::= [-+]
-TD ::= [*/]
-LPAR ::= \(
-RPAR ::= \)
-"#;
-        let grammar_input = r#"
-@Sum ::= Sum PM Product <>
- Product <>;
-
-Product ::= Product TD Factor <>
- Factor <>;
-
-Factor ::= LPAR Sum RPAR <>
- NUMBER <>;"#;
+    fn forest_builder() {
         let input = r#"1+(2*3-4)"#;
 
         let lexer = LexerBuilder::new()
             .with_stream(StringStream::new(
                 Rc::new(String::from("<lexer input>")),
-                Rc::new(lexer_input.to_string()),
+                Rc::new(GRAMMAR_NUMBERS_LEXER.to_string()),
             ))
             .unwrap()
             .build()
@@ -335,10 +388,71 @@ Factor ::= LPAR Sum RPAR <>
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
             .with_stream(StringStream::new(
                 Rc::new(String::from("<grammar input>")),
-                Rc::new(grammar_input.to_string()),
+                Rc::new(GRAMMAR_NUMBERS.to_string()),
             ))
             .build(&lexer)
             .unwrap();
+
+        let parser = EarleyParser::new(grammar);
+        let sets = final_sets!(
+	    (parser.grammar())
+		==
+		Sum -> Sum PM Product (9)
+		Sum -> Product (1)
+		Product -> Factor (1)
+		Factor -> NUMBER (1)
+		
+		==
+
+		==
+		Product -> Factor (9)
+		Factor -> LPAR Sum RPAR (9)
+
+		==
+		Sum -> Sum PM Product (8)
+		Sum -> Product (6)
+		Sum -> Product (4)
+		Product -> Product TD Factor (6)
+		Product -> Factor (4)
+		Factor -> NUMBER (4)
+
+		==
+
+		==
+		Factor -> NUMBER (6)
+
+		==
+
+		==
+		Product -> Factor (8)
+		Factor -> NUMBER (8)
+
+		==
+
+		==
+	);
+    }
+
+    #[test]
+    fn recogniser() {
+        let input = r#"1+(2*3-4)"#;
+
+        let lexer = LexerBuilder::new()
+            .with_stream(StringStream::new(
+                Rc::new(String::from("<lexer input>")),
+                Rc::new(GRAMMAR_NUMBERS_LEXER.to_string()),
+            ))
+            .unwrap()
+            .build()
+            .unwrap();
+        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
+            .with_stream(StringStream::new(
+                Rc::new(String::from("<grammar input>")),
+                Rc::new(GRAMMAR_NUMBERS.to_string()),
+            ))
+            .build(&lexer)
+            .unwrap();
+
         let parser = EarleyParser::new(grammar);
         let sets = sets!(
             ==
@@ -446,6 +560,10 @@ Factor ::= LPAR Sum RPAR <>
     }
 }
 
+type Table = Vec<StateSet>;
+type Forest = Vec<FinalSet>;
+
+/// A builder for the Earley grammar.
 #[derive(Debug)]
 pub struct EarleyGrammarBuilder {
     stream: Option<StringStream>,
@@ -453,6 +571,7 @@ pub struct EarleyGrammarBuilder {
 }
 
 impl EarleyGrammarBuilder {
+    /// Create a new builder. It takes an Rc of a string refearing to the grammar.
     pub fn new(grammar: Rc<String>) -> Self {
         Self {
             stream: None,
@@ -498,13 +617,20 @@ impl Default for EarleyGrammarBuilder {
 /// If `item.rule` refers to `β → α_1…α_n`, the item is `β → α_1…α_{i-1} · α_i…α_n (j)`
 /// where `i=item.position` and `j=item.origin`.
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub struct EarleyItem {
-    /// `rule` is the identifier of the associated `Rule`.
-    pub rule: usize,
+struct EarleyItem {
+    /// `rule` is the identifier of the associated [`Rule`].
+    rule: usize,
     /// `origin` is the identifier of the `EarleySet` this item was originated in.
-    pub origin: usize,
+    origin: usize,
     /// `position` is the advancement of the current item. It corresponds to the position of the fat dot.
-    pub position: usize,
+    position: usize,
+}
+
+#[derive(Debug, Clone)]
+struct FinalItem {
+    /// `rule` is the identifier of the associated [`Rule`]
+    rule: usize,
+    end: usize,
 }
 
 /// # Summary
@@ -516,9 +642,14 @@ pub struct EarleyItem {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EarleyGrammar {
     axioms: FixedBitSet,
+    /// The rules. The rule index is its identifier.
     rules: Vec<Rule>,
+    /// Set of the identifers of the {rules,non-terminals} that are nullables.
     nullables: FixedBitSet,
+    /// Maps the name of a non-terminal to its identifier.
     name_map: HashMap<Rc<str>, usize>,
+    /// Maps the identifier of a non-terminal to the identifiers of its rules.
+    /// Its rules are the rules of which it is the LHS.
     rules_map: Vec<Vec<usize>>,
 }
 
@@ -585,6 +716,21 @@ impl Grammar<'_> for EarleyGrammar {
     }
 }
 
+#[derive(Default, Debug, Clone)]
+struct FinalSet {
+    index: HashMap<usize, usize>,
+    set: Vec<FinalItem>,
+    position: usize,
+}
+
+impl FinalSet {
+    fn add(&mut self, item: FinalItem) {
+        self.index.insert(item.rule, self.set.len());
+        self.set.push(item);
+    }
+}
+
+#[derive(Default, Debug)]
 struct StateSet {
     cache: HashSet<EarleyItem>,
     set: Vec<EarleyItem>,
@@ -592,19 +738,13 @@ struct StateSet {
 }
 
 impl StateSet {
-    fn new() -> Self {
-        Self {
-            cache: HashSet::new(),
-            set: Vec::new(),
-            position: 0,
-        }
-    }
     fn add(&mut self, item: EarleyItem) {
         if !self.cache.contains(&item) {
             self.cache.insert(item);
             self.set.push(item);
         }
     }
+
     fn next(&mut self) -> Option<&EarleyItem> {
         if let Some(e) = self.set.get(self.position) {
             self.position += 1;
@@ -613,11 +753,17 @@ impl StateSet {
             None
         }
     }
+
     fn is_empty(&self) -> bool {
         self.set.is_empty()
     }
+
     fn slice(&self) -> &[EarleyItem] {
         &self.set
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &EarleyItem> + '_ {
+        self.set.iter()
     }
 }
 
@@ -629,10 +775,33 @@ pub struct EarleyParser {
 }
 
 impl EarleyParser {
-    fn recognise<'input>(&self, input: &'input mut LexedStream<'input, 'input>) -> WResult<Vec<StateSet>> {
+    fn select_ast(&self, _forest: &Forest) -> WResult<AST> {
+	todo!()
+    }
+    
+    fn to_forest(&self, table: &Table) -> Forest {
+        let mut forest = vec![FinalSet::default(); table.len()];
+        for (i, set) in table.iter().enumerate() {
+            for item in set.iter() {
+                if item.position == self.grammar.rules[item.rule].elements.len() {
+                    // the item is complete
+                    forest[item.position].add(FinalItem {
+                        end: i,
+                        rule: item.rule,
+                    });
+                }
+            }
+        }
+        forest
+    }
+
+    fn recognise<'input>(
+        &self,
+        input: &'input mut LexedStream<'input, 'input>,
+    ) -> WResult<Table> {
         let mut warnings = WarningSet::empty();
         let mut sets = Vec::new();
-        let mut first_state = StateSet::new();
+        let mut first_state = StateSet::default();
         (0..self.grammar().rules.len())
             .filter(|id| self.grammar().axioms.contains(*id))
             .for_each(|id| {
@@ -645,7 +814,7 @@ impl EarleyParser {
         sets.push(first_state);
         let mut pos = 0;
         'outer: loop {
-            let mut next_state = StateSet::new();
+            let mut next_state = StateSet::default();
             let mut scans = HashMap::new();
             while let Some(&item) = sets.last_mut().unwrap().next() {
                 let mut to_be_added = Vec::new();
@@ -703,7 +872,10 @@ impl EarleyParser {
                     sets.last_mut().unwrap().add(item);
                 }
             }
-            if let Some(token) = ctry!(input.next_any(), warnings) {
+
+            let possible_scans = scans.keys();
+            let allowed = Allowed::Some(possible_scans.map(|&&x| x).collect());
+            if let Some(token) = ctry!(input.next(allowed), warnings) {
                 for item in scans.entry(token.id()).or_default() {
                     next_state.add(*item);
                 }
@@ -729,9 +901,18 @@ impl Parser<'_> for EarleyParser {
         &self.grammar
     }
 
-    fn parse<'input>(&self, input: &'input mut LexedStream<'input, 'input>) -> WResult<ParseResult> {
+    fn recognise<'input>(&self, input: &'input mut LexedStream<'input, 'input>) -> bool {
+        self.recognise(input).is_ok()
+    }
+
+    fn parse<'input>(
+        &self,
+        input: &'input mut LexedStream<'input, 'input>,
+    ) -> WResult<ParseResult> {
         let mut warnings = WarningSet::empty();
-        ctry!(self.recognise(input), warnings);
-        WOk((), warnings)
+        let table = ctry!(self.recognise(input), warnings);
+	let forest = self.to_forest(&table);
+	let tree = ctry!(self.select_ast(&forest), warnings);
+        WOk(ParseResult { tree }, warnings)
     }
 }

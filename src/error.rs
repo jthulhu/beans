@@ -529,13 +529,13 @@ impl<T> WResult<T> {
     /// ```
     pub fn map_or_else_warnless<U, E, O>(self, err_handler: E, ok_handler: O) -> (U, WarningSet)
     where
-	E: FnOnce(Error) -> U,
-	O: FnOnce(T) -> U,
+        E: FnOnce(Error) -> U,
+        O: FnOnce(T) -> U,
     {
-	match self {
-	    Self::WOk(result, warnings) => (ok_handler(result), warnings),
-	    Self::WErr(error) => (err_handler(error), WarningSet::default())
-	}
+        match self {
+            Self::WOk(result, warnings) => (ok_handler(result), warnings),
+            Self::WErr(error) => (err_handler(error), WarningSet::default()),
+        }
     }
 
     pub fn map_or_else_warn<U, E, O>(self, err_handler: E, ok_handler: O) -> (U, WarningSet)

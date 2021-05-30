@@ -68,6 +68,7 @@ struct PartialRule {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Rule {
     pub name: Rc<String>,
+    /// The identifier of the nonterminal on the LHS of the rule.
     pub id: usize,
     pub elements: Vec<RuleElement>,
     pub proxy: Proxy,

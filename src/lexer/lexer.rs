@@ -64,7 +64,7 @@ mod tests {
         );
 
         assert_eq!(token.name(), "wow");
-        assert_eq!(*token.id(), 0);
+        assert_eq!(token.id(), 0);
         assert_eq!(token.location().file(), "test_file");
         assert_eq!(token.location().start(), (3, 0));
         assert_eq!(token.location().end(), (3, 3));
@@ -508,8 +508,8 @@ impl Token {
         &self.name[..]
     }
 
-    pub fn id(&self) -> &usize {
-        &self.id
+    pub fn id(&self) -> usize {
+        self.id
     }
 
     /// Return the `location` of the token.

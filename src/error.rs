@@ -43,6 +43,8 @@ pub enum ErrorType {
     GrammarNonTerminalDuplicate(String),
     /// `GrammarSyntaxError(message: String)`: syntax error in the grammar.
     GrammarSyntaxError(String),
+    /// `SyntaxError`: syntax error in the input.
+    SyntaxError
 }
 
 impl Default for ErrorType {
@@ -667,6 +669,7 @@ impl fmt::Display for Error {
             GrammarNonTerminalDuplicate(msg) => {
                 ("Duplicate definition of a non terminal", msg.clone())
             }
+	    SyntaxError => ("Syntax error", String::from("the token does not make sense there.")),
         };
         write!(
             f,

@@ -31,13 +31,14 @@ use std::rc::Rc;
 // 	statement
 // }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AST {
     Node {
-        name: usize,
+        nonterminal: usize,
         attributes: HashMap<Rc<str>, AST>,
     },
     Literal(String),
+    None,
 }
 
 /// Successful result of the parse of an input.

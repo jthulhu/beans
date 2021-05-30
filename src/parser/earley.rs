@@ -1,13 +1,13 @@
-use crate::parser::parser::AST;
-use super::grammarparser::{ElementType, Grammar, GrammarBuilder, Rule, RuleElement};
+use super::grammarparser::{Attribute, ElementType, Grammar, GrammarBuilder, Rule, RuleElement};
 use super::parser::{ParseResult, Parser};
 use crate::error::{
-    WResult::{self, WOk},
+    Error, ErrorType,
+    WResult::{self, WOk, WErr},
     WarningSet,
-    Error,
-    ErrorType
 };
 use crate::lexer::LexedStream;
+use crate::lexer::Token;
+use crate::parser::parser::AST;
 use crate::regex::Allowed;
 use crate::stream::StringStream;
 use crate::{ctry, retrieve};
@@ -15,6 +15,7 @@ use fixedbitset::FixedBitSet;
 use hashbrown::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use std::fmt;
 use std::rc::Rc;
 
 #[cfg(test)]
@@ -181,6 +182,7 @@ Factor ::= LPAR Sum RPAR <>
 	    $(
 		#[allow(unused_mut)]
 		let mut set = FinalSet::default();
+		set.position = sets.len();
 		$(
 		    set.add(find_item($grammar, stringify!($name), &[$(stringify!($element)),*], $end));
 		)*
@@ -364,7 +366,7 @@ B ::= A <>;"#;
             B -> A . (0)
             A -> B . (0)
         );
-        let recognised = parser
+        let (recognised, _) = parser
             .recognise(&mut lexer.lex(&mut StringStream::new(
                 Rc::new(String::from("<input>")),
                 Rc::new(input.to_string()),
@@ -395,42 +397,64 @@ B ::= A <>;"#;
 
         let parser = EarleyParser::new(grammar);
         let sets = final_sets!(
-	    (parser.grammar())
-		==
-		Sum -> Sum PM Product (9)
-		Sum -> Product (1)
-		Product -> Factor (1)
-		Factor -> NUMBER (1)
-		
-		==
+                (parser.grammar())
+            ==
+            Factor -> NUMBER (1)
+            Product -> Factor (1)
+            Sum -> Product (1)
+            Sum -> Sum PM Product (9)
 
-		==
-		Product -> Factor (9)
-		Factor -> LPAR Sum RPAR (9)
+            ==
 
-		==
-		Sum -> Sum PM Product (8)
-		Sum -> Product (6)
-		Sum -> Product (4)
-		Product -> Product TD Factor (6)
-		Product -> Factor (4)
-		Factor -> NUMBER (4)
+            ==
+            Factor -> LPAR Sum RPAR (9)
+            Product -> Factor (9)
 
-		==
+            ==
+            Factor -> NUMBER (4)
+            Product -> Factor (4)
+            Sum -> Product (4)
+            Product -> Product TD Factor (6)
+            Sum -> Product (6)
+            Sum -> Sum PM Product (8)
 
-		==
-		Factor -> NUMBER (6)
+            ==
 
-		==
+            ==
+            Factor -> NUMBER (6)
 
-		==
-		Product -> Factor (8)
-		Factor -> NUMBER (8)
+            ==
 
-		==
+        ==
+        Factor -> NUMBER (8)
+            Product -> Factor (8)
 
-		==
-	);
+            ==
+
+            ==
+            );
+
+        let (table, raw_input) = parser
+            .recognise(&mut lexer.lex(&mut StringStream::new(
+                Rc::new(String::from("<input>")),
+                Rc::new(input.to_string()),
+            )))
+            .unwrap();
+        let forest = parser.to_forest(&table, &raw_input).unwrap();
+        assert_eq!(
+            forest,
+            sets,
+            "Parsed forest:\n{}\nExpected forest:\n{}",
+            forest
+                .iter()
+                .map(|set| format!("{}", set))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            sets.iter()
+                .map(|set| format!("{}", set))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
     }
 
     #[test]
@@ -529,7 +553,7 @@ B ::= A <>;"#;
             Product -> Product . TD Factor (2)
             Sum -> Sum . PM Product (0)
         );
-        let recognised = parser
+        let (recognised, _) = parser
             .recognise(&mut lexer.lex(&mut StringStream::new(
                 Rc::new(String::from("<input>")),
                 Rc::new(input.to_string()),
@@ -626,11 +650,17 @@ struct EarleyItem {
     position: usize,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct FinalItem {
     /// `rule` is the identifier of the associated [`Rule`]
     rule: usize,
     end: usize,
+}
+
+impl fmt::Display for FinalItem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "#{}\t\t({})", self.rule, self.end)
+    }
 }
 
 /// # Summary
@@ -716,17 +746,49 @@ impl Grammar<'_> for EarleyGrammar {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Eq)]
 struct FinalSet {
-    index: HashMap<usize, usize>,
+    /// An index mapping a nonterminal to every item in the set derived from that nonterminal.
+    index: HashMap<usize, Vec<usize>>,
+    /// The set of items.
     set: Vec<FinalItem>,
+    /// The starting position of every item in this set, in the raw input.
     position: usize,
+}
+
+impl PartialEq for FinalSet {
+    fn eq(&self, rhs: &FinalSet) -> bool {
+        self.set == rhs.set && self.position == rhs.position
+    }
 }
 
 impl FinalSet {
     fn add(&mut self, item: FinalItem) {
-        self.index.insert(item.rule, self.set.len());
+        self.index
+            .entry(item.rule)
+            .or_default()
+            .push(self.set.len());
         self.set.push(item);
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &FinalItem> + '_ {
+        self.set.iter()
+    }
+}
+
+impl std::fmt::Display for FinalSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(
+            f,
+            r#"== ({}) ==
+{}"#,
+            self.position,
+            self.set
+                .iter()
+                .map(|item| format!("{}", item))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
     }
 }
 
@@ -767,38 +829,172 @@ impl StateSet {
     }
 }
 
+#[derive(Debug, Clone)]
+struct ScanItem<'a> {
+    item: &'a FinalItem,
+    depth: usize,
+    nodes_so_far: Vec<AST>,
+}
+
+#[derive(Debug)]
+struct SearchItem<'a> {
+    /// Index of the next scan in the raw input.
+    position: usize,
+    current: ScanItem<'a>,
+    stack: Vec<ScanItem<'a>>,
+}
+
 /// # Summary
-/// `EarleyParser` is the parser related to the [`EarleyGrammar`](EarleyGrammar).
+/// [`EarleyParser`] is the parser related to the [`EarleyGrammar`](EarleyGrammar).
 #[derive(Debug)]
 pub struct EarleyParser {
     grammar: EarleyGrammar,
 }
 
 impl EarleyParser {
-    fn select_ast(&self, _forest: &Forest) -> WResult<AST> {
-	todo!()
-    }
-    
-    fn to_forest(&self, table: &Table) -> Forest {
-        let mut forest = vec![FinalSet::default(); table.len()];
-        for (i, set) in table.iter().enumerate() {
-            for item in set.iter() {
-                if item.position == self.grammar.rules[item.rule].elements.len() {
-                    // the item is complete
-                    forest[item.position].add(FinalItem {
-                        end: i,
-                        rule: item.rule,
+    /// Takes a **non-empty** forest of ast, and returns the one with highest precedence.
+    ///
+    /// The **non-empty** condition is important, undefined behavior if it is not the case.
+    /// To be **non-empty** forest is stronger than simply having elements. They must also form
+    /// at least one AST.
+    fn select_ast(&self, forest: &Forest, raw_input: &[Token]) -> AST {
+        let mut boundary: Vec<_> = forest[0]
+            .iter()
+            .filter(|item| self.grammar.axioms.contains(item.rule))
+            .map(|item| SearchItem {
+                position: 0,
+                current: ScanItem {
+                    item,
+                    depth: 0,
+                    nodes_so_far: Vec::new(),
+                },
+                stack: Vec::new(),
+            })
+            .collect();
+
+        while let Some(SearchItem {
+            position,
+            current,
+            mut stack,
+        }) = boundary.pop()
+        {
+            let rule = &self.grammar.rules[current.item.rule];
+            if current.depth == rule.elements.len() {
+		let nonterminal = rule.id;
+		let mut attributes = HashMap::new();
+		for (mut element, key, attribute) in current
+		    .nodes_so_far
+		    .into_iter()
+		    .zip(rule.elements.iter())
+		    .filter_map(|(token, element)| match &element.key {
+			Some(key) => Some((token, key, &element.attribute)),
+			None => None
+		    })
+		{
+		    let value = match (attribute, &mut element) {
+			(Attribute::Named(attribute), AST::Node { attributes, .. })
+			    if attributes.contains_key(&Rc::from(attribute.as_str())) => attributes.remove(&Rc::from(attribute.as_str())).unwrap(),
+			_ => element,
+		    };
+		    attributes.insert(Rc::from(key.as_str()), value);
+		}
+		let node = AST::Node {
+		    nonterminal,
+		    attributes,
+		};
+                if let Some(mut parent) = stack.pop() {
+                    parent.nodes_so_far.push(node);
+                    parent.depth += 1;
+                    boundary.push(SearchItem {
+                        position,
+                        current: parent,
+                        stack,
                     });
+                } else if position == raw_input.len() {
+		    return node;
+                } else {
+                    // should not happen
+                    unreachable!()
+                }
+            } else {
+                let element = &rule.elements[current.depth];
+                match element.element_type {
+                    ElementType::NonTerminal(Some(nonterminal)) => {
+                        stack.push(current);
+                        for &item_id in forest[position]
+                            .index
+                            .get(&nonterminal)
+                            .map(|items| items.iter())
+                            .unwrap_or([].iter())
+                        {
+                            let item = &forest[position].set[item_id];
+                            boundary.push(SearchItem {
+                                position,
+                                current: ScanItem {
+                                    item,
+                                    depth: 0,
+                                    nodes_so_far: Vec::new(),
+                                },
+                                stack: stack.clone(),
+                            });
+                        }
+                    }
+                    ElementType::Terminal(terminal) => {
+                        let token = &raw_input[position];
+                        if token.id() == terminal {
+                            let node = if let Attribute::Indexed(attribute) = &element.attribute {
+                                AST::Literal(token.get(*attribute).unwrap_or("").to_string())
+                            } else {
+                                AST::None
+                            };
+                            let mut nodes_so_far = current.nodes_so_far.clone();
+                            nodes_so_far.push(node);
+                            boundary.push(SearchItem {
+                                position: position + 1,
+                                current: ScanItem {
+                                    depth: current.depth + 1,
+                                    item: current.item,
+                                    nodes_so_far,
+                                },
+                                stack,
+                            });
+                        }
+                    }
+                    ElementType::NonTerminal(None) => unreachable!(),
                 }
             }
         }
-        forest
+
+	unreachable!()
+    }
+
+    fn to_forest(&self, table: &Table, raw_input: &[Token]) -> WResult<Forest> {
+	let warnings = WarningSet::default();
+        let mut forest = vec![FinalSet::default(); table.len()];
+        for (i, set) in table.iter().enumerate() {
+            forest[i].position = i;
+	    if set.is_empty() {
+		let location = raw_input[i].location().clone();
+		let err_type = ErrorType::SyntaxError;
+		let error = Error::new(location, err_type);
+		return WErr(error);
+	    }
+            set.iter()
+                .filter(|item| item.position == self.grammar.rules[item.rule].elements.len())
+                .for_each(|item| {
+                    forest[item.origin].add(FinalItem {
+                        end: i,
+                        rule: item.rule,
+                    })
+                });
+        }
+        WOk(forest, warnings)
     }
 
     fn recognise<'input>(
         &self,
         input: &'input mut LexedStream<'input, 'input>,
-    ) -> WResult<Table> {
+    ) -> WResult<(Table, Vec<Token>)> {
         let mut warnings = WarningSet::empty();
         let mut sets = Vec::new();
         let mut first_state = StateSet::default();
@@ -811,11 +1007,12 @@ impl EarleyParser {
                     position: 0,
                 })
             });
+        let mut raw_input = Vec::new();
         sets.push(first_state);
         let mut pos = 0;
         'outer: loop {
             let mut next_state = StateSet::default();
-            let mut scans = HashMap::new();
+            let mut scans: HashMap<usize, _> = HashMap::new();
             while let Some(&item) = sets.last_mut().unwrap().next() {
                 let mut to_be_added = Vec::new();
                 match self.grammar().rules[item.rule].elements.get(item.position) {
@@ -838,7 +1035,7 @@ impl EarleyParser {
                             }
                         }
                         // Scan
-                        ElementType::Terminal(ref id) => {
+                        ElementType::Terminal(id) => {
                             scans.entry(id).or_insert(Vec::new()).push(EarleyItem {
                                 rule: item.rule,
                                 origin: item.origin,
@@ -874,14 +1071,15 @@ impl EarleyParser {
             }
 
             let possible_scans = scans.keys();
-            let allowed = Allowed::Some(possible_scans.map(|&&x| x).collect());
+            let allowed = Allowed::Some(possible_scans.map(|&x| x).collect());
             if let Some(token) = ctry!(input.next(allowed), warnings) {
                 for item in scans.entry(token.id()).or_default() {
                     next_state.add(*item);
                 }
+                raw_input.push(token.clone());
             }
             if next_state.is_empty() {
-                break 'outer WOk(sets, warnings);
+                break 'outer WOk((sets, raw_input), warnings);
             }
             sets.push(next_state);
             pos += 1;
@@ -910,9 +1108,9 @@ impl Parser<'_> for EarleyParser {
         input: &'input mut LexedStream<'input, 'input>,
     ) -> WResult<ParseResult> {
         let mut warnings = WarningSet::empty();
-        let table = ctry!(self.recognise(input), warnings);
-	let forest = self.to_forest(&table);
-	let tree = ctry!(self.select_ast(&forest), warnings);
+        let (table, raw_input) = ctry!(self.recognise(input), warnings);
+        let forest = ctry!(self.to_forest(&table, &raw_input), warnings);
+        let tree = self.select_ast(&forest, &raw_input);
         WOk(ParseResult { tree }, warnings)
     }
 }

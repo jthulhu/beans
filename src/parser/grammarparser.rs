@@ -36,19 +36,30 @@ pub enum ElementType {
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuleElement {
-    pub name: Rc<String>,
+    pub name: Rc<str>,
     pub attribute: Attribute,
     pub key: Option<Key>,
     pub element_type: ElementType,
 }
 
 impl RuleElement {
+    pub fn new<N: Into<Rc<str>>>(name: N, attribute: Attribute, key: Option<Key>, element_type: ElementType) -> Self {
+	let name = name.into();
+	Self {
+	    name,
+	    attribute,
+	    key,
+	    element_type,
+	}
+    }
+    
     pub fn is_terminal(&self) -> bool {
         match self.element_type {
             ElementType::Terminal(..) => true,
             ElementType::NonTerminal(..) => false,
         }
     }
+    
     pub fn is_non_terminal(&self) -> bool {
         match self.element_type {
             ElementType::Terminal(..) => false,
@@ -67,7 +78,7 @@ struct PartialRule {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Rule {
-    pub name: Rc<String>,
+    pub name: Rc<str>,
     /// The identifier of the nonterminal on the LHS of the rule.
     pub id: usize,
     pub elements: Vec<RuleElement>,
@@ -75,7 +86,8 @@ pub struct Rule {
 }
 
 impl Rule {
-    pub fn new(name: Rc<String>, id: usize, elements: Vec<RuleElement>, proxy: Proxy) -> Self {
+    pub fn new<N: Into<Rc<str>>>(name: N, id: usize, elements: Vec<RuleElement>, proxy: Proxy) -> Self {
+	let name = name.into();
         Self {
             name,
             id,
@@ -117,17 +129,17 @@ pub trait GrammarBuilder<'deserializer>: Sized {
     /// [`Grammar`] that will be built by the [`GrammarBuilder`]
     type Grammar: Grammar<'deserializer>;
     /// Build with the given file as stream.
-    fn with_file(self, file: Rc<String>) -> Result<Self, Box<dyn error::Error>> {
+    fn with_file(self, file: Rc<str>) -> Result<Self, Box<dyn error::Error>> {
         Ok(self.with_stream(StringStream::from_file(file)?))
     }
     /// Build with the given stream.
     fn with_stream(self, stream: StringStream) -> Self;
     /// Build with the given grammar.
-    fn with_grammar(self, grammar: Rc<String>) -> Self;
+    fn with_grammar(self, grammar: Rc<str>) -> Self;
     /// Retrieve the stream from the builder.
     fn stream(&mut self) -> WResult<StringStream>;
     /// Retrieve the grammar from the builder.
-    fn grammar(&self) -> Rc<String>;
+    fn grammar(&self) -> Rc<str>;
     /// Build the grammar.
     fn build(mut self, lexer: &Lexer) -> WResult<Self::Grammar> {
         /// Read a token, match it against the provided `id`.
@@ -354,16 +366,11 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             let key = ctry!(read_rule_element_key(lexed_input), warnings);
             let name = id.content();
             WOk(
-                RuleElement {
-                    name: Rc::new(name.to_string()),
-                    attribute,
-                    key,
-                    element_type: if let Some(id) = lexer.grammar().id(name) {
-                        ElementType::Terminal(id)
-                    } else {
-                        ElementType::NonTerminal(None)
-                    },
-                },
+                RuleElement::new(name, attribute, key, if let Some(id) = lexer.grammar().id(name) {
+                    ElementType::Terminal(id)
+                } else {
+                    ElementType::NonTerminal(None)
+                }),
                 warnings,
             )
         }
@@ -423,7 +430,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                 lexed_input.drop_last();
                 let partial_rule = ctry!(read_rule(lexed_input, lexer), warnings);
                 let rule = Rule::new(
-                    Rc::new(name_string.to_string()),
+                    name_string,
                     id,
                     partial_rule.elements,
                     partial_rule.proxy,
@@ -435,14 +442,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
 
         let mut warnings = WarningSet::empty();
         let mut stream = ctry!(self.stream(), warnings);
-        let temp_lexer = ctry!(
-            ctry!(
-                LexerBuilder::new().with_grammar_file(self.grammar()),
-                warnings
-            )
-            .build(),
-            warnings
-        );
+        let temp_lexer = ctry!(LexerBuilder::from_file(self.grammar()), warnings).build();
         let mut lexed_input = temp_lexer.lex(&mut stream);
 
         let mut rules = Vec::new();
@@ -488,7 +488,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         let mut name_map = HashMap::new();
 
         for rule in rules.iter() {
-            name_map.insert(rule.name.as_str().into(), rule.id);
+            name_map.insert(rule.name.clone(), rule.id);
         }
 
         for rule in rules.iter_mut() {
@@ -496,7 +496,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                 if element.is_terminal() {
                     continue;
                 }
-                match name_map.get(element.name.as_str()) {
+                match name_map.get(&element.name) {
                     Some(&id) => element.element_type = ElementType::NonTerminal(Some(id)),
                     None => warnings.add(Warning::new(WarningType::UndefinedNonTerminal(
                         rule.name.clone(),
@@ -525,7 +525,7 @@ pub trait Grammar<'deserializer>: Sized + Serialize + Deserialize<'deserializer>
             .map_err(|x| {
                 Error::new(
                     Location::new(
-                        Rc::new(file!().to_string()),
+                        file!(),
                         (line!() as usize, column!() as usize),
                         (line!() as usize, column!() as usize),
                     ),
@@ -539,7 +539,7 @@ pub trait Grammar<'deserializer>: Sized + Serialize + Deserialize<'deserializer>
             .map_err(|x| {
                 Error::new(
                     Location::new(
-                        Rc::new(file!().to_string()),
+                        file!(),
                         (line!() as usize, column!() as usize),
                         (line!() as usize, column!() as usize),
                     ),

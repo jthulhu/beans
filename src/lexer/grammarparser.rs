@@ -1,8 +1,12 @@
-use crate::error::{Error, ErrorType, WResult, WarningSet};
+use crate::ctry;
+use crate::error::{
+    Error, ErrorType,
+    WResult::{self, WErr, WOk},
+    WarningSet,
+};
 use crate::location::Location;
 use crate::regex::{CompiledRegex, RegexBuilder};
 use crate::stream::{Char, Stream, StringStream};
-use crate::{ctry, retrieve};
 use fixedbitset::FixedBitSet;
 use hashbrown::{HashMap, HashSet};
 use std::rc::Rc;
@@ -13,10 +17,7 @@ mod tests {
 
     #[test]
     fn grammar_parser_read_keyword() {
-        let mut stream = StringStream::new(
-            Rc::new(String::from("whatever")),
-            Rc::new(String::from("ignore")),
-        );
+        let mut stream = StringStream::new("whatever", "ignore");
         assert_eq!(stream.pos(), 0);
         assert_eq!(
             LexerGrammarBuilder::read_keyword(&mut stream, "something"),
@@ -32,10 +33,7 @@ mod tests {
 
     #[test]
     fn grammar_parser_read_id() {
-        let mut stream = StringStream::new(
-            Rc::new(String::from("whatever")),
-            Rc::new(String::from("to del")),
-        );
+        let mut stream = StringStream::new("whatever", "to del");
         assert_eq!(stream.pos(), 0);
         assert!(LexerGrammarBuilder::read_id(&mut stream).is_value(String::from("to")));
         assert_eq!(stream.pos(), 2);
@@ -45,7 +43,7 @@ mod tests {
         assert_eq!(stream.pos(), 6);
         assert!(
             LexerGrammarBuilder::read_id(&mut stream).is_error(Error::new(
-                Location::new(Rc::new(String::from("whatever")), (0, 6), (0, 6)),
+                Location::new("whatever", (0, 6), (0, 6)),
                 ErrorType::LexerGrammarSyntax(String::from("expected id"))
             ))
         );
@@ -53,42 +51,39 @@ mod tests {
     #[test]
     fn grammar_parser_regex() {
         assert_eq!(
-            *LexerGrammarBuilder::new()
-                .with_stream(StringStream::new(
-                    Rc::new(String::from("whatever")),
-                    Rc::new(String::from("A ::= wot!"))
-                ))
-                .build()
-                .unwrap()
-                .pattern(),
+            *LexerGrammarBuilder::from_stream(StringStream::new(
+                "whatever",
+                "A ::= wot!"
+            ))
+            .build()
+            .unwrap()
+            .pattern(),
             RegexBuilder::new()
                 .with_named_regex("wot!", String::from("A"))
                 .unwrap()
                 .build(),
         );
         assert_eq!(
-            *LexerGrammarBuilder::new()
-                .with_stream(StringStream::new(
-                    Rc::new(String::from("whatever")),
-                    Rc::new(String::from("B ::= wot!  "))
-                ))
-                .build()
-                .unwrap()
-                .pattern(),
+            *LexerGrammarBuilder::from_stream(StringStream::new(
+                "whatever",
+                "B ::= wot!  "
+            ))
+            .build()
+            .unwrap()
+            .pattern(),
             RegexBuilder::new()
                 .with_named_regex("wot!  ", String::from("B"))
                 .unwrap()
                 .build()
         );
         assert_eq!(
-            *LexerGrammarBuilder::new()
-                .with_stream(StringStream::new(
-                    Rc::new(String::from("whatever")),
-                    Rc::new(String::from("A ::= wot!\n\nB ::= wheel"))
-                ))
-                .build()
-                .unwrap()
-                .pattern(),
+            *LexerGrammarBuilder::from_stream(StringStream::new(
+                "whatever",
+                "A ::= wot!\n\nB ::= wheel"
+            ))
+            .build()
+            .unwrap()
+            .pattern(),
             RegexBuilder::new()
                 .with_named_regex("wot!", String::from("A"))
                 .unwrap()
@@ -97,28 +92,24 @@ mod tests {
                 .build()
         );
         assert_eq!(
-            *LexerGrammarBuilder::new()
-                .with_stream(StringStream::new(
-                    Rc::new(String::from("whatever")),
-                    Rc::new(String::from(""))
-                ))
-                .build()
-                .unwrap()
-                .pattern(),
+            *LexerGrammarBuilder::from_stream(StringStream::new(
+                "whatever",
+                ""
+            ))
+            .build()
+            .unwrap()
+            .pattern(),
             RegexBuilder::new().build()
         );
     }
     #[test]
     fn lexer_grammar() {
-        let grammar = LexerGrammarBuilder::new()
-            .with_stream(StringStream::new(
-                Rc::new(String::from("whatever")),
-                Rc::new(String::from(
-                    "ignore A ::= [ ]\nignore B ::= bbb\nC ::= ccc",
-                )),
-            ))
-            .build()
-            .unwrap();
+        let grammar = LexerGrammarBuilder::from_stream(StringStream::new(
+            "whatever",
+            "ignore A ::= [ ]\nignore B ::= bbb\nC ::= ccc",
+        ))
+        .build()
+        .unwrap();
         assert_eq!(grammar.name(0), "A");
         assert!(grammar.ignored(0));
         assert_eq!(grammar.name(1), "B");
@@ -143,41 +134,35 @@ mod tests {
 /// `with_stream`: specify a given stream.
 #[derive(Debug)]
 pub struct LexerGrammarBuilder {
-    stream: Option<StringStream>,
+    stream: StringStream,
 }
 
 impl LexerGrammarBuilder {
-    pub fn new() -> Self {
-        Self { stream: None }
-    }
-
-    pub fn with_file(self, file: Rc<String>) -> WResult<Self> {
+    pub fn from_file<F: Into<Rc<str>>>(file: F) -> WResult<Self> {
+	let file = file.into();
         let mut warnings = WarningSet::empty();
-        WResult::WOk(
-            self.with_stream(ctry!(
-                StringStream::from_file(file)
-                    .map_err(|x| {
-                        let pos = (line!() as usize, column!() as usize);
-                        Error::new(
-                            Location::new(Rc::new(file!().to_string()), pos, pos),
-                            ErrorType::InternalError(format!("IO error: {}", x)),
-                        )
-                    })
-                    .into(),
-                warnings
-            )),
-            warnings,
-        )
+        let stream = ctry!(
+            StringStream::from_file(file)
+                .map_err(|x| {
+                    let pos = (line!() as usize, column!() as usize);
+                    Error::new(
+                        Location::new(file!(), pos, pos),
+                        ErrorType::InternalError(format!("IO error: {}", x)),
+                    )
+                })
+                .into(),
+            warnings
+        );
+        WOk(Self { stream }, warnings)
     }
 
-    pub fn with_stream(mut self, stream: StringStream) -> Self {
-        self.stream = Some(stream);
-        self
+    pub fn from_stream(stream: StringStream) -> Self {
+        Self { stream }
     }
 
-    pub fn build(mut self) -> WResult<LexerGrammar> {
+    pub fn build(self) -> WResult<LexerGrammar> {
         let mut warnings = WarningSet::empty();
-        let mut stream: StringStream = retrieve!(self.stream, warnings);
+        let mut stream = self.stream;
         let size = stream.len();
         let mut ignores = HashSet::<String>::new();
         let mut names = vec![];
@@ -198,8 +183,8 @@ impl LexerGrammarBuilder {
                     .map_err(|(_, message)| {
                         Error::new(
                             Location::from_stream_pos(
-                                Rc::new(stream.origin().to_string()),
-                                &stream.borrow()[..],
+                                stream.origin(),
+                                &stream.borrow(),
                                 start,
                                 stream.pos(),
                             ),
@@ -222,7 +207,7 @@ impl LexerGrammarBuilder {
                 ignores_bitset.insert(i);
             }
         }
-        WResult::WOk(LexerGrammar::new(re, names, ignores_bitset), warnings)
+        WOk(LexerGrammar::new(re, names, ignores_bitset), warnings)
     }
 
     fn read_pattern(stream: &mut StringStream) -> String {
@@ -279,8 +264,8 @@ impl LexerGrammarBuilder {
     fn generate_error(stream: &StringStream, err_message: &str) -> Error {
         Error::new(
             Location::from_stream_pos(
-                Rc::new(stream.origin().to_string()),
-                &stream.borrow()[..],
+                stream.origin(),
+                &stream.borrow(),
                 stream.pos(),
                 stream.pos() + 1,
             ),

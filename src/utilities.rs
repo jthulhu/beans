@@ -33,7 +33,7 @@ macro_rules! retrieve {
         let result = ctry!(
             mem::replace(&mut $resource, None)
                 .ok_or(Error::new(
-                    Location::new(Rc::new(String::from(file)), (line, column), (line, column)),
+                    Location::new(Rc::from(file), (line, column), (line, column)),
                     ErrorType::InternalError(format!("{} missing", stringify!($resource))),
                 ))
                 .and_then(|x| Ok((x, WarningSet::empty())))
@@ -52,14 +52,14 @@ macro_rules! retrieve {
 macro_rules! ask_case {
     ($string: expr, $case: ident, $warnings: expr) => {
         use crate::{
-            case::Case,
+            case::{Case, CaseProcess},
             error::{Warning, WarningType},
         };
         use std::rc::Rc;
-        match Case::case($string) {
+        match $string.case() {
             Case::$case => {}
             c => $warnings.add(Warning::new(WarningType::CaseConvention(
-                Rc::new($string.to_string()),
+                Rc::from($string.as_str()),
                 c,
                 Case::$case,
             ))),

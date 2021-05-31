@@ -8,12 +8,10 @@ mod tests {
     use super::*;
     #[test]
     fn string_stream() {
-        let string = Rc::new(String::from(
-            "What a nice content,\nall in a single stream!",
-        ));
-        let origin = Rc::new(String::from("somewhere"));
+        let string: Rc<str> = Rc::from("What a nice content,\nall in a single stream!");
+        let origin: Rc<str> = Rc::from("somewhere");
         let stream = StringStream::new(origin.clone(), string.clone());
-        assert_eq!(stream.borrow(), string.as_str());
+        assert_eq!(stream.borrow().as_str(), &*string);
         for &i in [0, 3, 5, 17, string.len(), string.len() + 2].iter() {
             let (chr, loc) = stream.get_at(i).unwrap();
             if i < string.len() {
@@ -122,7 +120,7 @@ pub enum Char {
 /// `len`: the size of the stream
 /// `is_empty`: whether the stream is empty
 pub struct StringStream {
-    origin: Rc<String>,
+    origin: Rc<str>,
     stream: Vec<(char, Location)>,
     pos: usize,
     length: usize,
@@ -132,7 +130,9 @@ pub struct StringStream {
 
 impl StringStream {
     /// Build a new `StringStream`, based on its `origin` and on a given `string`.
-    pub fn new(origin: Rc<String>, string: Rc<String>) -> Self {
+    pub fn new<O: Into<Rc<str>>, S: Into<Rc<str>>>(origin: O, string: S) -> Self {
+        let origin = origin.into();
+        let string = string.into();
         let mut current_char = 0;
         let mut current_line = 0;
         let mut stream = Vec::new();
@@ -161,11 +161,12 @@ impl StringStream {
     }
 
     /// Create a [`StringStream`] directly from a file. This will try to read the content of the file right away.
-    pub fn from_file(file: Rc<String>) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut file_stream = File::open(file.as_str())?;
+    pub fn from_file<F: Into<Rc<str>>>(file: F) -> Result<Self, Box<dyn std::error::Error>> {
+        let file = file.into();
+        let mut file_stream = File::open(&*file)?;
         let mut stream_buffer = String::new();
         file_stream.read_to_string(&mut stream_buffer)?;
-        Ok(StringStream::new(file, Rc::new(stream_buffer)))
+        Ok(StringStream::new(file, Rc::from(stream_buffer)))
     }
 
     /// Return a boolean corresponding to whether the substring of
@@ -194,7 +195,7 @@ impl StringStream {
     }
 
     /// Return the origin file of the [`StringStream`].
-    pub fn origin(&self) -> Rc<String> {
+    pub fn origin(&self) -> Rc<str> {
         self.origin.clone()
     }
 

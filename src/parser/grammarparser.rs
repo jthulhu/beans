@@ -511,6 +511,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
     }
 }
 
+/// `Grammar` implements the require.
 pub trait Grammar<'deserializer>: Sized + Serialize + Deserialize<'deserializer> {
     fn new(
         rules: Vec<Rule>,

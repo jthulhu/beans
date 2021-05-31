@@ -44,7 +44,7 @@ pub enum ErrorType {
     /// `GrammarSyntaxError(message: String)`: syntax error in the grammar.
     GrammarSyntaxError(String),
     /// `SyntaxError`: syntax error in the input.
-    SyntaxError
+    SyntaxError,
 }
 
 impl Default for ErrorType {
@@ -511,9 +511,9 @@ impl<T> WResult<T> {
         }
     }
 
-    /// Maps a [`WResult<T>`] to a `(U, WarningSet)` by applying a function to a
-    /// contained [`WOk`] value, or a fallback function to a
-    /// contained [`WErr`] value.
+    /// Maps a [`WResult<T>`] to a `(U, WarningSet)` by applying a
+    /// function to a contained [`WOk`] value, or a fallback function
+    /// to a contained [`WErr`] value.
     ///
     /// This function can be used to unpack a successful result
     /// while handling an error.
@@ -540,6 +540,23 @@ impl<T> WResult<T> {
         }
     }
 
+    /// Maps a `WResult<T>` to `U` by applying a function to a
+    /// contained [`WOk`] value and warnings, or fallback function
+    /// to a contained [`WErr`] value.
+    ///
+    /// This function can be used to unpack a successful result while
+    /// handling an error.
+    ///
+    /// # Examples
+    ///
+    /// Basic usage:
+    ///
+    /// ```
+    /// # use beans::error::{WResult::{WOk, WErr}, WarningSet};
+    /// let k = 21;
+    ///
+    /// let x = WOk("foo", WarningSet::default());
+    /// assert_eq!(x.map_or_else_warn(|_| (k * 2, WarningSet::default()), |v, warnings| (v.len(), WarningSet::default())), (3, WarningSet::default()));
     pub fn map_or_else_warn<U, E, O>(self, err_handler: E, ok_handler: O) -> (U, WarningSet)
     where
         E: FnOnce(Error) -> (U, WarningSet),
@@ -551,6 +568,12 @@ impl<T> WResult<T> {
         }
     }
 
+    /// Return `res` if the result is [`WErr`], otherwise return the
+    /// [`WOk`] value of `self`.
+    ///
+    /// Arguments passed to `or` are eagerly evaluated; if you are
+    /// passing the result of a function call, it is recommended to
+    /// use [`or_else`], which is lazily evaluated.
     pub fn or(self, res: Self) -> Self {
         match self {
             Self::WOk(..) => self,
@@ -558,6 +581,11 @@ impl<T> WResult<T> {
         }
     }
 
+    /// Calls `err_handler` if the result is [`WErr`], otherwise
+    /// return the [`WOk`] value of `self`.
+    ///
+    /// This function can be used for control flow based on result
+    /// value.
     pub fn or_else<E>(self, err_handler: E) -> Self
     where
         E: FnOnce(Error) -> Self,
@@ -568,6 +596,17 @@ impl<T> WResult<T> {
         }
     }
 
+    /// Return the contained [`WOk`] value without the warnings,
+    /// consuming the `self` value.
+    ///
+    /// Because this function may panic, its use is generally
+    /// discouraged. Instead, prefer to use pattern matching and
+    /// handle the [`WErr`] case explicitly, or call [`unwrap_or`],
+    /// [`unwrap_or_else`], or [`unwrap_or_default`].
+    ///
+    /// [`unwrap_or`]: WResult::unwrap_or
+    /// [`unwrap_or_else`]: WResult::unwrap_or_else
+    /// [`unwrap_or_default`]: WResult::unwrap_or_default
     pub fn unwrap(self) -> T {
         match self {
             Self::WOk(result, _) => result,
@@ -575,7 +614,19 @@ impl<T> WResult<T> {
         }
     }
 
-    pub fn unwrap_warns(self) -> (T, WarningSet) {
+    /// Return the contained [`WOk`] value and the warnings,
+    /// consuming the `self` value.
+    ///
+    /// Because this function may panic, its use is generally
+    /// discouraged. Instead, prefer to use pattern matching and
+    /// handle the [`WErr`] case explicitly, or call
+    /// [`unwrap_or_warn`], [`unwrap_or_else_warn`] or
+    /// [`unwrap_or_default_warn`].
+    ///
+    /// [`unwrap_or_warn`]: WResult::unwrap_or_warn
+    /// [`unwrap_or_else_warn`]: WResult::unwrap_or_else_warn
+    /// [`unwrap_or_default_warn`]: WResult::unwrap_or_default_warn
+    pub fn unwrap_warn(self) -> (T, WarningSet) {
         match self {
             Self::WOk(result, warnings) => (result, warnings),
             Self::WErr(error) => panic!(
@@ -585,20 +636,80 @@ impl<T> WResult<T> {
         }
     }
 
-    pub fn unwrap_or(self, default: (T, WarningSet)) -> (T, WarningSet) {
+    /// Return the contained [`WOk`] value or a provided default.
+    ///
+    /// Arguments passed to `unwrap_or` are eagerly evaluated; if you
+    /// are passing the result of a function call, it is recommended
+    /// to use [`unwrap_or_else`], which is lazily evaluated.
+    ///
+    /// [`unwrap_or_else`]: WResult::unwrap_or_else
+    pub fn unwrap_or(self, default: T) -> T {
+        match self {
+            Self::WOk(result, _) => result,
+            Self::WErr(..) => default,
+        }
+    }
+
+    /// Return the contained [`WOk`] value or a provided default.
+    ///
+    /// Arguments passed to `unwrap_or_warn` are eagerly evaluated; if you
+    /// are passing the result of a function call, it is recommended
+    /// to use [`unwrap_or_else_warn`], which is lazily evaluated.
+    ///
+    /// [`unwrap_or_else_warn`]: WResult::unwrap_or_else
+    pub fn unwrap_or_warn(self, default: (T, WarningSet)) -> (T, WarningSet) {
         match self {
             Self::WOk(result, warnings) => (result, warnings),
             Self::WErr(..) => default,
         }
     }
 
-    pub fn unwrap_or_else<E>(self, err_handler: E) -> (T, WarningSet)
+    /// Return the contained [`WOk`] value or the result of `err_handler`.
+    ///
+    /// Arguments passed to `unwrap_or_else` are lazily evaluated.
+    pub fn unwrap_or_else<E>(self, err_handler: E) -> T
+    where
+        E: FnOnce(Error) -> T,
+    {
+        match self {
+            Self::WOk(result, _) => result,
+            Self::WErr(error) => err_handler(error),
+        }
+    }
+
+    /// Return the contained [`WOk`] value and the warnings
+    /// or the result of `err_handler`.
+    ///
+    /// Arguments passed to `unwrap_or_else_warn` are lazily evaluated.
+    pub fn unwrap_or_else_warn<E>(self, err_handler: E) -> (T, WarningSet)
     where
         E: FnOnce(Error) -> (T, WarningSet),
     {
         match self {
             Self::WOk(result, warnings) => (result, warnings),
             Self::WErr(error) => err_handler(error),
+        }
+    }
+}
+
+impl<T: Default> WResult<T> {
+    /// Return the contained [`WOk`] value, or the value provided by
+    /// the [`Default`] implementation.
+    pub fn unwrap_or_default(self) -> T {
+        match self {
+            Self::WOk(result, _) => result,
+            Self::WErr(..) => T::default(),
+        }
+    }
+
+    /// Return the contained [`WOk`] value and the warnings, or the
+    /// value provided by the [`Default`] implementation.
+    ///
+    /// This is lazily evaluated.
+    pub fn unwrap_or_default_warn(self) -> (T, WarningSet) {
+        match self {
+            Self::WOk(result, warnings) => (result, warnings),
+            Self::WErr(..) => (T::default(), WarningSet::default()),
         }
     }
 }
@@ -639,6 +750,7 @@ pub struct Error {
 }
 
 impl Error {
+    /// Create a new `Error`, from a [`Location`] and from an [`Errortype`].
     pub fn new(location: Location, err_type: ErrorType) -> Self {
         Self { location, err_type }
     }
@@ -669,7 +781,10 @@ impl fmt::Display for Error {
             GrammarNonTerminalDuplicate(msg) => {
                 ("Duplicate definition of a non terminal", msg.clone())
             }
-	    SyntaxError => ("Syntax error", String::from("the token does not make sense there.")),
+            SyntaxError => (
+                "Syntax error",
+                String::from("the token does not make sense there."),
+            ),
         };
         write!(
             f,

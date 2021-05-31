@@ -2,7 +2,7 @@ use super::grammarparser::{Attribute, ElementType, Grammar, GrammarBuilder, Rule
 use super::parser::{ParseResult, Parser};
 use crate::error::{
     Error, ErrorType,
-    WResult::{self, WOk, WErr},
+    WResult::{self, WErr, WOk},
     WarningSet,
 };
 use crate::lexer::LexedStream;
@@ -735,9 +735,9 @@ impl Grammar<'_> for EarleyGrammar {
 
         WOk(
             Self {
-                nullables,
-                rules,
                 axioms,
+                rules,
+                nullables,
                 name_map,
                 rules_map,
             },
@@ -857,7 +857,7 @@ impl EarleyParser {
     /// The **non-empty** condition is important, undefined behavior if it is not the case.
     /// To be **non-empty** forest is stronger than simply having elements. They must also form
     /// at least one AST.
-    fn select_ast(&self, forest: &Forest, raw_input: &[Token]) -> AST {
+    fn select_ast(&self, forest: &[FinalSet], raw_input: &[Token]) -> AST {
         let mut boundary: Vec<_> = forest[0]
             .iter()
             .filter(|item| self.grammar.axioms.contains(item.rule))
@@ -880,28 +880,33 @@ impl EarleyParser {
         {
             let rule = &self.grammar.rules[current.item.rule];
             if current.depth == rule.elements.len() {
-		let nonterminal = rule.id;
-		let mut attributes = HashMap::new();
-		for (mut element, key, attribute) in current
-		    .nodes_so_far
-		    .into_iter()
-		    .zip(rule.elements.iter())
-		    .filter_map(|(token, element)| match &element.key {
-			Some(key) => Some((token, key, &element.attribute)),
-			None => None
-		    })
-		{
-		    let value = match (attribute, &mut element) {
-			(Attribute::Named(attribute), AST::Node { attributes, .. })
-			    if attributes.contains_key(&Rc::from(attribute.as_str())) => attributes.remove(&Rc::from(attribute.as_str())).unwrap(),
-			_ => element,
-		    };
-		    attributes.insert(Rc::from(key.as_str()), value);
-		}
-		let node = AST::Node {
-		    nonterminal,
-		    attributes,
-		};
+                let nonterminal = rule.id;
+                let mut attributes = HashMap::new();
+                for (mut element, key, attribute) in current
+                    .nodes_so_far
+                    .into_iter()
+                    .zip(rule.elements.iter())
+                    .filter_map(|(token, element)| {
+                        element
+                            .key
+                            .as_ref()
+                            .map(|key| (token, key, &element.attribute))
+                    })
+                {
+                    let value = match (attribute, &mut element) {
+                        (Attribute::Named(attribute), AST::Node { attributes, .. })
+                            if attributes.contains_key(&Rc::from(attribute.as_str())) =>
+                        {
+                            attributes.remove(&Rc::from(attribute.as_str())).unwrap()
+                        }
+                        _ => element,
+                    };
+                    attributes.insert(Rc::from(key.as_str()), value);
+                }
+                let node = AST::Node {
+                    nonterminal,
+                    attributes,
+                };
                 if let Some(mut parent) = stack.pop() {
                     parent.nodes_so_far.push(node);
                     parent.depth += 1;
@@ -911,7 +916,7 @@ impl EarleyParser {
                         stack,
                     });
                 } else if position == raw_input.len() {
-		    return node;
+                    return node;
                 } else {
                     // should not happen
                     unreachable!()
@@ -925,7 +930,7 @@ impl EarleyParser {
                             .index
                             .get(&nonterminal)
                             .map(|items| items.iter())
-                            .unwrap_or([].iter())
+                            .unwrap_or_else(|| [].iter())
                         {
                             let item = &forest[position].set[item_id];
                             boundary.push(SearchItem {
@@ -965,20 +970,20 @@ impl EarleyParser {
             }
         }
 
-	unreachable!()
+        unreachable!()
     }
 
-    fn to_forest(&self, table: &Table, raw_input: &[Token]) -> WResult<Forest> {
-	let warnings = WarningSet::default();
+    fn to_forest(&self, table: &[StateSet], raw_input: &[Token]) -> WResult<Forest> {
+        let warnings = WarningSet::default();
         let mut forest = vec![FinalSet::default(); table.len()];
         for (i, set) in table.iter().enumerate() {
             forest[i].position = i;
-	    if set.is_empty() {
-		let location = raw_input[i].location().clone();
-		let err_type = ErrorType::SyntaxError;
-		let error = Error::new(location, err_type);
-		return WErr(error);
-	    }
+            if set.is_empty() {
+                let location = raw_input[i].location().clone();
+                let err_type = ErrorType::SyntaxError;
+                let error = Error::new(location, err_type);
+                return WErr(error);
+            }
             set.iter()
                 .filter(|item| item.position == self.grammar.rules[item.rule].elements.len())
                 .for_each(|item| {
@@ -1071,7 +1076,7 @@ impl EarleyParser {
             }
 
             let possible_scans = scans.keys();
-            let allowed = Allowed::Some(possible_scans.map(|&x| x).collect());
+            let allowed = Allowed::Some(possible_scans.copied().collect());
             if let Some(token) = ctry!(input.next(allowed), warnings) {
                 for item in scans.entry(token.id()).or_default() {
                     next_state.add(*item);

@@ -281,8 +281,8 @@ pub struct CompiledRegex {
 impl CompiledRegex {
     fn new(program: Program, names: Vec<String>, groups: Vec<(usize, usize)>, size: usize) -> Self {
         Self {
+	    names,
             program,
-            names,
             groups,
             size,
         }

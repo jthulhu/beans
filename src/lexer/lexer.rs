@@ -491,23 +491,33 @@ impl Token {
         self.attributes.contains_key(&key)
     }
 
+    /// Return the value captured by the group `key` if any,
+    /// or `None` otherwise.
     pub fn get(&self, key: usize) -> Option<&str> {
         self.attributes.get(&key).map(|x| x.as_str())
     }
 
+    /// Return the value of the first group (usually, the whole
+    /// regex match), panicking if there is none.
     pub fn content(&self) -> &str {
         self.force_get(0)
     }
 
+    /// Return the value captured by the group `key` if any,
+    /// panic otherwise.
+    ///
+    /// Since this method panics instead of returning an error,
+    /// it is recommended to use [`get`] instead.
     pub fn force_get(&self, key: usize) -> &str {
         self.get(key).unwrap()
     }
 
     /// Return the `name` of the token.
     pub fn name(&self) -> &str {
-        &self.name[..]
+        self.name.as_str()
     }
 
+    /// Return the `id` of the token.
     pub fn id(&self) -> usize {
         self.id
     }
@@ -554,7 +564,7 @@ impl LexerBuilder {
     }
 
     /// Specify the lexer's grammar file.
-    pub fn with_grammar_file<'warning>(mut self, file: Rc<String>) -> WResult<Self> {
+    pub fn with_grammar_file(mut self, file: Rc<String>) -> WResult<Self> {
         let mut warnings = WarningSet::empty();
         let grammar = ctry!(
             ctry!(LexerGrammarBuilder::new().with_file(file), warnings).build(),
@@ -609,7 +619,7 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
         }
     }
 
-    fn lex_next<'warning>(&mut self, allowed: Allowed) -> WResult<bool> {
+    fn lex_next(&mut self, allowed: Allowed) -> WResult<bool> {
         let warnings = WarningSet::empty();
         if self.stream.pos() == self.stream.len() {
             WOk(false, warnings)

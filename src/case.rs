@@ -94,3 +94,19 @@ impl Case {
         }
     }
 }
+
+pub trait CaseProcess {
+    fn case(&self) -> Case;
+}
+
+impl CaseProcess for &str {
+    fn case(&self) -> Case {
+	Case::case(self)
+    }
+}
+
+impl CaseProcess for String {
+    fn case(&self) -> Case {
+	Case::case(self.as_str())
+    }
+}

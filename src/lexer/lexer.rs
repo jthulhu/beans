@@ -1,4 +1,5 @@
 use super::grammarparser::{LexerGrammar, LexerGrammarBuilder};
+use crate::ctry;
 use crate::error::{
     Error, ErrorType,
     WResult::{self, WErr, WOk},
@@ -7,7 +8,6 @@ use crate::error::{
 use crate::location::Location;
 use crate::regex::Allowed;
 use crate::stream::{Stream, StringStream};
-use crate::{ctry, retrieve};
 use hashbrown::HashMap;
 use std::fmt;
 use std::ops::Index;
@@ -60,7 +60,7 @@ mod tests {
             String::from("wow"),
             0,
             HashMap::new(),
-            Location::new(Rc::new(String::from("test_file")), (3, 0), (3, 3)),
+            Location::new("test_file", (3, 0), (3, 3)),
         );
 
         assert_eq!(token.name(), "wow");
@@ -72,41 +72,24 @@ mod tests {
 
     #[test]
     fn lexer_builder() {
-        // No options: fails
-        assert!(LexerBuilder::new().build().is_err());
         // A grammar: succeeds
-        LexerBuilder::new()
-            .with_grammar(
-                LexerGrammarBuilder::new()
-                    .with_stream(StringStream::new(
-                        Rc::new(String::from("grammar file")),
-                        Rc::new(String::from("A ::= blu")),
-                    ))
-                    .build()
-                    .unwrap(),
-            )
-            .build()
-            .unwrap();
+        LexerBuilder::from_grammar(
+            LexerGrammarBuilder::from_stream(StringStream::new("grammar file", "A ::= blu"))
+                .build()
+                .unwrap(),
+        )
+        .build();
     }
 
     #[test]
     fn lex_basic() {
-        let lexer = LexerBuilder::new()
-            .with_grammar(
-                LexerGrammarBuilder::new()
-                    .with_stream(StringStream::new(
-                        Rc::new(String::from("a file name")),
-                        Rc::new(String::from("A ::= blu")),
-                    ))
-                    .build()
-                    .unwrap(),
-            )
-            .build()
-            .unwrap();
-        let mut input = StringStream::new(
-            Rc::new(String::from("input file")),
-            Rc::new(String::from("blu")),
-        );
+        let lexer = LexerBuilder::from_grammar(
+            LexerGrammarBuilder::from_stream(StringStream::new("a file name", "A ::= blu"))
+                .build()
+                .unwrap(),
+        )
+        .build();
+        let mut input = StringStream::new("input file", "blu");
         let mut lexed_input = lexer.lex(&mut input);
 
         let token = lexed_input.next(Allowed::All).unwrap().unwrap();
@@ -119,12 +102,34 @@ mod tests {
         mut lexed_input: LexedStream<'_, '_>,
         result: &[(CharLocation, CharLocation, &str)],
     ) {
+        let origin = &*lexed_input.stream.origin();
         let mut i = 0;
         while let Some(token) = lexed_input.next_any().unwrap() {
             let (start, end, name) = result[i];
-            assert_eq!(token.location().start(), start);
-            assert_eq!(token.location().end(), end);
-            assert_eq!(token.name(), name);
+            assert_eq!(
+                token.location().start(),
+                start,
+                "Token #{} {} differ by start location in stream {}.",
+                i,
+                token,
+                origin
+            );
+            assert_eq!(
+                token.location().end(),
+                end,
+                "Token #{} {} differ by end location in stream {}.",
+                i,
+                token,
+                origin
+            );
+            assert_eq!(
+                token.name(),
+                name,
+                "Token #{} {} differ by name in stream {}.",
+                i,
+                token,
+                origin
+            );
             i += 1;
         }
 
@@ -133,11 +138,7 @@ mod tests {
 
     #[test]
     fn default_lex_grammar() {
-        let lexer = LexerBuilder::new()
-            .with_grammar_file(Rc::new(String::from("gmrs/lexer.lx")))
-            .unwrap()
-            .build()
-            .unwrap();
+        let lexer = LexerBuilder::from_file("gmrs/lexer.lx").unwrap().build();
 
         let result = [
             ((0, 0), (0, 3), "ID"),
@@ -145,10 +146,7 @@ mod tests {
             ((0, 6), (0, 9), "ID"),
         ];
         verify_input(
-            lexer.lex(&mut StringStream::new(
-                Rc::new(String::from("<input>")),
-                Rc::new(String::from("one + two")),
-            )),
+            lexer.lex(&mut StringStream::new("<input>", "one + two")),
             &result,
         );
 
@@ -166,10 +164,8 @@ mod tests {
         ];
         verify_input(
             lexer.lex(&mut StringStream::new(
-                Rc::new(String::from("<input>")),
-                Rc::new(String::from(
-                    "if true and false {\n\tifeat(\"something\")\n}",
-                )),
+                "<input>",
+                "if true and false {\n\tifeat(\"something\")\n}",
             )),
             &result,
         );
@@ -177,12 +173,8 @@ mod tests {
 
     #[test]
     fn default_parser_grammar() {
-        let lexer = LexerBuilder::new()
-            .with_grammar_file(Rc::new(String::from("gmrs/parser.lx")))
-            .unwrap()
-            .build()
-            .unwrap();
-        let mut input = StringStream::from_file(Rc::new(String::from("gmrs/parser.gmr"))).unwrap();
+        let lexer = LexerBuilder::from_file("gmrs/parser.lx").unwrap().build();
+        let mut input = StringStream::from_file("gmrs/parser.gmr").unwrap();
         let mut lexed_input = lexer.lex(&mut input);
 
         let result = [
@@ -538,55 +530,44 @@ impl Token {
 /// `with_grammar_file`: specify the grammar file to build a grammar the lexer will use to lex.
 #[derive(Debug)]
 pub struct LexerBuilder {
-    grammar: Option<LexerGrammar>,
+    grammar: LexerGrammar,
 }
 
 impl LexerBuilder {
-    /// Instantiate a new `LexerBuilder`.
-    pub fn new() -> Self {
-        Self { grammar: None }
+    /// Instantiate a new `LexerBuilder`, giving a grammar.
+    pub fn from_grammar(grammar: LexerGrammar) -> Self {
+        Self { grammar }
     }
 
-    /// Specify the lexer's grammar.
-    pub fn with_grammar(mut self, grammar: LexerGrammar) -> Self {
-        self.grammar = Some(grammar);
-        self
-    }
-
-    pub fn with_stream(mut self, stream: StringStream) -> WResult<Self> {
+    /// Instantiate a new `LexerBuilder`, giving a stream defining the grammar.
+    /// Since the stream may be an ill-defined grammar, this might fail.
+    pub fn from_stream(stream: StringStream) -> WResult<Self> {
         let mut warnings = WarningSet::empty();
+        let grammar = ctry!(LexerGrammarBuilder::from_stream(stream).build(), warnings);
+        WOk(Self { grammar }, warnings)
+    }
+
+    /// Instantiate a new `LexerBuilder`, giving the path to the grammar.
+    /// Since the grammar may be ill-defined, this might fail.
+    pub fn from_file<F: Into<Rc<str>>>(file: F) -> WResult<Self> {
+        let mut warnings = WarningSet::default();
         let grammar = ctry!(
-            LexerGrammarBuilder::new().with_stream(stream).build(),
+            ctry!(LexerGrammarBuilder::from_file(file.into()), warnings).build(),
             warnings
         );
-        self.grammar = Some(grammar);
-        WOk(self, warnings)
+        WOk(Self { grammar }, warnings)
     }
 
-    /// Specify the lexer's grammar file.
-    pub fn with_grammar_file(mut self, file: Rc<String>) -> WResult<Self> {
-        let mut warnings = WarningSet::empty();
-        let grammar = ctry!(
-            ctry!(LexerGrammarBuilder::new().with_file(file), warnings).build(),
-            warnings
-        );
-        self.grammar = Some(grammar);
-        WOk(self, warnings)
-    }
-
-    /// Build the lexer.
-    pub fn build(mut self) -> WResult<Lexer> {
-        let mut warnings = WarningSet::empty();
-        let lexer = Lexer::new(retrieve!(self.grammar, warnings));
-        WOk(lexer, warnings)
+    /// Build the lexer, consuming the builder.
+    pub fn build(self) -> Lexer {
+        let lexer = Lexer::new(self.grammar);
+        lexer
     }
 }
 
 impl Default for LexerBuilder {
     fn default() -> Self {
-        Self::new()
-            .with_grammar_file(Rc::new(String::from("gmrs/lexer.lx")))
-            .unwrap()
+        Self::from_file("gmrs/lexer.lx").unwrap()
     }
 }
 

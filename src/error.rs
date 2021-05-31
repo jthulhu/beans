@@ -60,14 +60,14 @@ impl Default for ErrorType {
 pub enum WarningType {
     /// `CaseConvention(message: String, expected_case: Case, found_case: Case)`
     /// Code does not respect case convention, which is bad.
-    CaseConvention(Rc<String>, Case, Case),
+    CaseConvention(Rc<str>, Case, Case),
     /// `UndefinedNonTerminal(definition: String, non_terminal: String)`
     ///
     /// Rule defined in `definition` refers to the undefined non-terminal `non_terminal`,
     /// which means it will never be constructed.
     /// This is not an error to allow users to add rules that don't work yes,
     /// as a WIP feature without preventing the compilation of the rest of the code.
-    UndefinedNonTerminal(Rc<String>, Rc<String>),
+    UndefinedNonTerminal(Rc<str>, Rc<str>),
     /// NullWarning
     /// Empty warning that is used only in example. It does not mean anything besides
     /// there is a warning. Please consider using a more excplicit warning type in real code.

@@ -21,24 +21,72 @@ mod tests {
     use super::*;
     #[test]
     fn location() {
-        let location = Location::new(Rc::new(String::from("a cool filename")), (0, 3), (1, 6));
+        let location = Location::new("a cool filename", (0, 3), (1, 6));
         assert_eq!(location.file(), "a cool filename");
         assert_eq!(location.start(), (0, 3));
         assert_eq!(location.end(), (1, 6));
-        let location = Location::new(Rc::new(String::from("")), (0, 0), (0, 0));
+        let location = Location::new("", (0, 0), (0, 0));
         assert_eq!(location.file(), "");
         assert_eq!(location.start(), (0, 0));
         assert_eq!(location.end(), (0, 0));
     }
+
+    #[test]
+    fn location2() {
+        //                                   0         1          2           3           4
+        let location_builder =	//           01234567890123456789 0 1234567 8901234567 89 01
+            LocationBuilder::new("<input>", "if true and false {\n\tifeat(\"something\")\n}");
+        assert_eq!(
+            location_builder.from(0, 2),
+            Location::new("<input>", (0, 0), (0, 2))
+        );
+        assert_eq!(
+            location_builder.from(3, 7),
+            Location::new("<input>", (0, 3), (0, 7))
+        );
+        assert_eq!(
+            location_builder.from(8, 11),
+            Location::new("<input>", (0, 8), (0, 11))
+        );
+        assert_eq!(
+            location_builder.from(12, 17),
+            Location::new("<input>", (0, 12), (0, 17))
+        );
+        assert_eq!(
+            location_builder.from(18, 19),
+            Location::new("<input>", (0, 18), (0, 19))
+        );
+        assert_eq!(
+            location_builder.from(21, 26),
+            Location::new("<input>", (1, 1), (1, 6))
+        );
+        assert_eq!(
+            location_builder.from(26, 27),
+            Location::new("<input>", (1, 6), (1, 7))
+        );
+        assert_eq!(
+            location_builder.from(27, 38),
+            Location::new("<input>", (1, 7), (1, 18))
+        );
+        assert_eq!(
+            location_builder.from(38, 39),
+            Location::new("<input>", (1, 18), (1, 19))
+        );
+        assert_eq!(
+            location_builder.from(40, 41),
+            Location::new("<input>", (2, 0), (2, 1))
+        );
+    }
+
     #[test]
     #[should_panic]
     fn wrong_location() {
-        Location::new(Rc::new(String::from("some file")), (1, 0), (0, 0));
+        Location::new("some file", (1, 0), (0, 0));
     }
     #[test]
     #[should_panic]
     fn wrong_location2() {
-        Location::new(Rc::new(String::from("some file")), (1, 5), (1, 3));
+        Location::new("some file", (1, 5), (1, 3));
     }
 }
 
@@ -57,7 +105,7 @@ mod tests {
 /// ```rust
 /// # use beans::location::Location;
 /// # use std::rc::Rc;
-/// let location = Location::new(Rc::new(String::from("myfile")), (0, 0), (0, 1));
+/// let location = Location::new("myfile", (0, 0), (0, 1));
 /// ```
 ///
 /// Example 2 -- `afile`
@@ -73,17 +121,27 @@ mod tests {
 /// # use beans::location::Location;
 /// # use std::rc::Rc;
 /// Location::new(
-///   Rc::new(String::from("afile")),
+///   "afile",
 ///   (0, 4),
 ///   (1, 2)
 /// )
 /// # ;
 /// ```
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Location {
-    file: Rc<String>,
+    file: Rc<str>,
     start: CharLocation,
     end: CharLocation,
+}
+
+impl Default for Location {
+    fn default() -> Self {
+        Self {
+            file: Rc::from(""),
+            start: CharLocation::default(),
+            end: CharLocation::default(),
+        }
+    }
 }
 
 impl Location {
@@ -94,26 +152,30 @@ impl Location {
     ///  * end: the location (exclusive) of the end of the data.
     ///
     /// Panic if start > end (lexicographic order)
-    pub fn new(file: Rc<String>, start: CharLocation, end: CharLocation) -> Self {
-        assert!(start.0 < end.0 || (start.0 == end.0 && start.1 <= end.1));
-        Self { file, start, end }
+    pub fn new<F: Into<Rc<str>>>(file: F, start: CharLocation, end: CharLocation) -> Self {
+        assert!(start.0 < end.0 || (start.0 == end.0 && start.1 <= end.1)); // TODO: remove assert and add proper error handling.
+        Self {
+            file: file.into(),
+            start,
+            end,
+        }
     }
 
     /// Generate of new `Location` object.
     /// Take the locations as index of the stream,
     /// and convert them as actual locations in the file.
-    pub fn from_stream_pos(
-        file: Rc<String>,
-        stream: &str,
+    pub fn from_stream_pos<F: Into<Rc<str>>, S: AsRef<str>>(
+        file: F,
+        stream: S,
         start_pos: usize,
         end_pos: usize,
     ) -> Self {
         let mut current_char = 0;
         let mut current_line = 0;
         let mut current_pos = 0;
-        assert!(start_pos <= end_pos);
+        assert!(start_pos <= end_pos); // TODO: remove assert and add proper error handling.
         let start;
-        let mut chrs = stream.chars();
+        let mut chrs = stream.as_ref().chars();
         let mut chr = chrs.next();
         loop {
             if current_pos == start_pos || chr.is_none() {
@@ -146,7 +208,11 @@ impl Location {
             current_pos += 1;
         }
 
-        Self { file, start, end }
+        Self {
+            file: file.into(),
+            start,
+            end,
+        }
     }
 
     pub fn extend(left: Self, right: Self) -> Self {
@@ -159,7 +225,7 @@ impl Location {
 
     /// Returns the file from which the data is taken.
     pub fn file(&self) -> &str {
-        &self.file[..]
+        &self.file
     }
 
     /// Returns the location of the beginning of the chunk of data in the file.
@@ -177,13 +243,16 @@ impl Location {
 /// `LocationBuilder` allows building locations from a source stream faster.
 #[derive(Debug)]
 pub struct LocationBuilder {
-    file: Rc<String>,
-    stream: Rc<String>,
+    file: Rc<str>,
+    stream: Rc<str>,
 }
 
 impl LocationBuilder {
-    pub fn new(file: Rc<String>, stream: Rc<String>) -> Self {
-        Self { file, stream }
+    pub fn new<F: Into<Rc<str>>, S: Into<Rc<str>>>(file: F, stream: S) -> Self {
+        Self {
+            file: file.into(),
+            stream: stream.into(),
+        }
     }
 
     pub fn from(&self, start: usize, end: usize) -> Location {

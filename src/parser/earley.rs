@@ -63,7 +63,7 @@ Factor ::= LPAR Sum RPAR <>
         ) {
             let error_message = format!("Set #{}, item #{}: no match: ", set_id, item_id);
             let item = &parser.grammar().rules[other.rule];
-            assert_eq!(self.name, *item.name, "{} name.", error_message);
+            assert_eq!(self.name, &*item.name, "{} name.", error_message);
             assert_eq!(
                 self.left_elements.len() + self.right_elements.len(),
                 item.elements.len(),
@@ -80,7 +80,7 @@ Factor ::= LPAR Sum RPAR <>
             assert_eq!(self.origin, other.origin, "{} origin set.", error_message);
             for i in 0..self.left_elements.len() {
                 assert_eq!(
-                    self.left_elements[i], *item.elements[i].name,
+                    self.left_elements[i], &*item.elements[i].name,
                     "{} element #{}.",
                     error_message, i
                 );
@@ -88,7 +88,7 @@ Factor ::= LPAR Sum RPAR <>
             for i in 0..self.right_elements.len() {
                 assert_eq!(
                     self.right_elements[i],
-                    *item.elements[i + other.position].name,
+                    &*item.elements[i + other.position].name,
                     "{} elements #{}.",
                     error_message,
                     i + other.position
@@ -169,7 +169,7 @@ Factor ::= LPAR Sum RPAR <>
 			&& elements
 			.iter()
 			.zip(grammar.rules[rule_identifier].elements.iter())
-			.all(|(left, right)| left == &*right.name)
+			.all(|(&left, right)| left == &*right.name)
 		    {
 			return FinalItem {
 			    rule: rule_identifier,
@@ -266,7 +266,7 @@ Factor ::= LPAR Sum RPAR <>
     #[rustfmt::skip]
     fn earley_grammar_builder() {
 	use crate::lexer::LexerBuilder;
-        let lexer = LexerBuilder::default().build().unwrap();
+        let lexer = LexerBuilder::default().build();
         let grammar = EarleyGrammarBuilder::default().build(&lexer).unwrap();
 	verify(
             grammar.rules,
@@ -342,18 +342,16 @@ Factor ::= LPAR Sum RPAR <>
  B <>;
 B ::= A <>;"#;
         let input = r#""#;
-        let lexer = LexerBuilder::new()
-            .with_stream(StringStream::new(
-                Rc::new(String::from("<lexer input>")),
-                Rc::new(lexer_input.to_string()),
-            ))
-            .unwrap()
-            .build()
-            .unwrap();
+        let lexer = LexerBuilder::from_stream(StringStream::new(
+            Rc::from("<lexer input>"),
+            Rc::from(lexer_input),
+        ))
+        .unwrap()
+        .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
             .with_stream(StringStream::new(
-                Rc::new(String::from("<grammar input>")),
-                Rc::new(grammar_input.to_string()),
+                Rc::from("<grammar input>"),
+                Rc::from(grammar_input),
             ))
             .build(&lexer)
             .unwrap();
@@ -367,10 +365,7 @@ B ::= A <>;"#;
             A -> B . (0)
         );
         let (recognised, _) = parser
-            .recognise(&mut lexer.lex(&mut StringStream::new(
-                Rc::new(String::from("<input>")),
-                Rc::new(input.to_string()),
-            )))
+            .recognise(&mut lexer.lex(&mut StringStream::new(Rc::from("<input>"), Rc::from(input))))
             .unwrap();
         verify_sets(sets, recognised, &parser);
     }
@@ -379,18 +374,16 @@ B ::= A <>;"#;
     fn forest_builder() {
         let input = r#"1+(2*3-4)"#;
 
-        let lexer = LexerBuilder::new()
-            .with_stream(StringStream::new(
-                Rc::new(String::from("<lexer input>")),
-                Rc::new(GRAMMAR_NUMBERS_LEXER.to_string()),
-            ))
-            .unwrap()
-            .build()
-            .unwrap();
+        let lexer = LexerBuilder::from_stream(StringStream::new(
+            Rc::from("<lexer input>"),
+            Rc::from(GRAMMAR_NUMBERS_LEXER),
+        ))
+        .unwrap()
+        .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
             .with_stream(StringStream::new(
-                Rc::new(String::from("<grammar input>")),
-                Rc::new(GRAMMAR_NUMBERS.to_string()),
+                Rc::from("<grammar input>"),
+                Rc::from(GRAMMAR_NUMBERS),
             ))
             .build(&lexer)
             .unwrap();
@@ -435,10 +428,7 @@ B ::= A <>;"#;
             );
 
         let (table, raw_input) = parser
-            .recognise(&mut lexer.lex(&mut StringStream::new(
-                Rc::new(String::from("<input>")),
-                Rc::new(input.to_string()),
-            )))
+            .recognise(&mut lexer.lex(&mut StringStream::new(Rc::from("<input>"), Rc::from(input))))
             .unwrap();
         let forest = parser.to_forest(&table, &raw_input).unwrap();
         assert_eq!(
@@ -461,18 +451,16 @@ B ::= A <>;"#;
     fn recogniser() {
         let input = r#"1+(2*3-4)"#;
 
-        let lexer = LexerBuilder::new()
-            .with_stream(StringStream::new(
-                Rc::new(String::from("<lexer input>")),
-                Rc::new(GRAMMAR_NUMBERS_LEXER.to_string()),
-            ))
-            .unwrap()
-            .build()
-            .unwrap();
+        let lexer = LexerBuilder::from_stream(StringStream::new(
+            Rc::from("<lexer input>"),
+            Rc::from(GRAMMAR_NUMBERS_LEXER),
+        ))
+        .unwrap()
+        .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
             .with_stream(StringStream::new(
-                Rc::new(String::from("<grammar input>")),
-                Rc::new(GRAMMAR_NUMBERS.to_string()),
+                Rc::from("<grammar input>"),
+                Rc::from(GRAMMAR_NUMBERS),
             ))
             .build(&lexer)
             .unwrap();
@@ -554,10 +542,7 @@ B ::= A <>;"#;
             Sum -> Sum . PM Product (0)
         );
         let (recognised, _) = parser
-            .recognise(&mut lexer.lex(&mut StringStream::new(
-                Rc::new(String::from("<input>")),
-                Rc::new(input.to_string()),
-            )))
+            .recognise(&mut lexer.lex(&mut StringStream::new(Rc::from("<input>"), Rc::from(input))))
             .unwrap();
         verify_sets(sets, recognised, &parser);
     }
@@ -591,12 +576,12 @@ type Forest = Vec<FinalSet>;
 #[derive(Debug)]
 pub struct EarleyGrammarBuilder {
     stream: Option<StringStream>,
-    grammar: Rc<String>,
+    grammar: Rc<str>,
 }
 
 impl EarleyGrammarBuilder {
     /// Create a new builder. It takes an Rc of a string refearing to the grammar.
-    pub fn new(grammar: Rc<String>) -> Self {
+    pub fn new(grammar: Rc<str>) -> Self {
         Self {
             stream: None,
             grammar,
@@ -612,7 +597,7 @@ impl GrammarBuilder<'_> for EarleyGrammarBuilder {
         self
     }
 
-    fn with_grammar(mut self, grammar: Rc<String>) -> Self {
+    fn with_grammar(mut self, grammar: Rc<str>) -> Self {
         self.grammar = grammar;
         self
     }
@@ -623,15 +608,15 @@ impl GrammarBuilder<'_> for EarleyGrammarBuilder {
         WOk(stream, warnings)
     }
 
-    fn grammar(&self) -> Rc<String> {
+    fn grammar(&self) -> Rc<str> {
         self.grammar.clone()
     }
 }
 
 impl Default for EarleyGrammarBuilder {
     fn default() -> Self {
-        Self::new(Rc::new(String::from("gmrs/parser.lx")))
-            .with_file(Rc::new(String::from("gmrs/parser.gmr")))
+        Self::new(Rc::from("gmrs/parser.lx"))
+            .with_file(Rc::from("gmrs/parser.gmr"))
             .unwrap()
     }
 }

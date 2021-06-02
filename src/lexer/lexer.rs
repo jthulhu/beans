@@ -560,8 +560,7 @@ impl LexerBuilder {
 
     /// Build the lexer, consuming the builder.
     pub fn build(self) -> Lexer {
-        let lexer = Lexer::new(self.grammar);
-        lexer
+	Lexer::new(self.grammar)
     }
 }
 

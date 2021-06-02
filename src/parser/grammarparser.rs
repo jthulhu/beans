@@ -43,23 +43,28 @@ pub struct RuleElement {
 }
 
 impl RuleElement {
-    pub fn new<N: Into<Rc<str>>>(name: N, attribute: Attribute, key: Option<Key>, element_type: ElementType) -> Self {
-	let name = name.into();
-	Self {
-	    name,
-	    attribute,
-	    key,
-	    element_type,
-	}
+    pub fn new<N: Into<Rc<str>>>(
+        name: N,
+        attribute: Attribute,
+        key: Option<Key>,
+        element_type: ElementType,
+    ) -> Self {
+        let name = name.into();
+        Self {
+            name,
+            attribute,
+            key,
+            element_type,
+        }
     }
-    
+
     pub fn is_terminal(&self) -> bool {
         match self.element_type {
             ElementType::Terminal(..) => true,
             ElementType::NonTerminal(..) => false,
         }
     }
-    
+
     pub fn is_non_terminal(&self) -> bool {
         match self.element_type {
             ElementType::Terminal(..) => false,
@@ -86,8 +91,13 @@ pub struct Rule {
 }
 
 impl Rule {
-    pub fn new<N: Into<Rc<str>>>(name: N, id: usize, elements: Vec<RuleElement>, proxy: Proxy) -> Self {
-	let name = name.into();
+    pub fn new<N: Into<Rc<str>>>(
+        name: N,
+        id: usize,
+        elements: Vec<RuleElement>,
+        proxy: Proxy,
+    ) -> Self {
+        let name = name.into();
         Self {
             name,
             id,
@@ -366,11 +376,16 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             let key = ctry!(read_rule_element_key(lexed_input), warnings);
             let name = id.content();
             WOk(
-                RuleElement::new(name, attribute, key, if let Some(id) = lexer.grammar().id(name) {
-                    ElementType::Terminal(id)
-                } else {
-                    ElementType::NonTerminal(None)
-                }),
+                RuleElement::new(
+                    name,
+                    attribute,
+                    key,
+                    if let Some(id) = lexer.grammar().id(name) {
+                        ElementType::Terminal(id)
+                    } else {
+                        ElementType::NonTerminal(None)
+                    },
+                ),
                 warnings,
             )
         }
@@ -429,12 +444,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                 }
                 lexed_input.drop_last();
                 let partial_rule = ctry!(read_rule(lexed_input, lexer), warnings);
-                let rule = Rule::new(
-                    name_string,
-                    id,
-                    partial_rule.elements,
-                    partial_rule.proxy,
-                );
+                let rule = Rule::new(name_string, id, partial_rule.elements, partial_rule.proxy);
                 rules.push(rule);
             }
             WOk((axiom, name_string.to_string(), rules), warnings)

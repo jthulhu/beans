@@ -101,12 +101,12 @@ pub trait CaseProcess {
 
 impl CaseProcess for &str {
     fn case(&self) -> Case {
-	Case::case(self)
+        Case::case(self)
     }
 }
 
 impl CaseProcess for String {
     fn case(&self) -> Case {
-	Case::case(self.as_str())
+        Case::case(self.as_str())
     }
 }

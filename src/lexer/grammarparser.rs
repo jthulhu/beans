@@ -1,7 +1,7 @@
 use crate::ctry;
 use crate::error::{
     Error, ErrorType,
-    WResult::{self, WErr, WOk},
+    WResult::{self, WOk},
     WarningSet,
 };
 use crate::location::Location;
@@ -51,26 +51,20 @@ mod tests {
     #[test]
     fn grammar_parser_regex() {
         assert_eq!(
-            *LexerGrammarBuilder::from_stream(StringStream::new(
-                "whatever",
-                "A ::= wot!"
-            ))
-            .build()
-            .unwrap()
-            .pattern(),
+            *LexerGrammarBuilder::from_stream(StringStream::new("whatever", "A ::= wot!"))
+                .build()
+                .unwrap()
+                .pattern(),
             RegexBuilder::new()
                 .with_named_regex("wot!", String::from("A"))
                 .unwrap()
                 .build(),
         );
         assert_eq!(
-            *LexerGrammarBuilder::from_stream(StringStream::new(
-                "whatever",
-                "B ::= wot!  "
-            ))
-            .build()
-            .unwrap()
-            .pattern(),
+            *LexerGrammarBuilder::from_stream(StringStream::new("whatever", "B ::= wot!  "))
+                .build()
+                .unwrap()
+                .pattern(),
             RegexBuilder::new()
                 .with_named_regex("wot!  ", String::from("B"))
                 .unwrap()
@@ -92,13 +86,10 @@ mod tests {
                 .build()
         );
         assert_eq!(
-            *LexerGrammarBuilder::from_stream(StringStream::new(
-                "whatever",
-                ""
-            ))
-            .build()
-            .unwrap()
-            .pattern(),
+            *LexerGrammarBuilder::from_stream(StringStream::new("whatever", ""))
+                .build()
+                .unwrap()
+                .pattern(),
             RegexBuilder::new().build()
         );
     }
@@ -139,7 +130,7 @@ pub struct LexerGrammarBuilder {
 
 impl LexerGrammarBuilder {
     pub fn from_file<F: Into<Rc<str>>>(file: F) -> WResult<Self> {
-	let file = file.into();
+        let file = file.into();
         let mut warnings = WarningSet::empty();
         let stream = ctry!(
             StringStream::from_file(file)

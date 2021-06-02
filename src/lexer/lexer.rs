@@ -641,32 +641,34 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
         }
     }
 
+    /// Get the last location lexed. Useful if you want to know where you failed to find a token.
     pub fn last_location(&self) -> &Location {
         &self.last_location
     }
 }
 impl LexedStream<'_, '_> {
+    /// Lex any token.
     pub fn next_any(&mut self) -> WResult<Option<&Token>> {
         self.next(Allowed::All)
     }
 
+    /// Lex any allowed token.
     pub fn next(&mut self, allowed: Allowed) -> WResult<Option<&Token>> {
         let mut warnings = WarningSet::empty();
         self.pos += 1;
         if ctry!(self.lex_next(allowed), warnings) {
-            match self.tokens.last() {
-                Some((_, token)) => WOk(Some(token), warnings),
-                None => WOk(None, warnings),
-            }
+            WOk(self.tokens.last().map(|(_, token)| token), warnings)
         } else {
             WOk(None, warnings)
         }
     }
 
+    /// Peek for the most recently lexed token, which has not been droped.
     pub fn peek(&self) -> Option<&Token> {
         self.tokens.last().map(|(_, token)| token)
     }
 
+    /// Drop the last token.
     pub fn drop_last(&mut self) {
         if let Some((pos, _)) = self.tokens.pop() {
             self.pos -= 1;
@@ -700,6 +702,7 @@ impl Lexer {
         Self { grammar }
     }
 
+    /// Get a [`LexedStream`] on the stream.
     pub fn lex<'lexer, 'stream>(
         &'lexer self,
         stream: &'stream mut StringStream,
@@ -707,6 +710,7 @@ impl Lexer {
         LexedStream::new(self, stream)
     }
 
+    /// Get the [`LexerGrammar`] bound to the lexer.
     pub fn grammar(&self) -> &LexerGrammar {
         &self.grammar
     }

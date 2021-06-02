@@ -1,3 +1,8 @@
+//! # Location
+//!
+//! Data to locate span of text, in files.
+//! The main struct is [`Location`].
+
 use std::rc::Rc;
 
 /// # Summary

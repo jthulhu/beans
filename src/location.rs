@@ -253,7 +253,7 @@ pub struct LocationBuilder {
 
 impl LocationBuilder {
     pub fn new<F: Into<Rc<str>>, S: AsRef<str>>(file: F, stream: S) -> Self {
-        let mut newlines = stream
+        let newlines = stream
             .as_ref()
             .chars()
             .enumerate()

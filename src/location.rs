@@ -119,7 +119,6 @@ mod tests {
 ///
 /// ```rust
 /// # use beans::location::Location;
-/// # use std::rc::Rc;
 /// Location::new(
 ///   "afile",
 ///   (0, 4),
@@ -244,18 +243,34 @@ impl Location {
 #[derive(Debug)]
 pub struct LocationBuilder {
     file: Rc<str>,
-    stream: Rc<str>,
+    newlines: Vec<usize>,
 }
 
 impl LocationBuilder {
-    pub fn new<F: Into<Rc<str>>, S: Into<Rc<str>>>(file: F, stream: S) -> Self {
+    pub fn new<F: Into<Rc<str>>, S: AsRef<str>>(file: F, stream: S) -> Self {
+        let mut newlines = stream
+            .as_ref()
+            .chars()
+            .enumerate()
+            .filter(|(_, c)| *c == '\n')
+            .map(|(i, _)| i)
+            .collect();
+
         Self {
             file: file.into(),
-            stream: stream.into(),
+            newlines,
         }
     }
 
     pub fn from(&self, start: usize, end: usize) -> Location {
-        Location::from_stream_pos(self.file.clone(), &self.stream, start, end)
+	fn pos_to_char_pos(pos: usize, newlines: &[usize]) -> CharLocation {
+	    let i = match newlines.binary_search(&pos) { Ok(x) | Err(x) => x };
+	    if i == 0 {
+		(i, pos)
+	    } else {
+		(i, pos - newlines[i-1] - 1)
+	    }
+	}
+	Location::new(self.file.clone(), pos_to_char_pos(start, &self.newlines), pos_to_char_pos(end, &self.newlines))
     }
 }

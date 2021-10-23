@@ -7,12 +7,6 @@
 //! Language-oriented programming and scripting language.
 //! This library contains an API to parse grammars, compile them and compile source code.
 
-extern crate bincode;
-extern crate fixedbitset;
-extern crate hashbrown;
-extern crate serde;
-extern crate unbounded_interval_tree;
-
 mod case;
 pub mod error;
 pub mod lexer;
@@ -20,6 +14,7 @@ pub mod location;
 pub mod parser;
 pub mod regex;
 pub mod stream;
+mod wrapper;
 // Macros
 #[macro_use]
 mod utilities;

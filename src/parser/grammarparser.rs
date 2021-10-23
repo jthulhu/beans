@@ -3,12 +3,15 @@ use crate::error::{
     WResult::{WErr, WOk},
     Warning, WarningSet, WarningType,
 };
+use crate::lexer::TerminalId;
 use crate::lexer::{LexedStream, Lexer, LexerBuilder, Token};
 use crate::location::Location;
+use crate::parser::earley::GrammarRules;
 use crate::stream::StringStream;
+use crate::wrapper::WrappedBitSet;
 use crate::{ask_case, ctry};
 // use crate::{rule, proxy, collect};
-use fixedbitset::FixedBitSet;
+use super::parser::NonTerminalId;
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
 use std::error;
@@ -30,8 +33,8 @@ pub enum Attribute {
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ElementType {
-    Terminal(usize),
-    NonTerminal(Option<usize>),
+    Terminal(TerminalId),
+    NonTerminal(Option<NonTerminalId>),
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,7 +88,7 @@ struct PartialRule {
 pub struct Rule {
     pub name: Rc<str>,
     /// The identifier of the nonterminal on the LHS of the rule.
-    pub id: usize,
+    pub id: NonTerminalId,
     pub elements: Vec<RuleElement>,
     pub proxy: Proxy,
 }
@@ -93,7 +96,7 @@ pub struct Rule {
 impl Rule {
     pub fn new<N: Into<Rc<str>>>(
         name: N,
-        id: usize,
+        id: NonTerminalId,
         elements: Vec<RuleElement>,
         proxy: Proxy,
     ) -> Self {
@@ -429,7 +432,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         fn read_definition(
             lexed_input: &mut LexedStream<'_, '_>,
 
-            id: usize,
+            id: NonTerminalId,
             lexer: &Lexer,
         ) -> WResult<(bool, String, Vec<Rule>)> {
             let mut warnings = WarningSet::empty();
@@ -455,12 +458,12 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         let temp_lexer = ctry!(LexerBuilder::from_file(self.grammar()), warnings).build();
         let mut lexed_input = temp_lexer.lex(&mut stream);
 
-        let mut rules = Vec::new();
+        let mut rules = GrammarRules::default();
 
         let mut axioms_vec = Vec::new();
 
         let mut done: HashMap<_, Location> = HashMap::new();
-        let mut nonterminals = 0;
+        let mut nonterminals = NonTerminalId::from(0);
         while let Some(token) = ctry!(lexed_input.next_any(), warnings) {
             let first_location = token.location().clone();
             lexed_input.drop_last();
@@ -468,7 +471,6 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                 read_definition(&mut lexed_input, nonterminals, lexer),
                 warnings
             );
-            nonterminals += 1;
             let location = Location::extend(first_location, lexed_input.last_location().clone());
             if let Some(old_location) = done.get(&name) {
                 return WErr(Error::new(
@@ -488,9 +490,10 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             rules.extend(new_rules);
             ask_case!(&name, PascalCase, warnings);
             done.insert(name, location);
+            nonterminals = NonTerminalId::from(nonterminals.0 + 1);
         }
 
-        let mut axioms = FixedBitSet::with_capacity(rules.len());
+        let mut axioms = WrappedBitSet::with_capacity(rules.len());
         for (i, j) in axioms_vec {
             axioms.set_range(i..j, true);
         }
@@ -525,9 +528,9 @@ pub trait GrammarBuilder<'deserializer>: Sized {
 /// `Grammar` implements the require.
 pub trait Grammar<'deserializer>: Sized + Serialize + Deserialize<'deserializer> {
     fn new(
-        rules: Vec<Rule>,
-        axioms: FixedBitSet,
-        name_map: HashMap<Rc<str>, usize>,
+        rules: GrammarRules,
+        axioms: WrappedBitSet<NonTerminalId>,
+        name_map: HashMap<Rc<str>, NonTerminalId>,
     ) -> WResult<Self>;
 
     fn from(bytes: &'deserializer [u8]) -> WResult<Self> {

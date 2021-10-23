@@ -1,3 +1,5 @@
+use crate::lexer::TerminalId;
+use crate::newtype;
 use fixedbitset::FixedBitSet;
 use unbounded_interval_tree::IntervalTree;
 
@@ -8,18 +10,26 @@ mod tests {
     #[test]
     fn groups() {
         // Test the regexp (a+)(b+)
-        let (program, nb_groups) = compile("(a+)(b+)", 0).unwrap();
-        let (end, idx, results) = find(&program, "aabbb", nb_groups, &Allowed::All).unwrap();
-        assert_eq!(idx, 0);
+        let (program, nb_groups) = compile("(a+)(b+)", TerminalId(0)).unwrap();
+        let Match {
+            pos: end,
+            id: idx,
+            groups: results,
+        } = find(&program, "aabbb", nb_groups, &Allowed::All).unwrap();
+        assert_eq!(idx, TerminalId(0));
         assert_eq!(end, 5);
         assert_eq!(results, vec![Some(0), Some(2), Some(2), Some(5)]);
     }
 
     #[test]
     fn chars() {
-        let (program, nb_groups) = compile("ab", 0).unwrap();
-        let (end, idx, results) = find(&program, "abb", nb_groups, &Allowed::All).unwrap();
-        assert_eq!(idx, 0);
+        let (program, nb_groups) = compile("ab", TerminalId(0)).unwrap();
+        let Match {
+            pos: end,
+            id: idx,
+            groups: results,
+        } = find(&program, "abb", nb_groups, &Allowed::All).unwrap();
+        assert_eq!(idx, TerminalId(0));
         assert_eq!(end, 2);
         assert_eq!(results, vec![]);
     }
@@ -45,7 +55,7 @@ mod tests {
             ),
         ];
         for (regex, tests) in escaped {
-            let (program, _) = compile(regex, 0).unwrap();
+            let (program, _) = compile(regex, TerminalId(0)).unwrap();
             for (string, result) in tests {
                 assert_eq!(find(&program, string, 0, &Allowed::All).is_some(), result);
             }
@@ -54,20 +64,29 @@ mod tests {
 
     #[test]
     fn greedy() {
-        let (program, nb_groups) = compile("(a+)(a+)", 0).unwrap();
-        let (end, idx, results) = find(&program, "aaaa", nb_groups, &Allowed::All).unwrap();
+        let (program, nb_groups) = compile("(a+)(a+)", TerminalId(0)).unwrap();
+        let Match { pos: end, id: idx, groups: results } = find(&program, "aaaa", nb_groups, &Allowed::All).unwrap();
         assert_eq!(end, 4);
-        assert_eq!(idx, 0);
+        assert_eq!(idx, TerminalId(0));
         assert_eq!(results, vec![Some(0), Some(3), Some(3), Some(4)]);
     }
 
     #[test]
     fn partial() {
-        let (program, nb_groups) = compile("a+", 0).unwrap();
-        let (end, idx, results) = find(&program, "aaabcd", nb_groups, &Allowed::All).unwrap();
+        let (program, nb_groups) = compile("a+", TerminalId(0)).unwrap();
+        let Match { pos: end, id: idx, groups: results } = find(&program, "aaabcd", nb_groups, &Allowed::All).unwrap();
         assert_eq!(end, 3);
-        assert_eq!(idx, 0);
+        assert_eq!(idx, TerminalId(0));
         assert_eq!(results, Vec::new());
+    }
+}
+
+newtype! {
+    pub id InstructionPointer
+    impl {
+	pub fn incr(&self) -> Self {
+	    Self(self.0+1)
+	}
     }
 }
 
@@ -99,12 +118,12 @@ mod tests {
 /// `Any`: match any character at the current location
 #[derive(PartialEq, Debug)]
 pub enum Instruction {
-    Switch(Vec<(usize, usize)>),
+    Switch(Vec<(TerminalId, InstructionPointer)>),
     Save(usize),
-    Split(usize, usize),
+    Split(InstructionPointer, InstructionPointer),
     Char(char),
-    Jump(usize),
-    Match(usize),
+    Jump(InstructionPointer),
+    Match(TerminalId),
     WordChar,
     Digit,
     WordBoundary,
@@ -120,11 +139,11 @@ pub enum Instruction {
 #[derive(Debug)]
 pub enum Allowed {
     All,
-    Some(FixedBitSet),
+    Some(AllowedTerminals),
 }
 
 impl Allowed {
-    pub fn contains(&self, i: usize) -> bool {
+    pub fn contains(&self, i: TerminalId) -> bool {
         match self {
             Allowed::All => true,
             Allowed::Some(allowed) => allowed.contains(i),
@@ -143,17 +162,39 @@ impl Allowed {
 /// `id` is the id of the regex that led to a match. If many had, one has been selected according to the priority rules.
 /// `groups` is a vector of all the groups defined by the regex that led to the match. The groups `i` owns items `2*i`
 ///   and `2*i+1`, respectivly the start position (inclusive) and the end position (exclusive) of the match.
-pub type Match = (usize, usize, Vec<Option<usize>>);
+pub struct Match {
+    pub pos: usize,
+    pub id: TerminalId,
+    pub groups: Vec<Option<usize>>,
+}
 
-/// # Summary
-///
-/// Represents the program that is read and executed by the VM. Currently, this is a `Vec` of `Instruction`.
-pub type Program = Vec<Instruction>;
+// /// # Summary
+// ///
+// /// A way to referencing a `Program` without have an explicit `&Vec<_>` (which clippy doesn't like), but instead a slice referece.
+// pub type ProgramRef<'a> = &'a [Instruction];
 
-/// # Summary
-///
-/// A way to referencing a `Program` without have an explicit `&Vec<_>` (which clippy doesn't like), but instead a slice referece.
-pub type ProgramRef<'a> = &'a [Instruction];
+newtype! {
+    #[derive(PartialEq)]
+    pub vec Program (Instruction) [InstructionPointer]
+    impl {
+	pub fn len_ip(&self) -> InstructionPointer {
+	    InstructionPointer(self.len())
+	}
+    }
+}
+
+newtype! {
+    pub slice ProgramSlice (Instruction) [InstructionPointer]
+    of Program
+}
+
+newtype! {
+    set DoneThreads [InstructionPointer]
+}
+
+newtype! {
+    pub set AllowedTerminals [TerminalId]
+}
 
 /// # Summary
 ///
@@ -168,7 +209,7 @@ pub type ProgramRef<'a> = &'a [Instruction];
 /// `get`: pop a thread
 /// `from`: create a new `ThreadList` from an existing `Vec<Thread>`
 struct ThreadList {
-    done: FixedBitSet,
+    done: DoneThreads,
     threads: Vec<Thread>,
 }
 
@@ -176,7 +217,7 @@ impl ThreadList {
     /// Create a new `ThreadList` with a given capacity.
     fn new(size: usize) -> Self {
         Self {
-            done: FixedBitSet::with_capacity(size),
+            done: DoneThreads::with_capacity(size),
             threads: Vec::new(),
         }
     }
@@ -225,14 +266,14 @@ impl ThreadList {
 /// `save`: set the value for a register dedicated to group matching
 #[derive(Clone, Debug)]
 struct Thread {
-    instruction: usize,
+    instruction: InstructionPointer,
     groups: Vec<Option<usize>>,
 }
 
 impl Thread {
     /// Create a new `Thread`. This method is public only to be accessible from documentation,
     /// but this doesn't mean it is meant to be accessed by the end-user.
-    pub fn new(instruction: usize, size: usize) -> Self {
+    pub fn new(instruction: InstructionPointer, size: usize) -> Self {
         Self {
             instruction,
             groups: vec![None; 2 * size],
@@ -240,12 +281,12 @@ impl Thread {
     }
 
     /// Return the value stored in the *instruction pointer* register, `ip`.
-    fn instruction(&self) -> usize {
+    fn instruction(&self) -> InstructionPointer {
         self.instruction
     }
 
     /// Set the *instruction pointer* register value to `pos`.
-    fn jump(&mut self, pos: usize) {
+    fn jump(&mut self, pos: InstructionPointer) {
         self.instruction = pos;
     }
 
@@ -263,7 +304,7 @@ fn match_next(
     mut thread: Thread,
     current: &mut ThreadList,
     next: Option<&mut ThreadList>,
-    prog: ProgramRef<'_>,
+    prog: &ProgramSlice,
     best_match: &mut Option<Match>,
     last: Option<char>,
     allowed: &Allowed,
@@ -289,7 +330,7 @@ fn match_next(
     /// Advance `thread` to the next instruction and queue it
     /// in the `thread_list`.
     fn advance(mut thread: Thread, thread_list: Option<&mut ThreadList>) {
-        thread.jump(thread.instruction() + 1);
+        thread.jump(thread.instruction().incr());
         if let Some(next) = thread_list {
             next.add(thread);
         }
@@ -344,12 +385,19 @@ fn match_next(
             current.add(thread);
         }
         Instruction::Match(id) => {
-            if let Some((p, prior, _)) = best_match {
+            if let Some(Match {
+                pos: p, id: prior, ..
+            }) = best_match
+            {
                 if pos > *p || *prior > *id {
-                    *best_match = Some((pos, *id, thread.groups));
+                    *best_match = Some(Match {
+                        pos,
+                        id: *id,
+                        groups: thread.groups,
+                    });
                 }
             } else {
-                *best_match = Some((pos, *id, thread.groups));
+                *best_match = Some(Match { pos, id: *id, groups: thread.groups });
             }
         }
         Instruction::CharacterClass(class, negated) => {
@@ -375,8 +423,8 @@ fn match_next(
 }
 
 /// Simulate a VM with program `prog` on `input`. There should be `size` groups.
-pub fn find(prog: ProgramRef<'_>, input: &str, size: usize, allowed: &Allowed) -> Option<Match> {
-    let mut current = ThreadList::from(vec![Thread::new(0, size)], prog.len());
+pub fn find(prog: &ProgramSlice, input: &str, size: usize, allowed: &Allowed) -> Option<Match> {
+    let mut current = ThreadList::from(vec![Thread::new(InstructionPointer(0), size)], prog.len());
     let mut best_match = None;
     let mut last = None;
     for (pos, chr) in input.chars().enumerate() {

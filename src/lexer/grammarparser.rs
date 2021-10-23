@@ -1,13 +1,14 @@
-use crate::ctry;
 use crate::error::{
     Error, ErrorType,
     WResult::{self, WOk},
     WarningSet,
 };
+use crate::lexer::TerminalId;
 use crate::location::Location;
 use crate::regex::{CompiledRegex, RegexBuilder};
 use crate::stream::{Char, Stream, StringStream};
-use fixedbitset::FixedBitSet;
+use crate::wrapper::WrappedBitSet;
+use crate::{ctry, int_err, newtype};
 use hashbrown::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -102,16 +103,20 @@ mod tests {
         .build()
         .unwrap();
         assert_eq!(grammar.name(0), "A");
-        assert!(grammar.ignored(0));
+        assert!(grammar.ignored(0.into()));
         assert_eq!(grammar.name(1), "B");
-        assert!(grammar.ignored(1));
+        assert!(grammar.ignored(1.into()));
         assert_eq!(grammar.name(2), "C");
-        assert!(!grammar.ignored(2));
+        assert!(!grammar.ignored(2.into()));
     }
     #[test]
     fn grammar_default_grammar() {
         //	let grammar = GrammarParser::new();
     }
+}
+
+newtype! {
+    pub id TokenId
 }
 
 /// # Summary
@@ -134,13 +139,7 @@ impl LexerGrammarBuilder {
         let mut warnings = WarningSet::empty();
         let stream = ctry!(
             StringStream::from_file(file)
-                .map_err(|x| {
-                    let pos = (line!() as usize, column!() as usize);
-                    Error::new(
-                        Location::new(file!(), pos, pos),
-                        ErrorType::InternalError(format!("IO error: {}", x)),
-                    )
-                })
+                .map_err(|x| int_err!("IO error: {}", x))
                 .into(),
             warnings
         );
@@ -192,10 +191,11 @@ impl LexerGrammarBuilder {
             Self::ignore_blank_lines(&mut stream);
         }
         let re = regex_builder.build();
-        let mut ignores_bitset = FixedBitSet::with_capacity(names.len());
+        let mut ignores_bitset = WrappedBitSet::with_capacity(names.len());
         for (i, name) in names.iter().enumerate() {
+            let id = TerminalId(i);
             if ignores.contains(name) {
-                ignores_bitset.insert(i);
+                ignores_bitset.insert(id);
             }
         }
         WOk(LexerGrammar::new(re, names, ignores_bitset), warnings)
@@ -293,15 +293,20 @@ impl LexerGrammarBuilder {
 pub struct LexerGrammar {
     pattern: CompiledRegex,
     names: Vec<String>,
-    ignores: FixedBitSet,
-    name_map: HashMap<String, usize>,
+    ignores: WrappedBitSet<TerminalId>,
+    name_map: HashMap<String, TerminalId>,
 }
 
 impl LexerGrammar {
-    pub fn new(pattern: CompiledRegex, names: Vec<String>, ignores: FixedBitSet) -> Self {
+    pub fn new(
+        pattern: CompiledRegex,
+        names: Vec<String>,
+        ignores: WrappedBitSet<TerminalId>,
+    ) -> Self {
         let mut name_map = HashMap::new();
         for (i, name) in names.iter().enumerate() {
-            name_map.insert(name.clone(), i);
+            let id = TerminalId(i);
+            name_map.insert(name.clone(), id);
         }
         Self {
             pattern,
@@ -319,7 +324,7 @@ impl LexerGrammar {
         self.name_map.contains_key(name)
     }
 
-    pub fn ignored(&self, idx: usize) -> bool {
+    pub fn ignored(&self, idx: TerminalId) -> bool {
         self.ignores.contains(idx)
     }
 
@@ -331,7 +336,7 @@ impl LexerGrammar {
         self.name_map.contains_key(token)
     }
 
-    pub fn id(&self, name: &str) -> Option<usize> {
+    pub fn id(&self, name: &str) -> Option<TerminalId> {
         self.name_map.get(name).copied()
     }
 }

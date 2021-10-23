@@ -1,6 +1,8 @@
-use super::matching::{self, find, Instruction, Program};
+use super::matching::{self, AllowedTerminals, Instruction, Program};
 use super::parsing::{build, read, Regex, RegexError};
-use fixedbitset::FixedBitSet;
+use crate::lexer::TerminalId;
+use crate::newtype;
+use crate::regex::matching::InstructionPointer;
 
 #[cfg(test)]
 mod tests {
@@ -20,19 +22,19 @@ mod tests {
             .with_named_regex("b", String::from("B"))
             .unwrap()
             .build();
-        assert_eq!(regex.names, vec![String::from("As"), String::from("B")]);
+        assert_eq!(regex.names, GroupNames::from(vec![String::from("As"), String::from("B")]));
         assert_eq!(
             regex.program,
-            vec![
-                Switch(vec![(0, 1), (1, 4)]),
+            Program::from(vec![
+                Switch(vec![(TerminalId(0), InstructionPointer(1)), (TerminalId(1), InstructionPointer(4))]),
                 Char('a'),
-                Split(1, 3),
-                Match(0),
+                Split(InstructionPointer(1), InstructionPointer(3)),
+                Match(TerminalId(0)),
                 Char('b'),
-                Match(1)
-            ]
+                Match(TerminalId(1))
+            ])
         );
-        assert_eq!(regex.groups, vec![(0, 0), (0, 0)]);
+        assert_eq!(regex.groups, Groups::from(vec![(0, 0), (0, 0)]));
         assert_eq!(regex.size, 0);
 
         let regex = RegexBuilder::new()
@@ -43,18 +45,18 @@ mod tests {
             .build();
         assert_eq!(
             regex.program,
-            vec![
-                Switch(vec![(0, 1), (1, 6)]),
+            Program::from(vec![
+                Switch(vec![(TerminalId(0), InstructionPointer(1)), (TerminalId(1), InstructionPointer(6))]),
                 Save(0),
                 Char('a'),
-                Split(2, 4),
+                Split(InstructionPointer(2), InstructionPointer(4)),
                 Save(1),
-                Match(0),
+                Match(TerminalId(0)),
                 Save(2),
                 Char('b'),
                 Save(3),
-                Match(1)
-            ]
+                Match(TerminalId(1))
+            ])
         );
 
         // let regex = RegexBuilder::new()
@@ -135,6 +137,16 @@ mod tests {
     }
 }
 
+newtype! {
+    #[derive(PartialEq, Eq)]
+    pub vec Groups((usize, usize))[TerminalId]
+}
+
+newtype! {
+    #[derive(PartialEq, Eq)]
+    vec GroupNames(String)[TerminalId]
+}
+
 /// The allowed named regex in a single match.
 /// This is useful is you want to prevent the engine from matching certain regex by not allowing them.
 /// It is very efficient in the sense that the complexity of a match depends only on the number of allowed regex,
@@ -145,7 +157,7 @@ pub enum Allowed {
     /// Allow all regex.
     All,
     /// Allow only regex whose id is the one in the vector.
-    Some(Vec<usize>),
+    Some(Vec<TerminalId>),
 }
 
 impl Allowed {
@@ -153,7 +165,7 @@ impl Allowed {
         match self {
             Allowed::All => matching::Allowed::All,
             Allowed::Some(rules) => {
-                let mut allowed = FixedBitSet::with_capacity(size);
+                let mut allowed = AllowedTerminals::with_capacity(size);
                 for i in rules {
                     allowed.insert(*i);
                 }
@@ -225,7 +237,7 @@ impl<'text> Handle<'text> {
 pub struct Match<'pattern, 'text> {
     length: usize,
     name: &'pattern str,
-    id: usize,
+    id: TerminalId,
     groups: Vec<Option<Handle<'text>>>,
     text: &'text str,
 }
@@ -237,7 +249,7 @@ impl Match<'_, '_> {
     }
 
     /// Return the identifier of the regex which led to the match.
-    pub fn id(&self) -> usize {
+    pub fn id(&self) -> TerminalId {
         self.id
     }
 
@@ -272,14 +284,14 @@ impl Match<'_, '_> {
 /// `find`: match against a given input
 #[derive(Debug, PartialEq)]
 pub struct CompiledRegex {
-    names: Vec<String>,
+    names: GroupNames,
     program: Program,
-    groups: Vec<(usize, usize)>,
+    groups: Groups,
     size: usize,
 }
 
 impl CompiledRegex {
-    fn new(program: Program, names: Vec<String>, groups: Vec<(usize, usize)>, size: usize) -> Self {
+    fn new(program: Program, names: GroupNames, groups: Groups, size: usize) -> Self {
         Self {
             names,
             program,
@@ -295,7 +307,12 @@ impl CompiledRegex {
         input: &'text str,
         allowed: &Allowed,
     ) -> Option<Match<'pattern, 'text>> {
-        if let Some((length, id, groups)) = find(
+        if let Some(matching::Match {
+            pos: length,
+            id,
+            groups,
+            ..
+        }) = matching::find(
             &self.program,
             input,
             self.size,
@@ -378,20 +395,30 @@ impl RegexBuilder {
     /// Return the `CompiledRegex`. This consumes the `RegexBuilder`.
     pub fn build(self) -> CompiledRegex {
         if self.regexes.is_empty() {
-            return CompiledRegex::new(Vec::new(), self.names, self.groups, self.current);
+            return CompiledRegex::new(
+                Program::new(),
+                self.names.into(),
+                self.groups.into(),
+                self.current,
+            );
         }
-        let mut program = Vec::new();
+        let mut program = Program::new();
         let mut switch = Vec::new();
-        program.push(Instruction::Split(0, 0)); // Fake instruction that is going to be replaced later with a `Switch`.
-        for (id, regex) in self.regexes.into_iter().enumerate() {
-            let ip = program.len();
+        program.push(Instruction::Split(0.into(), 0.into())); // Fake instruction that is going to be replaced later with a `Switch`.
+        for (id, regex) in self
+            .regexes
+            .into_iter()
+            .enumerate()
+            .map(|(id, regex)| (TerminalId(id), regex))
+        {
+            let ip = InstructionPointer(program.len());
             switch.push((id, ip));
             build(regex, &mut program);
             program.push(Instruction::Match(id));
         }
 
-        program[0] = Instruction::Switch(switch);
-        CompiledRegex::new(program, self.names, self.groups, self.current)
+        program[InstructionPointer(0)] = Instruction::Switch(switch);
+        CompiledRegex::new(program, self.names.into(), self.groups.into(), self.current)
     }
 }
 

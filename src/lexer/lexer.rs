@@ -1,5 +1,4 @@
 use super::grammarparser::{LexerGrammar, LexerGrammarBuilder};
-use crate::ctry;
 use crate::error::{
     Error, ErrorType,
     WResult::{self, WErr, WOk},
@@ -8,6 +7,7 @@ use crate::error::{
 use crate::location::Location;
 use crate::regex::Allowed;
 use crate::stream::{Stream, StringStream};
+use crate::{ctry, newtype};
 use hashbrown::HashMap;
 use std::fmt;
 use std::ops::Index;
@@ -58,13 +58,13 @@ mod tests {
     fn token() {
         let token = Token::new(
             String::from("wow"),
-            0,
+            0.into(),
             HashMap::new(),
             Location::new("test_file", (3, 0), (3, 3)),
         );
 
         assert_eq!(token.name(), "wow");
-        assert_eq!(token.id(), 0);
+        assert_eq!(token.id(), 0.into());
         assert_eq!(token.location().file(), "test_file");
         assert_eq!(token.location().start(), (3, 0));
         assert_eq!(token.location().end(), (3, 3));
@@ -434,6 +434,11 @@ mod tests {
     }
 }
 
+newtype! {
+    #[derive(PartialOrd, Ord)]
+    pub id TerminalId
+}
+
 /// # Summary
 ///
 /// `Token` contains information about a token, thus it contains
@@ -443,7 +448,7 @@ mod tests {
 #[derive(Debug, Clone)]
 pub struct Token {
     name: String,
-    id: usize,
+    id: TerminalId,
     attributes: HashMap<usize, String>,
     location: Location,
 }
@@ -466,7 +471,7 @@ impl Token {
     /// Build a new token.
     pub fn new(
         name: String,
-        id: usize,
+        id: TerminalId,
         attributes: HashMap<usize, String>,
         location: Location,
     ) -> Self {
@@ -510,7 +515,7 @@ impl Token {
     }
 
     /// Return the `id` of the token.
-    pub fn id(&self) -> usize {
+    pub fn id(&self) -> TerminalId {
         self.id
     }
 
@@ -560,7 +565,7 @@ impl LexerBuilder {
 
     /// Build the lexer, consuming the builder.
     pub fn build(self) -> Lexer {
-	Lexer::new(self.grammar)
+        Lexer::new(self.grammar)
     }
 }
 
@@ -645,6 +650,7 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
         &self.last_location
     }
 }
+
 impl LexedStream<'_, '_> {
     /// Lex any token.
     pub fn next_any(&mut self) -> WResult<Option<&Token>> {

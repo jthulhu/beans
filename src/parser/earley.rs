@@ -1,4 +1,5 @@
 use super::grammarparser::{Attribute, ElementType, Grammar, GrammarBuilder, Rule, RuleElement};
+use super::parser::{NonTerminalId, RuleId};
 use super::parser::{ParseResult, Parser};
 use crate::error::{
     Error, ErrorType,
@@ -6,18 +7,18 @@ use crate::error::{
     WarningSet,
 };
 use crate::lexer::LexedStream;
+use crate::lexer::TerminalId;
 use crate::lexer::Token;
 use crate::parser::parser::AST;
 use crate::regex::Allowed;
 use crate::stream::StringStream;
-use crate::{ctry, retrieve};
-use fixedbitset::FixedBitSet;
+use crate::wrapper::WrappedBitSet;
+use crate::{ctry, newtype, retrieve};
 use hashbrown::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fmt;
 use std::rc::Rc;
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,7 +160,7 @@ Factor ::= LPAR Sum RPAR <>
 		for &rule_identifier in grammar
 		    .name_map
 		    .get(&Rc::from(name))
-		    .map(|&identifier| &grammar.rules_map[identifier])
+		    .map(|&identifier| &grammar.rules_of[identifier])
 		    .expect(format!("The non-terminal {} does not exist.", name).as_str())
 		    .iter()
 		{
@@ -184,7 +185,7 @@ Factor ::= LPAR Sum RPAR <>
 		let mut set = FinalSet::default();
 		set.position = sets.len();
 		$(
-		    set.add(find_item($grammar, stringify!($name), &[$(stringify!($element)),*], $end));
+		    set.add(find_item($grammar, stringify!($name), &[$(stringify!($element)),*], $end), $grammar);
 		)*
 		sets.push(set);
 	    )*
@@ -249,15 +250,15 @@ Factor ::= LPAR Sum RPAR <>
     }
 
     #[inline]
-    fn verify(rules1: Vec<Rule>, rules2: Vec<TestRule>) {
-        let length1 = rules1.len();
+    fn verify(rules1: GrammarRules, rules2: Vec<TestRule>) {
+        let length1 = rules1.0.len();
         let length2 = rules2.len();
         if length1 > length2 {
             panic!("Grammar 1 is longer");
         } else if length1 < length2 {
             panic!("Grammar 2 is longer");
         }
-        for (i, (r1, r2)) in rules1.iter().zip(rules2.iter()).enumerate() {
+        for (i, (r1, r2)) in rules1.0.iter().zip(rules2.iter()).enumerate() {
             assert_eq!(r2, r1, "rules #{} differ", i);
         }
     }
@@ -365,26 +366,42 @@ B ::= A <>;"#;
             A -> B . (0)
         );
         let (recognised, _) = parser
-            .recognise(&mut lexer.lex(&mut StringStream::new(Rc::from("<input>"), Rc::from(input))))
+            .recognise(&mut lexer.lex(&mut StringStream::new("<input>", input)))
             .unwrap();
         verify_sets(sets, recognised, &parser);
+    }
+
+    #[test]
+    fn ast_builder() {
+        let input = r#"1+(2*3-4)"#;
+
+        let lexer =
+            LexerBuilder::from_stream(StringStream::new("<lexer input>", GRAMMAR_NUMBERS_LEXER))
+                .unwrap()
+                .build();
+        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
+            .with_stream(StringStream::new("<grammar input>", GRAMMAR_NUMBERS))
+            .build(&lexer)
+            .unwrap();
+        let parser = EarleyParser::new(grammar);
+        let (table, raw_input) = parser
+            .recognise(&mut lexer.lex(&mut StringStream::new("<input>", input)))
+            .unwrap();
+        let forest = parser.to_forest(&table, &raw_input).unwrap();
+        let ast = parser.select_ast(&forest, &raw_input);
+        assert_eq!(ast, AST::None);
     }
 
     #[test]
     fn forest_builder() {
         let input = r#"1+(2*3-4)"#;
 
-        let lexer = LexerBuilder::from_stream(StringStream::new(
-            Rc::from("<lexer input>"),
-            Rc::from(GRAMMAR_NUMBERS_LEXER),
-        ))
-        .unwrap()
-        .build();
+        let lexer =
+            LexerBuilder::from_stream(StringStream::new("<lexer input>", GRAMMAR_NUMBERS_LEXER))
+                .unwrap()
+                .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
-            .with_stream(StringStream::new(
-                Rc::from("<grammar input>"),
-                Rc::from(GRAMMAR_NUMBERS),
-            ))
+            .with_stream(StringStream::new("<grammar input>", GRAMMAR_NUMBERS))
             .build(&lexer)
             .unwrap();
 
@@ -428,7 +445,7 @@ B ::= A <>;"#;
             );
 
         let (table, raw_input) = parser
-            .recognise(&mut lexer.lex(&mut StringStream::new(Rc::from("<input>"), Rc::from(input))))
+            .recognise(&mut lexer.lex(&mut StringStream::new("<input>", input)))
             .unwrap();
         let forest = parser.to_forest(&table, &raw_input).unwrap();
         assert_eq!(
@@ -572,6 +589,15 @@ B ::= A <>;"#;
 type Table = Vec<StateSet>;
 type Forest = Vec<FinalSet>;
 
+newtype! {
+    #[derive(serde::Serialize, serde::Deserialize)]
+    pub vec RulesMap(Vec<RuleId>)[NonTerminalId]
+}
+
+newtype! {
+    pub vec IsIn(Vec<RuleId>)[NonTerminalId]
+}
+
 /// A builder for the Earley grammar.
 #[derive(Debug)]
 pub struct EarleyGrammarBuilder {
@@ -628,7 +654,7 @@ impl Default for EarleyGrammarBuilder {
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 struct EarleyItem {
     /// `rule` is the identifier of the associated [`Rule`].
-    rule: usize,
+    rule: RuleId,
     /// `origin` is the identifier of the `EarleySet` this item was originated in.
     origin: usize,
     /// `position` is the advancement of the current item. It corresponds to the position of the fat dot.
@@ -638,7 +664,7 @@ struct EarleyItem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FinalItem {
     /// `rule` is the identifier of the associated [`Rule`]
-    rule: usize,
+    rule: RuleId,
     end: usize,
 }
 
@@ -646,6 +672,11 @@ impl fmt::Display for FinalItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         write!(f, "#{}\t\t({})", self.rule, self.end)
     }
+}
+
+newtype! {
+    #[derive(serde::Serialize, serde::Deserialize)]
+    pub vec GrammarRules(Rule)[RuleId]
 }
 
 /// # Summary
@@ -656,64 +687,70 @@ impl fmt::Display for FinalItem {
 /// If it is not applied, the complexity is `O(n)` unless there is right-recursion, in which case the complexity is `O(n²)`.
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EarleyGrammar {
-    axioms: FixedBitSet,
+    /// The axioms, indexed by RuleId.
+    axioms: WrappedBitSet<NonTerminalId>,
     /// The rules. The rule index is its identifier.
-    rules: Vec<Rule>,
-    /// Set of the identifers of the {rules,non-terminals} that are nullables.
-    nullables: FixedBitSet,
+    rules: GrammarRules,
+    /// The nullables, indexed by NonTerminalId.
+    nullables: WrappedBitSet<NonTerminalId>,
     /// Maps the name of a non-terminal to its identifier.
-    name_map: HashMap<Rc<str>, usize>,
+    name_map: HashMap<Rc<str>, NonTerminalId>,
     /// Maps the identifier of a non-terminal to the identifiers of its rules.
     /// Its rules are the rules of which it is the LHS.
-    rules_map: Vec<Vec<usize>>,
+    rules_of: RulesMap,
 }
 
 impl EarleyGrammar {
-    fn has_rules(&self, id: usize) -> &[usize] {
-        &self.rules_map[id]
+    fn has_rules(&self, id: NonTerminalId) -> &[RuleId] {
+        &self.rules_of[id]
     }
 }
 
 impl Grammar<'_> for EarleyGrammar {
-    fn new<'warning>(
-        rules: Vec<Rule>,
-        axioms: FixedBitSet,
-        name_map: HashMap<Rc<str>, usize>,
+    fn new(
+        rules: GrammarRules,
+        axioms: WrappedBitSet<NonTerminalId>,
+        name_map: HashMap<Rc<str>, NonTerminalId>,
     ) -> WResult<Self> {
         let warnings = WarningSet::empty();
-        let mut nullables = FixedBitSet::with_capacity(axioms.len());
-        let mut rules_map = Vec::new();
-
-        let mut is_in = vec![Vec::new(); rules.len()];
+        let nb_non_terminals = axioms.len(); // Number of non terminals
+                                             // nullables[non_term_id]: bool is whether non terminal with this id is nullable, meaning it can match ε (empty string).
+        let mut nullables: WrappedBitSet<NonTerminalId> =
+            WrappedBitSet::with_capacity(nb_non_terminals);
+        // rules_of[non_term_id]: [rule_id] is a Vec containing all the rules whose LHS is the non terminal this id.
+        let mut rules_of = RulesMap::from(vec![Vec::new(); nb_non_terminals]);
+        // is_in[non_term_id]: [rule_id] is a Vec containing all the rules whose RHS contains the non terminal with this id.
+        let mut is_in = IsIn::from(vec![Vec::new(); nb_non_terminals]);
         let mut stack = VecDeque::with_capacity(is_in.len());
         for (i, rule) in rules.iter().enumerate() {
-            while rule.id >= rules_map.len() {
-                rules_map.push(Vec::new());
-            }
-            rules_map[rule.id].push(i);
+            let rule_id = RuleId(i);
+            let lhs_id = rule.id;
+            rules_of[lhs_id].push(rule_id);
             if rule.elements.is_empty() {
-                nullables.insert(i);
-                stack.push_front(i);
+                nullables.insert(lhs_id);
+                stack.push_front(lhs_id);
             }
             for element in rule.elements.iter() {
-                if let ElementType::NonTerminal(Some(id)) = element.element_type {
-                    is_in[id].push(i);
+                if let ElementType::NonTerminal(Some(rhs_id)) = element.element_type {
+                    is_in[rhs_id].push(rule_id);
                 }
             }
         }
+
         while let Some(current) = stack.pop_back() {
-            for &id in &is_in[current] {
-                if !nullables.contains(id)
-                    && rules[id]
+            for &rule_id in &is_in[current] {
+                let lhs_id = rules[rule_id].id;
+                if !nullables.contains(lhs_id)
+                    && rules[rule_id]
                         .elements
                         .iter()
                         .all(|element| match element.element_type {
                             ElementType::NonTerminal(Some(id)) => nullables.contains(id),
-                            _ => true,
+                            _ => false,
                         })
                 {
-                    nullables.insert(id);
-                    stack.push_front(id);
+                    nullables.insert(lhs_id);
+                    stack.push_front(lhs_id);
                 }
             }
         }
@@ -724,7 +761,7 @@ impl Grammar<'_> for EarleyGrammar {
                 rules,
                 nullables,
                 name_map,
-                rules_map,
+                rules_of,
             },
             warnings,
         )
@@ -734,7 +771,7 @@ impl Grammar<'_> for EarleyGrammar {
 #[derive(Default, Debug, Clone, Eq)]
 struct FinalSet {
     /// An index mapping a nonterminal to every item in the set derived from that nonterminal.
-    index: HashMap<usize, Vec<usize>>,
+    index: HashMap<NonTerminalId, Vec<usize>>,
     /// The set of items.
     set: Vec<FinalItem>,
     /// The starting position of every item in this set, in the raw input.
@@ -748,9 +785,9 @@ impl PartialEq for FinalSet {
 }
 
 impl FinalSet {
-    fn add(&mut self, item: FinalItem) {
+    fn add(&mut self, item: FinalItem, grammar: &EarleyGrammar) {
         self.index
-            .entry(item.rule)
+            .entry(grammar.rules[item.rule].id)
             .or_default()
             .push(self.set.len());
         self.set.push(item);
@@ -825,8 +862,24 @@ struct ScanItem<'a> {
 struct SearchItem<'a> {
     /// Index of the next scan in the raw input.
     position: usize,
+    /// Current item to be searched for.
     current: ScanItem<'a>,
+    /// Items scanned so far.
     stack: Vec<ScanItem<'a>>,
+}
+
+#[derive(Debug)]
+struct ScItem {
+    rule: usize,
+    start: usize,
+    end: usize,
+    depth: usize,
+}
+
+#[derive(Debug)]
+struct SItem {
+    current: ScItem,
+    items: Vec<ScItem>,
 }
 
 /// # Summary
@@ -837,15 +890,15 @@ pub struct EarleyParser {
 }
 
 impl EarleyParser {
-    /// Takes a **non-empty** forest of ast, and returns the one with highest precedence.
-    ///
-    /// The **non-empty** condition is important, undefined behavior if it is not the case.
-    /// To be **non-empty** forest is stronger than simply having elements. They must also form
-    /// at least one AST.
+    /// Select one AST if there is any.
     fn select_ast(&self, forest: &[FinalSet], raw_input: &[Token]) -> AST {
         let mut boundary: Vec<_> = forest[0]
             .iter()
-            .filter(|item| self.grammar.axioms.contains(item.rule))
+            .filter(|item| {
+                self.grammar
+                    .axioms
+                    .contains(self.grammar.rules[item.rule].id)
+            })
             .map(|item| SearchItem {
                 position: 0,
                 current: ScanItem {
@@ -954,8 +1007,7 @@ impl EarleyParser {
                 }
             }
         }
-
-        unreachable!()
+        panic!("Selecting an AST from an empty or malformed forest.");
     }
 
     fn to_forest(&self, table: &[StateSet], raw_input: &[Token]) -> WResult<Forest> {
@@ -972,10 +1024,13 @@ impl EarleyParser {
             set.iter()
                 .filter(|item| item.position == self.grammar.rules[item.rule].elements.len())
                 .for_each(|item| {
-                    forest[item.origin].add(FinalItem {
-                        end: i,
-                        rule: item.rule,
-                    })
+                    forest[item.origin].add(
+                        FinalItem {
+                            end: i,
+                            rule: item.rule,
+                        },
+                        &self.grammar,
+                    )
                 });
         }
         WOk(forest, warnings)
@@ -989,7 +1044,8 @@ impl EarleyParser {
         let mut sets = Vec::new();
         let mut first_state = StateSet::default();
         (0..self.grammar().rules.len())
-            .filter(|id| self.grammar().axioms.contains(*id))
+            .map(RuleId)
+            .filter(|id| self.grammar.axioms.contains(self.grammar.rules[*id].id))
             .for_each(|id| {
                 first_state.add(EarleyItem {
                     rule: id,
@@ -1002,8 +1058,8 @@ impl EarleyParser {
         let mut pos = 0;
         'outer: loop {
             let mut next_state = StateSet::default();
-            let mut scans: HashMap<usize, _> = HashMap::new();
-            while let Some(&item) = sets.last_mut().unwrap().next() {
+            let mut scans: HashMap<TerminalId, _> = HashMap::new();
+            '_inner: while let Some(&item) = sets.last_mut().unwrap().next() {
                 let mut to_be_added = Vec::new();
                 match self.grammar().rules[item.rule].elements.get(item.position) {
                     Some(element) => match element.element_type {
@@ -1016,7 +1072,7 @@ impl EarleyParser {
                                     position: 0,
                                 });
                             }
-                            if self.grammar().nullables.contains(id) {
+                            if self.grammar.nullables.contains(id) {
                                 to_be_added.push(EarleyItem {
                                     rule: item.rule,
                                     origin: item.origin,

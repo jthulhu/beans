@@ -1,40 +1,21 @@
 use super::grammarparser::{Grammar, GrammarBuilder};
 use crate::error::WResult;
 use crate::lexer::LexedStream;
+use crate::newtype;
 use hashbrown::HashMap;
 use std::rc::Rc;
 
-// pub enum BuiltinType {
-//     Int(i32),
-//     String(String),
-//     Id(String),
-//     Bool(bool)
-// }
+newtype! {
+    pub id RuleId
+}
+newtype! {
+    pub id NonTerminalId
+}
 
-// pub struct Assignment {
-
-// }
-
-// pub enum Statement {
-//     Assignment {
-// 	condition: Expression,
-// 	then ,
-//     If,
-//     While
-// }
-
-// pub enum AST {
-//     StatementList {
-// 	statements: Vec<AST>
-//     }
-//     Statement {
-// 	statement
-// }
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AST {
     Node {
-        nonterminal: usize,
+        nonterminal: NonTerminalId,
         attributes: HashMap<Rc<str>, AST>,
     },
     Literal(String),

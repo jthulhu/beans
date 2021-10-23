@@ -1,13 +1,15 @@
 use super::matching::{Instruction, Program};
+use crate::regex::matching::InstructionPointer;
 use unbounded_interval_tree::IntervalTree;
 
 #[cfg(test)]
 pub mod tests {
     use super::*;
-
+    use crate::lexer::TerminalId;
+    
     /// Compile a regex into a program executable on the VM.
-    pub fn compile(regex: &str, id: usize) -> Result<(Program, usize), RegexError> {
-        let mut program = Vec::new();
+    pub fn compile(regex: &str, id: TerminalId) -> Result<(Program, usize), RegexError> {
+        let mut program = Program::new();
         let (regex, nb_groups) = read(regex, 0)?;
         build(regex, &mut program);
         program.push(Instruction::Match(id));
@@ -214,11 +216,11 @@ pub mod tests {
     #[test]
     fn build_basic() {
         use Instruction::*;
-        let program = compile("a+b+", 0).unwrap();
+        let program = compile("a+b+", TerminalId(0)).unwrap();
         assert_eq!(
             program,
             (
-                vec![Char('a'), Split(0, 2), Char('b'), Split(2, 4), Match(0)],
+                Program::from(vec![Char('a'), Split(InstructionPointer(0), InstructionPointer(2)), Char('b'), Split(InstructionPointer(2), InstructionPointer(4)), Match(TerminalId(0))]),
                 0
             )
         );
@@ -227,8 +229,8 @@ pub mod tests {
     #[test]
     fn build_char() {
         use Instruction::*;
-        let program = compile("a", 0).unwrap();
-        assert_eq!(program, (vec![Char('a'), Match(0)], 0));
+        let program = compile("a", TerminalId(0)).unwrap();
+        assert_eq!(program, (Program::from(vec![Char('a'), Match(TerminalId(0))]), 0));
     }
 
     #[test]
@@ -240,48 +242,48 @@ pub mod tests {
         tree.insert((Included('A'), Included('Z')));
         tree.insert((Included('0'), Included('9')));
         tree.insert((Included('_'), Included('_')));
-        let program = compile("[a-zA-Z0-9_]", 0).unwrap();
-        assert_eq!(program, (vec![CharacterClass(tree, false), Match(0)], 0));
+        let program = compile("[a-zA-Z0-9_]", TerminalId(0)).unwrap();
+        assert_eq!(program, (Program::from(vec![CharacterClass(tree, false), Match(TerminalId(0))]), 0));
     }
 
     #[test]
     fn build_word_boundary() {
         use Instruction::*;
-        let program = compile(r"\b", 0).unwrap();
-        assert_eq!(program, (vec![WordBoundary, Match(0)], 0));
+        let program = compile(r"\b", TerminalId(0)).unwrap();
+        assert_eq!(program, (Program::from(vec![WordBoundary, Match(TerminalId(0))]), 0));
     }
 
     #[test]
     fn build_eof() {
         use Instruction::*;
-        let program = compile(r"\z", 0).unwrap();
-        assert_eq!(program, (vec![EOF, Match(0)], 0));
-        let program = compile(r"\Z", 0).unwrap();
-        assert_eq!(program, (vec![EOF, Match(0)], 0));
+        let program = compile(r"\z", TerminalId(0)).unwrap();
+        assert_eq!(program, (Program::from(vec![EOF, Match(TerminalId(0))]), 0));
+        let program = compile(r"\Z", TerminalId(0)).unwrap();
+        assert_eq!(program, (Program::from(vec![EOF, Match(TerminalId(0))]), 0));
     }
 
     #[test]
     fn build_escaped() {
         use Instruction::*;
-        let program = compile(r"\w", 0).unwrap();
-        assert_eq!(program, (vec![WordChar, Match(0)], 0));
+        let program = compile(r"\w", TerminalId(0)).unwrap();
+        assert_eq!(program, (Program::from(vec![WordChar, Match(TerminalId(0))]), 0));
     }
 
     #[test]
     fn build_concat() {
         use Instruction::*;
-        let program = compile("ab", 0).unwrap();
-        assert_eq!(program, (vec![Char('a'), Char('b'), Match(0)], 0));
+        let program = compile("ab", TerminalId(0)).unwrap();
+        assert_eq!(program, (Program::from(vec![Char('a'), Char('b'), Match(TerminalId(0))]), 0));
     }
 
     #[test]
     fn build_option() {
         use Instruction::*;
-        let program = compile("a|b", 0).unwrap();
+        let program = compile("a|b", TerminalId(0)).unwrap();
         assert_eq!(
             program,
             (
-                vec![Split(1, 3), Char('a'), Jump(4), Char('b'), Match(0)],
+                Program::from(vec![Split(InstructionPointer(1), InstructionPointer(3)), Char('a'), Jump(InstructionPointer(4)), Char('b'), Match(TerminalId(0))]),
                 0
             )
         );
@@ -290,52 +292,52 @@ pub mod tests {
     #[test]
     fn build_optional() {
         use Instruction::*;
-        let program = compile("a?", 0).unwrap();
-        assert_eq!(program, (vec![Split(1, 2), Char('a'), Match(0)], 0));
+        let program = compile("a?", TerminalId(0)).unwrap();
+        assert_eq!(program, (Program::from(vec![Split(InstructionPointer(1), InstructionPointer(2)), Char('a'), Match(TerminalId(0))]), 0));
     }
 
     #[test]
     fn build_kleene_star() {
         use Instruction::*;
-        let program = compile("a*", 0).unwrap();
+        let program = compile("a*", TerminalId(0)).unwrap();
         assert_eq!(
             program,
-            (vec![Split(1, 3), Char('a'), Jump(0), Match(0)], 0)
+            (Program::from(vec![Split(InstructionPointer(1), InstructionPointer(3)), Char('a'), Jump(InstructionPointer(0)), Match(TerminalId(0))]), 0)
         );
     }
 
     #[test]
     fn build_repetition() {
         use Instruction::*;
-        let program = compile("a+", 0).unwrap();
-        assert_eq!(program, (vec![Char('a'), Split(0, 2), Match(0)], 0));
+        let program = compile("a+", TerminalId(0)).unwrap();
+        assert_eq!(program, (Program::from(vec![Char('a'), Split(InstructionPointer(0), InstructionPointer(2)), Match(TerminalId(0))]), 0));
     }
 
     #[test]
     fn build_any() {
         use Instruction::*;
-        let program = compile(".", 0).unwrap();
-        assert_eq!(program, (vec![Any, Match(0)], 0));
+        let program = compile(".", TerminalId(0)).unwrap();
+        assert_eq!(program, (Program::from(vec![Any, Match(TerminalId(0))]), 0));
     }
 
     #[test]
     fn build_groups() {
         use Instruction::*;
-        let program = compile("(a+)(b+)", 0).unwrap();
+        let program = compile("(a+)(b+)", TerminalId(0)).unwrap();
         assert_eq!(
             program,
             (
-                vec![
+                Program::from(vec![
                     Save(0),
                     Char('a'),
-                    Split(1, 3),
+                    Split(InstructionPointer(1), InstructionPointer(3)),
                     Save(1),
                     Save(2),
                     Char('b'),
-                    Split(5, 7),
+                    Split(InstructionPointer(5), InstructionPointer(7)),
                     Save(3),
-                    Match(0)
-                ],
+                    Match(TerminalId(0))
+                ]),
                 2
             )
         )
@@ -345,32 +347,32 @@ pub mod tests {
     fn build_string() {
         use std::collections::Bound::Included;
         use Instruction::*;
-        let program = compile(r"'(([^'\\]|\\[^\\]|\\\\)*)'", 0).unwrap();
+        let program = compile(r"'(([^'\\]|\\[^\\]|\\\\)*)'", TerminalId(0)).unwrap();
         let mut first_char_class = IntervalTree::default();
         first_char_class.insert((Included('\''), Included('\'')));
         first_char_class.insert((Included('\\'), Included('\\')));
         let mut second_char_class = IntervalTree::default();
         second_char_class.insert((Included('\\'), Included('\\')));
-        let correct = vec![
+        let correct = Program::from(vec![
             Char('\''),
             Save(0),
-            Split(3, 15),
+            Split(InstructionPointer(3), InstructionPointer(15)),
             Save(2),
-            Split(5, 11),
-            Split(6, 8),
+            Split(InstructionPointer(5), InstructionPointer(11)),
+            Split(InstructionPointer(6), InstructionPointer(8)),
             CharacterClass(first_char_class, true),
-            Jump(10),
+            Jump(InstructionPointer(10)),
             Char('\\'),
             CharacterClass(second_char_class, true),
-            Jump(13),
+            Jump(InstructionPointer(13)),
             Char('\\'),
             Char('\\'),
             Save(3),
-            Jump(2),
+            Jump(InstructionPointer(2)),
             Save(1),
             Char('\''),
-            Match(0),
-        ];
+            Match(TerminalId(0)),
+        ]);
         assert_eq!(program, (correct, 2));
     }
 }
@@ -427,36 +429,39 @@ pub fn build(regex: Regex, program: &mut Program) {
             program.push(Instruction::Char(c));
         }
         Regex::Option(r1, r2) => {
-            let split_pos = program.len();
-            program.push(Instruction::Split(0, 0));
+            let split_pos = InstructionPointer(program.len());
+            program.push(Instruction::Split(
+                InstructionPointer(0),
+                InstructionPointer(0),
+            ));
             build(*r1, program);
-            let jmp_pos = program.len();
-            program.push(Instruction::Jump(0));
+            let jmp_pos = program.len_ip();
+            program.push(Instruction::Jump(InstructionPointer(0)));
             build(*r2, program);
-            program[split_pos] = Instruction::Split(split_pos + 1, jmp_pos + 1);
-            program[jmp_pos] = Instruction::Jump(program.len());
+            program[split_pos] = Instruction::Split(split_pos.incr(), jmp_pos.incr());
+            program[jmp_pos] = Instruction::Jump(program.len_ip());
         }
         Regex::Concat(r1, r2) => {
             build(*r1, program);
             build(*r2, program);
         }
         Regex::Optional(r) => {
-            let split_pos = program.len();
-            program.push(Instruction::Split(0, 0));
+            let split_pos = program.len_ip();
+            program.push(Instruction::Split(InstructionPointer(0), InstructionPointer(0)));
             build(*r, program);
-            program[split_pos] = Instruction::Split(split_pos + 1, program.len());
+            program[split_pos] = Instruction::Split(split_pos.incr(), program.len_ip());
         }
         Regex::KleeneStar(r) => {
-            let split_pos = program.len();
-            program.push(Instruction::Split(0, 0));
+            let split_pos = program.len_ip();
+            program.push(Instruction::Split(InstructionPointer(0), InstructionPointer(0)));
             build(*r, program);
             program.push(Instruction::Jump(split_pos));
-            program[split_pos] = Instruction::Split(split_pos + 1, program.len());
+            program[split_pos] = Instruction::Split(split_pos.incr(), program.len_ip());
         }
         Regex::Repetition(r) => {
-            let init_pos = program.len();
+            let init_pos = program.len_ip();
             build(*r, program);
-            program.push(Instruction::Split(init_pos, program.len() + 1));
+            program.push(Instruction::Split(init_pos, program.len_ip().incr()));
         }
         Regex::Group(r, i) => {
             program.push(Instruction::Save(2 * i));

@@ -219,6 +219,7 @@ impl Location {
         }
     }
 
+    /// Merge to contiguous locations, assuming left is before right.
     pub fn extend(left: Self, right: Self) -> Self {
         Self {
             file: left.file,
@@ -268,14 +269,20 @@ impl LocationBuilder {
     }
 
     pub fn from(&self, start: usize, end: usize) -> Location {
-	fn pos_to_char_pos(pos: usize, newlines: &[usize]) -> CharLocation {
-	    let i = match newlines.binary_search(&pos) { Ok(x) | Err(x) => x };
-	    if i == 0 {
-		(i, pos)
-	    } else {
-		(i, pos - newlines[i-1] - 1)
-	    }
-	}
-	Location::new(self.file.clone(), pos_to_char_pos(start, &self.newlines), pos_to_char_pos(end, &self.newlines))
+        fn pos_to_char_pos(pos: usize, newlines: &[usize]) -> CharLocation {
+            let i = match newlines.binary_search(&pos) {
+                Ok(x) | Err(x) => x,
+            };
+            if i == 0 {
+                (i, pos)
+            } else {
+                (i, pos - newlines[i - 1] - 1)
+            }
+        }
+        Location::new(
+            self.file.clone(),
+            pos_to_char_pos(start, &self.newlines),
+            pos_to_char_pos(end, &self.newlines),
+        )
     }
 }

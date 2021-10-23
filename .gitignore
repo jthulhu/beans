@@ -2,6 +2,8 @@
 *.bo
 *.bns
 
+.direnv
+
 #Added by cargo
 
 /target

@@ -11,9 +11,9 @@ mod case;
 pub mod error;
 pub mod lexer;
 pub mod location;
-pub mod parser;
-pub mod regex;
-pub mod stream;
+pub(crate) mod parser;
+pub(crate) mod regex;
+pub(crate) mod stream;
 mod wrapper;
 // Macros
 #[macro_use]

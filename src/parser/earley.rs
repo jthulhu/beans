@@ -1,6 +1,5 @@
 use super::grammarparser::{Attribute, ElementType, Grammar, GrammarBuilder, Rule, RuleElement};
-use super::parser::{NonTerminalId, RuleId};
-use super::parser::{ParseResult, Parser};
+use super::parser::{NonTerminalId, ParseResult, Parser, RuleId};
 use crate::error::{
     Error, ErrorType,
     WResult::{self, WErr, WOk},

@@ -253,6 +253,7 @@ pub struct LocationBuilder {
 }
 
 impl LocationBuilder {
+    /// Create a new Builder for a Location.
     pub fn new<F: Into<Rc<str>>, S: AsRef<str>>(file: F, stream: S) -> Self {
         let newlines = stream
             .as_ref()
@@ -268,6 +269,7 @@ impl LocationBuilder {
         }
     }
 
+    /// Create a new location from two indexes.
     pub fn from(&self, start: usize, end: usize) -> Location {
         fn pos_to_char_pos(pos: usize, newlines: &[usize]) -> CharLocation {
             let i = match newlines.binary_search(&pos) {

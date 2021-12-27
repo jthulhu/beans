@@ -26,6 +26,7 @@ mod tests {
 ///
 /// Indicate which type of case a certain string is written in.
 #[derive(Debug, PartialEq, Eq)]
+#[allow(clippy::enum_variant_names)]
 pub enum Case {
     /// snakecase, snake_case
     SnakeCase,

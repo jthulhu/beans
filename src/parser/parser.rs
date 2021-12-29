@@ -1,6 +1,6 @@
 use super::grammarparser::{Grammar, GrammarBuilder};
 use crate::error::WResult;
-use crate::lexer::LexedStream;
+use crate::lexer::{LexedStream, Token};
 use crate::newtype;
 use hashbrown::HashMap;
 use std::rc::Rc;
@@ -10,16 +10,30 @@ newtype! {
 }
 newtype! {
     pub id NonTerminalId
+    impl {
+        pub fn next(&mut self) -> Self {
+            self.0 += 1;
+            NonTerminalId(self.0-1)
+        }
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
+    Int(i32),
+    Str(String),
+    Float(f32),
+    Bool(bool),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum AST {
     Node {
         nonterminal: NonTerminalId,
         attributes: HashMap<Rc<str>, AST>,
     },
-    Literal(String),
-    None,
+    Terminal(Token),
+    Literal(Value),
 }
 
 /// Successful result of the parse of an input.

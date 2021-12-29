@@ -14,7 +14,8 @@ pub mod location;
 pub(crate) mod parser;
 pub(crate) mod regex;
 pub(crate) mod stream;
-mod wrapper;
+#[macro_use]
+mod newtype;
 // Macros
 #[macro_use]
 mod utilities;

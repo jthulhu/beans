@@ -23,9 +23,14 @@ mod test {
     }
 }
 
-#[derive(Default)]
 pub struct List<T> {
     content: Link<T>,
+}
+
+impl<T> Default for List<T> {
+    fn default() -> Self {
+        Self { content: None }
+    }
 }
 
 type Link<T> = Option<Rc<Node<T>>>;
@@ -45,12 +50,14 @@ impl<T> List<T> {
         }
     }
 
+    #[allow(unused)]
     pub fn tail(&self) -> Self {
         List {
             content: self.content.as_ref().and_then(|node| node.tail.clone()),
         }
     }
 
+    #[allow(unused)]
     pub fn head(&self) -> Option<&T> {
         self.content.as_ref().map(|node| &node.head)
     }

@@ -9,16 +9,16 @@ mod tests {
     #[test]
     fn case_recogniser() {
         use Case::*;
-        assert_eq!(Case::case("snakecase"), SnakeCase);
-        assert_eq!(Case::case("snake_case"), SnakeCase);
-        assert_eq!(Case::case("PascalCase"), PascalCase);
-        assert_eq!(Case::case("camelCase"), CamelCase);
-        assert_eq!(Case::case("Pascal_Snake_Case"), PascalSnakeCase);
-        assert_eq!(Case::case("UPPERCASE"), UpperCase);
-        assert_eq!(Case::case("SCREAMING_SNAKE_CASE"), ScreamingSnakeCase);
-        assert_eq!(Case::case(""), Other);
-        assert_eq!(Case::case("__"), Other);
-        assert_eq!(Case::case("fake snake case"), Other);
+        assert_eq!(Case::compute("snakecase"), SnakeCase);
+        assert_eq!(Case::compute("snake_case"), SnakeCase);
+        assert_eq!(Case::compute("PascalCase"), PascalCase);
+        assert_eq!(Case::compute("camelCase"), CamelCase);
+        assert_eq!(Case::compute("Pascal_Snake_Case"), PascalSnakeCase);
+        assert_eq!(Case::compute("UPPERCASE"), UpperCase);
+        assert_eq!(Case::compute("SCREAMING_SNAKE_CASE"), ScreamingSnakeCase);
+        assert_eq!(Case::compute(""), Other);
+        assert_eq!(Case::compute("__"), Other);
+        assert_eq!(Case::compute("fake snake case"), Other);
     }
 }
 
@@ -45,7 +45,7 @@ pub enum Case {
 }
 
 impl Case {
-    pub fn case(string: &str) -> Self {
+    pub fn compute(string: &str) -> Self {
         if string.is_empty() {
             return Self::Other;
         }
@@ -102,12 +102,12 @@ pub trait CaseProcess {
 
 impl CaseProcess for &str {
     fn case(&self) -> Case {
-        Case::case(self)
+        Case::compute(self)
     }
 }
 
 impl CaseProcess for String {
     fn case(&self) -> Case {
-        Case::case(self.as_str())
+        Case::compute(self.as_str())
     }
 }

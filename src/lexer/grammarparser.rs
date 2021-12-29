@@ -7,7 +7,6 @@ use crate::lexer::TerminalId;
 use crate::location::Location;
 use crate::regex::{CompiledRegex, RegexBuilder};
 use crate::stream::{Char, Stream, StringStream};
-use crate::wrapper::WrappedBitSet;
 use crate::{ctry, int_err, newtype};
 use hashbrown::{HashMap, HashSet};
 use std::rc::Rc;
@@ -119,6 +118,10 @@ newtype! {
     pub id TokenId
 }
 
+newtype! {
+    pub set Ignores [TerminalId]
+}
+
 /// # Summary
 ///
 /// A builder for a `LexerGrammar` object.
@@ -191,14 +194,14 @@ impl LexerGrammarBuilder {
             Self::ignore_blank_lines(&mut stream);
         }
         let re = regex_builder.build();
-        let mut ignores_bitset = WrappedBitSet::with_capacity(names.len());
+        let mut ignores_set = Ignores::with_capacity(names.len().into());
         for (i, name) in names.iter().enumerate() {
             let id = TerminalId(i);
             if ignores.contains(name) {
-                ignores_bitset.insert(id);
+                ignores_set.insert(id);
             }
         }
-        WOk(LexerGrammar::new(re, names, ignores_bitset), warnings)
+        WOk(LexerGrammar::new(re, names, ignores_set), warnings)
     }
 
     fn read_pattern(stream: &mut StringStream) -> String {
@@ -293,16 +296,12 @@ impl LexerGrammarBuilder {
 pub struct LexerGrammar {
     pattern: CompiledRegex,
     names: Vec<String>,
-    ignores: WrappedBitSet<TerminalId>,
+    ignores: Ignores,
     name_map: HashMap<String, TerminalId>,
 }
 
 impl LexerGrammar {
-    pub fn new(
-        pattern: CompiledRegex,
-        names: Vec<String>,
-        ignores: WrappedBitSet<TerminalId>,
-    ) -> Self {
+    pub fn new(pattern: CompiledRegex, names: Vec<String>, ignores: Ignores) -> Self {
         let mut name_map = HashMap::new();
         for (i, name) in names.iter().enumerate() {
             let id = TerminalId(i);

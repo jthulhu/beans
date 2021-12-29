@@ -6,7 +6,7 @@ use unbounded_interval_tree::IntervalTree;
 pub mod tests {
     use super::*;
     use crate::lexer::TerminalId;
-    
+
     /// Compile a regex into a program executable on the VM.
     pub fn compile(regex: &str, id: TerminalId) -> Result<(Program, usize), RegexError> {
         let mut program = Program::new();
@@ -220,7 +220,13 @@ pub mod tests {
         assert_eq!(
             program,
             (
-                Program::from(vec![Char('a'), Split(InstructionPointer(0), InstructionPointer(2)), Char('b'), Split(InstructionPointer(2), InstructionPointer(4)), Match(TerminalId(0))]),
+                Program::from(vec![
+                    Char('a'),
+                    Split(InstructionPointer(0), InstructionPointer(2)),
+                    Char('b'),
+                    Split(InstructionPointer(2), InstructionPointer(4)),
+                    Match(TerminalId(0))
+                ]),
                 0
             )
         );
@@ -230,7 +236,10 @@ pub mod tests {
     fn build_char() {
         use Instruction::*;
         let program = compile("a", TerminalId(0)).unwrap();
-        assert_eq!(program, (Program::from(vec![Char('a'), Match(TerminalId(0))]), 0));
+        assert_eq!(
+            program,
+            (Program::from(vec![Char('a'), Match(TerminalId(0))]), 0)
+        );
     }
 
     #[test]
@@ -243,14 +252,23 @@ pub mod tests {
         tree.insert((Included('0'), Included('9')));
         tree.insert((Included('_'), Included('_')));
         let program = compile("[a-zA-Z0-9_]", TerminalId(0)).unwrap();
-        assert_eq!(program, (Program::from(vec![CharacterClass(tree, false), Match(TerminalId(0))]), 0));
+        assert_eq!(
+            program,
+            (
+                Program::from(vec![CharacterClass(tree, false), Match(TerminalId(0))]),
+                0
+            )
+        );
     }
 
     #[test]
     fn build_word_boundary() {
         use Instruction::*;
         let program = compile(r"\b", TerminalId(0)).unwrap();
-        assert_eq!(program, (Program::from(vec![WordBoundary, Match(TerminalId(0))]), 0));
+        assert_eq!(
+            program,
+            (Program::from(vec![WordBoundary, Match(TerminalId(0))]), 0)
+        );
     }
 
     #[test]
@@ -266,14 +284,23 @@ pub mod tests {
     fn build_escaped() {
         use Instruction::*;
         let program = compile(r"\w", TerminalId(0)).unwrap();
-        assert_eq!(program, (Program::from(vec![WordChar, Match(TerminalId(0))]), 0));
+        assert_eq!(
+            program,
+            (Program::from(vec![WordChar, Match(TerminalId(0))]), 0)
+        );
     }
 
     #[test]
     fn build_concat() {
         use Instruction::*;
         let program = compile("ab", TerminalId(0)).unwrap();
-        assert_eq!(program, (Program::from(vec![Char('a'), Char('b'), Match(TerminalId(0))]), 0));
+        assert_eq!(
+            program,
+            (
+                Program::from(vec![Char('a'), Char('b'), Match(TerminalId(0))]),
+                0
+            )
+        );
     }
 
     #[test]
@@ -283,7 +310,13 @@ pub mod tests {
         assert_eq!(
             program,
             (
-                Program::from(vec![Split(InstructionPointer(1), InstructionPointer(3)), Char('a'), Jump(InstructionPointer(4)), Char('b'), Match(TerminalId(0))]),
+                Program::from(vec![
+                    Split(InstructionPointer(1), InstructionPointer(3)),
+                    Char('a'),
+                    Jump(InstructionPointer(4)),
+                    Char('b'),
+                    Match(TerminalId(0))
+                ]),
                 0
             )
         );
@@ -293,7 +326,17 @@ pub mod tests {
     fn build_optional() {
         use Instruction::*;
         let program = compile("a?", TerminalId(0)).unwrap();
-        assert_eq!(program, (Program::from(vec![Split(InstructionPointer(1), InstructionPointer(2)), Char('a'), Match(TerminalId(0))]), 0));
+        assert_eq!(
+            program,
+            (
+                Program::from(vec![
+                    Split(InstructionPointer(1), InstructionPointer(2)),
+                    Char('a'),
+                    Match(TerminalId(0))
+                ]),
+                0
+            )
+        );
     }
 
     #[test]
@@ -302,7 +345,15 @@ pub mod tests {
         let program = compile("a*", TerminalId(0)).unwrap();
         assert_eq!(
             program,
-            (Program::from(vec![Split(InstructionPointer(1), InstructionPointer(3)), Char('a'), Jump(InstructionPointer(0)), Match(TerminalId(0))]), 0)
+            (
+                Program::from(vec![
+                    Split(InstructionPointer(1), InstructionPointer(3)),
+                    Char('a'),
+                    Jump(InstructionPointer(0)),
+                    Match(TerminalId(0))
+                ]),
+                0
+            )
         );
     }
 
@@ -310,7 +361,17 @@ pub mod tests {
     fn build_repetition() {
         use Instruction::*;
         let program = compile("a+", TerminalId(0)).unwrap();
-        assert_eq!(program, (Program::from(vec![Char('a'), Split(InstructionPointer(0), InstructionPointer(2)), Match(TerminalId(0))]), 0));
+        assert_eq!(
+            program,
+            (
+                Program::from(vec![
+                    Char('a'),
+                    Split(InstructionPointer(0), InstructionPointer(2)),
+                    Match(TerminalId(0))
+                ]),
+                0
+            )
+        );
     }
 
     #[test]
@@ -447,13 +508,19 @@ pub fn build(regex: Regex, program: &mut Program) {
         }
         Regex::Optional(r) => {
             let split_pos = program.len_ip();
-            program.push(Instruction::Split(InstructionPointer(0), InstructionPointer(0)));
+            program.push(Instruction::Split(
+                InstructionPointer(0),
+                InstructionPointer(0),
+            ));
             build(*r, program);
             program[split_pos] = Instruction::Split(split_pos.incr(), program.len_ip());
         }
         Regex::KleeneStar(r) => {
             let split_pos = program.len_ip();
-            program.push(Instruction::Split(InstructionPointer(0), InstructionPointer(0)));
+            program.push(Instruction::Split(
+                InstructionPointer(0),
+                InstructionPointer(0),
+            ));
             build(*r, program);
             program.push(Instruction::Jump(split_pos));
             program[split_pos] = Instruction::Split(split_pos.incr(), program.len_ip());

@@ -1,15 +1,14 @@
 use crate::error::{
     Error, ErrorType, WResult,
     WResult::{WErr, WOk},
-    Warning, WarningSet, WarningType,
+    WarningSet,
 };
 use crate::lexer::TerminalId;
 use crate::lexer::{LexedStream, Lexer, LexerBuilder, Token};
 use crate::location::Location;
 use crate::parser::earley::GrammarRules;
 use crate::stream::StringStream;
-use crate::wrapper::WrappedBitSet;
-use crate::{ask_case, ctry};
+use crate::{ask_case, ctry, newtype};
 // use crate::{rule, proxy, collect};
 use super::parser::NonTerminalId;
 use hashbrown::HashMap;
@@ -34,7 +33,23 @@ pub enum Attribute {
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ElementType {
     Terminal(TerminalId),
-    NonTerminal(Option<NonTerminalId>),
+    NonTerminal(NonTerminalId),
+}
+
+impl From<NonTerminalId> for ElementType {
+    fn from(id: NonTerminalId) -> Self {
+        Self::NonTerminal(id)
+    }
+}
+
+impl From<TerminalId> for ElementType {
+    fn from(id: TerminalId) -> Self {
+        Self::Terminal(id)
+    }
+}
+
+newtype! {
+    pub set Axioms [NonTerminalId]
 }
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -46,6 +61,8 @@ pub struct RuleElement {
 }
 
 impl RuleElement {
+    #![allow(unused)]
+
     pub fn new<N: Into<Rc<str>>>(
         name: N,
         attribute: Attribute,
@@ -94,6 +111,7 @@ pub struct Rule {
 }
 
 impl Rule {
+    #[allow(unused)]
     pub fn new<N: Into<Rc<str>>>(
         name: N,
         id: NonTerminalId,
@@ -155,6 +173,8 @@ pub trait GrammarBuilder<'deserializer>: Sized {
     fn grammar(&self) -> Rc<str>;
     /// Build the grammar.
     fn build(mut self, lexer: &Lexer) -> WResult<Self::Grammar> {
+        #![allow(unused)] // Bug that mark these functions as unused.
+
         /// Read a token, match it against the provided `id`.
         /// If it matches, consume the token.
         /// Return whether the token matched.
@@ -371,22 +391,24 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Return the element.
         fn read_rule_element(
             lexed_input: &mut LexedStream<'_, '_>,
+            id: &mut NonTerminalId,
+            name_map: &mut HashMap<Rc<str>, NonTerminalId>,
             lexer: &Lexer,
         ) -> WResult<RuleElement> {
             let mut warnings = WarningSet::empty();
-            let id = ctry!(match_now(lexed_input, "ID"), warnings);
+            let name_token = ctry!(match_now(lexed_input, "ID"), warnings);
             let attribute = ctry!(read_rule_element_attribute(lexed_input), warnings);
             let key = ctry!(read_rule_element_key(lexed_input), warnings);
-            let name = id.content();
+            let name = name_token.content();
             WOk(
                 RuleElement::new(
                     name,
                     attribute,
                     key,
                     if let Some(id) = lexer.grammar().id(name) {
-                        ElementType::Terminal(id)
+                        ElementType::from(id)
                     } else {
-                        ElementType::NonTerminal(None)
+                        ElementType::from(*name_map.entry(name.into()).or_insert(id.next()))
                     },
                 ),
                 warnings,
@@ -397,11 +419,18 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Consume the tokens.
         /// Fails if the rule is malformed.
         /// Return the rule.
-        fn read_rule(lexed_input: &mut LexedStream<'_, '_>, lexer: &Lexer) -> WResult<PartialRule> {
+        fn read_rule(
+            lexed_input: &mut LexedStream<'_, '_>,
+            id: &mut NonTerminalId,
+            name_map: &mut HashMap<Rc<str>, NonTerminalId>,
+            lexer: &Lexer,
+        ) -> WResult<PartialRule> {
             let mut warnings = WarningSet::empty();
             let expected = "ID";
             let mut rule_elements = Vec::new();
             while let Some(token) = ctry!(lexed_input.next_any(), warnings) {
+		#[allow(clippy::branches_sharing_code)] // Extracting lexed_input.drop_last()
+		//                                         causes the compiler to complain.
                 if token.name() == "LPROXY" {
                     lexed_input.drop_last();
                     let proxy = ctry!(read_proxy(lexed_input), warnings);
@@ -415,7 +444,10 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                 } else {
                     lexed_input.drop_last();
                 }
-                rule_elements.push(ctry!(read_rule_element(lexed_input, lexer), warnings));
+                rule_elements.push(ctry!(
+                    read_rule_element(lexed_input, id, name_map, lexer),
+                    warnings
+                ));
             }
             WErr(generate_error(
                 lexed_input.last_location().clone(),
@@ -432,25 +464,29 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         fn read_definition(
             lexed_input: &mut LexedStream<'_, '_>,
 
-            id: NonTerminalId,
+            next_id: &mut NonTerminalId,
+            name_map: &mut HashMap<Rc<str>, NonTerminalId>,
             lexer: &Lexer,
-        ) -> WResult<(bool, String, Vec<Rule>)> {
+        ) -> WResult<(bool, String, NonTerminalId, Vec<Rule>)> {
             let mut warnings = WarningSet::empty();
             let axiom = ctry!(read_token_walk(lexed_input, "AT"), warnings);
             let name = ctry!(match_now(lexed_input, "ID"), warnings);
             ctry!(match_now(lexed_input, "ASSIGNMENT"), warnings);
             let name_string = name.content();
+            let id = *name_map.entry(name_string.into()).or_insert(next_id.next());
             let mut rules = Vec::new();
             'read_rules: while let Some(token) = ctry!(lexed_input.next_any(), warnings) {
                 if token.name() == "SEMICOLON" {
                     break 'read_rules;
                 }
                 lexed_input.drop_last();
-                let partial_rule = ctry!(read_rule(lexed_input, lexer), warnings);
+                let partial_rule =
+                    ctry!(read_rule(lexed_input, next_id, name_map, lexer), warnings);
+                let id = *name_map.entry(name_string.into()).or_insert(next_id.next());
                 let rule = Rule::new(name_string, id, partial_rule.elements, partial_rule.proxy);
                 rules.push(rule);
             }
-            WOk((axiom, name_string.to_string(), rules), warnings)
+            WOk((axiom, name_string.to_string(), id, rules), warnings)
         }
 
         let mut warnings = WarningSet::empty();
@@ -464,11 +500,13 @@ pub trait GrammarBuilder<'deserializer>: Sized {
 
         let mut done: HashMap<_, Location> = HashMap::new();
         let mut nonterminals = NonTerminalId::from(0);
+        let mut name_map = HashMap::new();
+
         while let Some(token) = ctry!(lexed_input.next_any(), warnings) {
             let first_location = token.location().clone();
             lexed_input.drop_last();
-            let (axiom, name, new_rules) = ctry!(
-                read_definition(&mut lexed_input, nonterminals, lexer),
+            let (axiom, name, id, new_rules) = ctry!(
+                read_definition(&mut lexed_input, &mut nonterminals, &mut name_map, lexer),
                 warnings
             );
             let location = Location::extend(first_location, lexed_input.last_location().clone());
@@ -485,39 +523,30 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                 ));
             }
             if axiom {
-                axioms_vec.push((rules.len(), rules.len() + new_rules.len()));
+                axioms_vec.push(id);
             }
             rules.extend(new_rules);
             ask_case!(&name, PascalCase, warnings);
             done.insert(name, location);
-            nonterminals = NonTerminalId::from(nonterminals.0 + 1);
         }
 
-        let mut axioms = WrappedBitSet::with_capacity(rules.len());
-        for (i, j) in axioms_vec {
-            axioms.set_range(i..j, true);
-        }
+        let axioms = Axioms::from_vec(nonterminals, axioms_vec);
 
-        let mut name_map = HashMap::new();
-
-        for rule in rules.iter() {
-            name_map.insert(rule.name.clone(), rule.id);
-        }
-
-        for rule in rules.iter_mut() {
-            for element in rule.elements.iter_mut() {
-                if element.is_terminal() {
-                    continue;
-                }
-                match name_map.get(&element.name) {
-                    Some(&id) => element.element_type = ElementType::NonTerminal(Some(id)),
-                    None => warnings.add(Warning::new(WarningType::UndefinedNonTerminal(
-                        rule.name.clone(),
-                        element.name.clone(),
-                    ))),
-                }
-            }
-        }
+        // for rule in rules.iter_mut() {
+        //     for element in rule.elements.iter_mut() {
+        //         if element.is_terminal() {
+        //             continue;
+        //         }
+        //         if let Some(&id) = name_map.get(&element.name) {
+        //             element.element_type = ElementType::NonTerminal(id)
+        //         } else {
+        //             warnings.add(Warning::new(WarningType::UndefinedNonTerminal(
+        //                 rule.name.clone(),
+        //                 element.name.clone(),
+        //             )))
+        //         }
+        //     }
+        // }
 
         let grammar = ctry!(Self::Grammar::new(rules, axioms, name_map), warnings);
 
@@ -526,15 +555,15 @@ pub trait GrammarBuilder<'deserializer>: Sized {
 }
 
 /// `Grammar` implements the require.
-pub trait Grammar<'deserializer>: Sized + Serialize + Deserialize<'deserializer> {
+pub trait Grammar<'d>: Sized + Serialize + Deserialize<'d> {
     fn new(
         rules: GrammarRules,
-        axioms: WrappedBitSet<NonTerminalId>,
+        axioms: Axioms,
         name_map: HashMap<Rc<str>, NonTerminalId>,
     ) -> WResult<Self>;
 
-    fn from(bytes: &'deserializer [u8]) -> WResult<Self> {
-        bincode::deserialize::<'_, Self>(bytes)
+    fn from(bytes: &'d [u8]) -> WResult<Self> {
+        bincode::deserialize::<'d, Self>(bytes)
             .map_err(|x| {
                 Error::new(
                     Location::new(

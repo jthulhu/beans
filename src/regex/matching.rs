@@ -1,6 +1,5 @@
 use crate::lexer::TerminalId;
 use crate::newtype;
-use fixedbitset::FixedBitSet;
 use unbounded_interval_tree::IntervalTree;
 
 #[cfg(test)]
@@ -65,7 +64,11 @@ mod tests {
     #[test]
     fn greedy() {
         let (program, nb_groups) = compile("(a+)(a+)", TerminalId(0)).unwrap();
-        let Match { pos: end, id: idx, groups: results } = find(&program, "aaaa", nb_groups, &Allowed::All).unwrap();
+        let Match {
+            pos: end,
+            id: idx,
+            groups: results,
+        } = find(&program, "aaaa", nb_groups, &Allowed::All).unwrap();
         assert_eq!(end, 4);
         assert_eq!(idx, TerminalId(0));
         assert_eq!(results, vec![Some(0), Some(3), Some(3), Some(4)]);
@@ -74,7 +77,11 @@ mod tests {
     #[test]
     fn partial() {
         let (program, nb_groups) = compile("a+", TerminalId(0)).unwrap();
-        let Match { pos: end, id: idx, groups: results } = find(&program, "aaabcd", nb_groups, &Allowed::All).unwrap();
+        let Match {
+            pos: end,
+            id: idx,
+            groups: results,
+        } = find(&program, "aaabcd", nb_groups, &Allowed::All).unwrap();
         assert_eq!(end, 3);
         assert_eq!(idx, TerminalId(0));
         assert_eq!(results, Vec::new());
@@ -84,9 +91,9 @@ mod tests {
 newtype! {
     pub id InstructionPointer
     impl {
-	pub fn incr(&self) -> Self {
-	    Self(self.0+1)
-	}
+    pub fn incr(&self) -> Self {
+        Self(self.0+1)
+    }
     }
 }
 
@@ -177,9 +184,9 @@ newtype! {
     #[derive(PartialEq)]
     pub vec Program (Instruction) [InstructionPointer]
     impl {
-	pub fn len_ip(&self) -> InstructionPointer {
-	    InstructionPointer(self.len())
-	}
+    pub fn len_ip(&self) -> InstructionPointer {
+        InstructionPointer(self.len())
+    }
     }
 }
 
@@ -217,7 +224,7 @@ impl ThreadList {
     /// Create a new `ThreadList` with a given capacity.
     fn new(size: usize) -> Self {
         Self {
-            done: DoneThreads::with_capacity(size),
+            done: DoneThreads::with_raw_capacity(size),
             threads: Vec::new(),
         }
     }
@@ -397,7 +404,11 @@ fn match_next(
                     });
                 }
             } else {
-                *best_match = Some(Match { pos, id: *id, groups: thread.groups });
+                *best_match = Some(Match {
+                    pos,
+                    id: *id,
+                    groups: thread.groups,
+                });
             }
         }
         Instruction::CharacterClass(class, negated) => {

@@ -22,11 +22,17 @@ mod tests {
             .with_named_regex("b", String::from("B"))
             .unwrap()
             .build();
-        assert_eq!(regex.names, GroupNames::from(vec![String::from("As"), String::from("B")]));
+        assert_eq!(
+            regex.names,
+            GroupNames::from(vec![String::from("As"), String::from("B")])
+        );
         assert_eq!(
             regex.program,
             Program::from(vec![
-                Switch(vec![(TerminalId(0), InstructionPointer(1)), (TerminalId(1), InstructionPointer(4))]),
+                Switch(vec![
+                    (TerminalId(0), InstructionPointer(1)),
+                    (TerminalId(1), InstructionPointer(4))
+                ]),
                 Char('a'),
                 Split(InstructionPointer(1), InstructionPointer(3)),
                 Match(TerminalId(0)),
@@ -46,7 +52,10 @@ mod tests {
         assert_eq!(
             regex.program,
             Program::from(vec![
-                Switch(vec![(TerminalId(0), InstructionPointer(1)), (TerminalId(1), InstructionPointer(6))]),
+                Switch(vec![
+                    (TerminalId(0), InstructionPointer(1)),
+                    (TerminalId(1), InstructionPointer(6))
+                ]),
                 Save(0),
                 Char('a'),
                 Split(InstructionPointer(2), InstructionPointer(4)),
@@ -165,7 +174,7 @@ impl Allowed {
         match self {
             Allowed::All => matching::Allowed::All,
             Allowed::Some(rules) => {
-                let mut allowed = AllowedTerminals::with_capacity(size);
+                let mut allowed = AllowedTerminals::with_raw_capacity(size);
                 for i in rules {
                     allowed.insert(*i);
                 }

@@ -1,4 +1,7 @@
-use super::grammarparser::{Attribute, ElementType, Grammar, GrammarBuilder, Rule, RuleElement};
+use super::grammarparser::{
+    Axioms, ElementType, Grammar, GrammarBuilder, Rule, RuleElement, Value,
+};
+use super::list::List;
 use super::parser::{NonTerminalId, ParseResult, Parser, RuleId};
 use crate::error::{
     Error, ErrorType,
@@ -8,28 +11,29 @@ use crate::error::{
 use crate::lexer::LexedStream;
 use crate::lexer::TerminalId;
 use crate::lexer::Token;
+use crate::parser::grammarparser::Attribute;
 use crate::parser::parser::AST;
 use crate::regex::Allowed;
 use crate::stream::StringStream;
-use crate::wrapper::WrappedBitSet;
-use crate::{ctry, newtype, retrieve};
+use crate::{ctry, newtype, nvec, retrieve};
 use hashbrown::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fmt;
 use std::rc::Rc;
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::rules;
 
-    use crate::lexer::LexerBuilder;
-    use crate::parser::grammarparser::{
-        Attribute, ElementType, Key, Proxy, Rule, RuleElement, Value,
+    use crate::{
+        lexer::LexerBuilder,
+        parser::grammarparser::{Attribute, ElementType, Key, Proxy, Rule, RuleElement, Value},
     };
 
     const GRAMMAR_NUMBERS_LEXER: &str = r#"
-NUMBER ::= [0-9]
+NUMBER ::= ([0-9])
 PM ::= [-+]
 TD ::= [*/]
 LPAR ::= \(
@@ -37,14 +41,14 @@ RPAR ::= \)
 "#;
 
     const GRAMMAR_NUMBERS: &str = r#"
-@Sum ::= Sum PM Product <>
- Product <>;
+@Sum ::= Sum@left PM Product@right <left: left right: right>
+ Product@self <self: self>;
 
-Product ::= Product TD Factor <>
- Factor <>;
+Product ::= Product@left TD Factor@right <left: left right: right>
+ Factor.self@self <self: self>;
 
-Factor ::= LPAR Sum RPAR <>
- NUMBER <>;"#;
+Factor ::= LPAR Sum@self RPAR <self: self>
+ NUMBER.0@self <self: self>;"#;
 
     struct TestEarleyItem {
         name: &'static str,
@@ -61,7 +65,7 @@ Factor ::= LPAR Sum RPAR <>
             set_id: usize,
             item_id: usize,
         ) {
-            let error_message = format!("Set #{}, item #{}: no match: ", set_id, item_id);
+            let error_message = format!("Set #{}, item #{}: no match:", set_id, item_id);
             let item = &parser.grammar().rules[other.rule];
             assert_eq!(self.name, &*item.name, "{} name.", error_message);
             assert_eq!(
@@ -73,9 +77,8 @@ Factor ::= LPAR Sum RPAR <>
             assert_eq!(
                 self.left_elements.len(),
                 other.position,
-                "{} {}.",
+                "{} fat dot position.",
                 error_message,
-                "fat dot position"
             );
             assert_eq!(self.origin, other.origin, "{} origin set.", error_message);
             for i in 0..self.left_elements.len() {
@@ -248,6 +251,98 @@ Factor ::= LPAR Sum RPAR <>
         }
     }
 
+    #[derive(Debug)]
+    struct TestToken {
+        name: &'static str,
+        attributes: Vec<(usize, &'static str)>,
+    }
+
+    impl PartialEq<Token> for TestToken {
+        fn eq(&self, other: &Token) -> bool {
+            other.name() == self.name
+                && other
+                    .attributes()
+                    .iter()
+                    .map(|(&key, value)| (key, value.as_str()))
+                    .collect::<Vec<_>>()
+                    == self.attributes
+        }
+    }
+
+    impl TestToken {
+	#![allow(unused)]
+        fn new(name: &'static str, attributes: Vec<&'static str>) -> Self {
+            Self {
+                name,
+                attributes: attributes.into_iter().enumerate().collect(),
+            }
+        }
+    }
+
+    struct MapVec(Vec<(&'static str, TestAST)>);
+
+    impl std::fmt::Debug for MapVec {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter
+                .debug_map()
+                .entries(self.0.iter().map(|&(ref k, ref v)| (k, v)))
+                .finish()
+        }
+    }
+
+    impl From<Vec<(&'static str, TestAST)>> for MapVec {
+        fn from(o: Vec<(&'static str, TestAST)>) -> Self {
+            Self(o)
+        }
+    }
+
+    #[derive(Debug)]
+    enum TestAST {
+        Node { id: usize, attributes: MapVec },
+	#[allow(unused)]
+        Terminal(TestToken),
+        Literal(crate::parser::parser::Value),
+    }
+
+    impl PartialEq<TestAST> for AST {
+        fn eq(&self, other: &TestAST) -> bool {
+            other == self
+        }
+    }
+
+    impl PartialEq<AST> for TestAST {
+        fn eq(&self, other: &AST) -> bool {
+            match (self, other) {
+                (
+                    TestAST::Node {
+                        id: tid,
+                        attributes: tattributes,
+                    },
+                    AST::Node {
+                        nonterminal: id,
+                        attributes,
+                        ..
+                    },
+                ) => {
+                    NonTerminalId::from(*tid) == *id && {
+                        let tattributes = tattributes
+                            .0
+                            .iter()
+                            .map(|(key, value)| (Rc::<str>::from(*key), value))
+                            .collect::<HashMap<_, _>>();
+                        tattributes.len() == attributes.len()
+                            && tattributes.iter().all(|(key, value)| {
+                                attributes.get(key).map_or(false, |v| *value == v)
+                            })
+                    }
+                }
+                (TestAST::Terminal(ttoken), AST::Terminal(token)) => ttoken == token,
+                (TestAST::Literal(tvalue), AST::Literal(value)) => tvalue == value,
+                _ => false,
+            }
+        }
+    }
+
     #[inline]
     fn verify(rules1: GrammarRules, rules2: Vec<TestRule>) {
         let length1 = rules1.0.len();
@@ -361,8 +456,8 @@ B ::= A <>;"#;
             A -> . (0)
             A -> . B (0)
             B -> . A (0)
-            B -> A . (0)
             A -> B . (0)
+            B -> A . (0)
         );
         let (recognised, _) = parser
             .recognise(&mut lexer.lex(&mut StringStream::new("<input>", input)))
@@ -388,7 +483,103 @@ B ::= A <>;"#;
             .unwrap();
         let forest = parser.to_forest(&table, &raw_input).unwrap();
         let ast = parser.select_ast(&forest, &raw_input);
-        assert_eq!(ast, AST::None);
+
+        let test_ast = {
+            use crate::parser::parser::Value::*;
+            use TestAST::*;
+            Node {
+                id: 0,
+                attributes: vec![
+                    (
+                        "right",
+                        Node {
+                            id: 2,
+                            attributes: vec![(
+                                "self",
+                                Node {
+                                    id: 0,
+                                    attributes: vec![
+                                        (
+                                            "right",
+                                            Node {
+                                                id: 2,
+                                                attributes: vec![(
+                                                    "self",
+                                                    Literal(Str("4".to_string())),
+                                                )]
+                                                .into(),
+                                            },
+                                        ),
+                                        (
+                                            "left",
+                                            Node {
+                                                id: 0,
+                                                attributes: vec![(
+                                                    "self",
+                                                    Node {
+                                                        id: 2,
+                                                        attributes: vec![
+                                                            (
+                                                                "right",
+                                                                Node {
+                                                                    id: 8,
+                                                                    attributes: vec![(
+                                                                        "self",
+                                                                        Literal(Str(
+                                                                            "3".to_string()
+                                                                        )),
+                                                                    )]
+                                                                    .into(),
+                                                                },
+                                                            ),
+                                                            (
+                                                                "left",
+                                                                Node {
+                                                                    id: 2,
+                                                                    attributes: vec![(
+                                                                        "self",
+                                                                        Literal(Str(
+                                                                            "2".to_string()
+                                                                        )),
+                                                                    )]
+                                                                    .into(),
+                                                                },
+                                                            ),
+                                                        ]
+                                                        .into(),
+                                                    },
+                                                )]
+                                                .into(),
+                                            },
+                                        ),
+                                    ]
+                                    .into(),
+                                },
+                            )]
+                            .into(),
+                        },
+                    ),
+                    (
+                        "left",
+                        Node {
+                            id: 0,
+                            attributes: vec![(
+                                "self",
+                                Node {
+                                    id: 2,
+                                    attributes: vec![("self", Literal(Str("1".to_string())))]
+                                        .into(),
+                                },
+                            )]
+                            .into(),
+                        },
+                    ),
+                ]
+                .into(),
+            }
+        };
+
+        assert_eq!(ast, test_ast);
     }
 
     #[test]
@@ -678,6 +869,10 @@ newtype! {
     pub vec GrammarRules(Rule)[RuleId]
 }
 
+newtype! {
+    pub set Nullables[NonTerminalId]
+}
+
 /// # Summary
 /// `EarleyGrammar` is a grammar that uses the Earley algorithm.
 /// The general worst-time complexity for a context-free grammar is `O(n³)`.
@@ -687,11 +882,11 @@ newtype! {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EarleyGrammar {
     /// The axioms, indexed by RuleId.
-    axioms: WrappedBitSet<NonTerminalId>,
+    axioms: Axioms,
     /// The rules. The rule index is its identifier.
     rules: GrammarRules,
     /// The nullables, indexed by NonTerminalId.
-    nullables: WrappedBitSet<NonTerminalId>,
+    nullables: Nullables,
     /// Maps the name of a non-terminal to its identifier.
     name_map: HashMap<Rc<str>, NonTerminalId>,
     /// Maps the identifier of a non-terminal to the identifiers of its rules.
@@ -708,18 +903,17 @@ impl EarleyGrammar {
 impl Grammar<'_> for EarleyGrammar {
     fn new(
         rules: GrammarRules,
-        axioms: WrappedBitSet<NonTerminalId>,
+        axioms: Axioms,
         name_map: HashMap<Rc<str>, NonTerminalId>,
     ) -> WResult<Self> {
         let warnings = WarningSet::empty();
-        let nb_non_terminals = axioms.len(); // Number of non terminals
-                                             // nullables[non_term_id]: bool is whether non terminal with this id is nullable, meaning it can match ε (empty string).
-        let mut nullables: WrappedBitSet<NonTerminalId> =
-            WrappedBitSet::with_capacity(nb_non_terminals);
+        let nb_non_terminals = axioms.len_as(); // Number of non terminals
+                                                // nullables[non_term_id]: bool is whether non terminal with this id is nullable, meaning it can match ε (empty string).
+        let mut nullables = Nullables::with_capacity(nb_non_terminals);
         // rules_of[non_term_id]: [rule_id] is a Vec containing all the rules whose LHS is the non terminal this id.
-        let mut rules_of = RulesMap::from(vec![Vec::new(); nb_non_terminals]);
+        let mut rules_of = nvec![RulesMap Vec::new(); nb_non_terminals];
         // is_in[non_term_id]: [rule_id] is a Vec containing all the rules whose RHS contains the non terminal with this id.
-        let mut is_in = IsIn::from(vec![Vec::new(); nb_non_terminals]);
+        let mut is_in = nvec![IsIn Vec::new(); nb_non_terminals];
         let mut stack = VecDeque::with_capacity(is_in.len());
         for (i, rule) in rules.iter().enumerate() {
             let rule_id = RuleId(i);
@@ -730,7 +924,7 @@ impl Grammar<'_> for EarleyGrammar {
                 stack.push_front(lhs_id);
             }
             for element in rule.elements.iter() {
-                if let ElementType::NonTerminal(Some(rhs_id)) = element.element_type {
+                if let ElementType::NonTerminal(rhs_id) = element.element_type {
                     is_in[rhs_id].push(rule_id);
                 }
             }
@@ -744,7 +938,7 @@ impl Grammar<'_> for EarleyGrammar {
                         .elements
                         .iter()
                         .all(|element| match element.element_type {
-                            ElementType::NonTerminal(Some(id)) => nullables.contains(id),
+                            ElementType::NonTerminal(id) => nullables.contains(id),
                             _ => false,
                         })
                 {
@@ -767,12 +961,23 @@ impl Grammar<'_> for EarleyGrammar {
     }
 }
 
+newtype! {
+    id FinalItemId
+}
+newtype! {
+    #[derive(PartialEq, Eq, Clone)]
+    vec FinalSetVec(FinalItem)[FinalItemId]
+}
+newtype! {
+    #[derive(Clone)]
+    map FinalSetIndex(Vec<FinalItemId>)[NonTerminalId]
+}
 #[derive(Default, Debug, Clone, Eq)]
 struct FinalSet {
     /// An index mapping a nonterminal to every item in the set derived from that nonterminal.
-    index: HashMap<NonTerminalId, Vec<usize>>,
+    index: FinalSetIndex,
     /// The set of items.
-    set: Vec<FinalItem>,
+    set: FinalSetVec,
     /// The starting position of every item in this set, in the raw input.
     position: usize,
 }
@@ -786,9 +991,10 @@ impl PartialEq for FinalSet {
 impl FinalSet {
     fn add(&mut self, item: FinalItem, grammar: &EarleyGrammar) {
         self.index
+            .0
             .entry(grammar.rules[item.rule].id)
             .or_default()
-            .push(self.set.len());
+            .push(self.set.len_as());
         self.set.push(item);
     }
 
@@ -801,8 +1007,8 @@ impl std::fmt::Display for FinalSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(
             f,
-            r#"== ({}) ==
-{}"#,
+            r"== ({}) ==
+{}",
             self.position,
             self.set
                 .iter()
@@ -850,36 +1056,49 @@ impl StateSet {
     }
 }
 
-#[derive(Debug, Clone)]
-struct ScanItem<'a> {
-    item: &'a FinalItem,
-    depth: usize,
-    nodes_so_far: Vec<AST>,
-}
-
-#[derive(Debug)]
-struct SearchItem<'a> {
-    /// Index of the next scan in the raw input.
-    position: usize,
-    /// Current item to be searched for.
-    current: ScanItem<'a>,
-    /// Items scanned so far.
-    stack: Vec<ScanItem<'a>>,
-}
-
-#[derive(Debug)]
-struct ScItem {
-    rule: usize,
+#[derive(Clone, Debug)]
+struct SyntaxicItem {
+    kind: SyntaxicItemKind,
     start: usize,
     end: usize,
-    depth: usize,
 }
 
-#[derive(Debug)]
-struct SItem {
-    current: ScItem,
-    items: Vec<ScItem>,
+#[derive(Clone, Debug)]
+enum SyntaxicItemKind {
+    Rule(RuleId),
+    Token(Token),
 }
+
+// #[derive(Debug, Clone)]
+// struct ScanItem<'a> {
+//     item: &'a FinalItem,
+//     depth: usize,
+//     nodes_so_far: Vec<AST>,
+// }
+
+// #[derive(Debug)]
+// struct SearchItem<'a> {
+//     /// Index of the next scan in the raw input.
+//     position: usize,
+//     /// Current item to be searched for.
+//     current: ScanItem<'a>,
+//     /// Items scanned so far.
+//     stack: Vec<ScanItem<'a>>,
+// }
+
+// #[derive(Debug)]
+// struct ScItem {
+//     rule: usize,
+//     start: usize,
+//     end: usize,
+//     depth: usize,
+// }
+
+// #[derive(Debug)]
+// struct SItem {
+//     current: ScItem,
+//     items: Vec<ScItem>,
+// }
 
 /// # Summary
 /// [`EarleyParser`] is the parser related to the [`EarleyGrammar`](EarleyGrammar).
@@ -889,124 +1108,162 @@ pub struct EarleyParser {
 }
 
 impl EarleyParser {
-    /// Select one AST if there is any.
-    fn select_ast(&self, forest: &[FinalSet], raw_input: &[Token]) -> AST {
-        let mut boundary: Vec<_> = forest[0]
-            .iter()
-            .filter(|item| {
-                self.grammar
-                    .axioms
-                    .contains(self.grammar.rules[item.rule].id)
-            })
-            .map(|item| SearchItem {
-                position: 0,
-                current: ScanItem {
-                    item,
-                    depth: 0,
-                    nodes_so_far: Vec::new(),
-                },
-                stack: Vec::new(),
-            })
-            .collect();
-
-        while let Some(SearchItem {
-            position,
-            current,
-            mut stack,
-        }) = boundary.pop()
-        {
-            let rule = &self.grammar.rules[current.item.rule];
-            if current.depth == rule.elements.len() {
-                let nonterminal = rule.id;
-                let mut attributes = HashMap::new();
-                for (mut element, key, attribute) in current
-                    .nodes_so_far
-                    .into_iter()
-                    .zip(rule.elements.iter())
-                    .filter_map(|(token, element)| {
-                        element
-                            .key
-                            .as_ref()
-                            .map(|key| (token, key, &element.attribute))
-                    })
-                {
-                    let value = match (attribute, &mut element) {
-                        (Attribute::Named(attribute), AST::Node { attributes, .. })
-                            if attributes.contains_key(&Rc::from(attribute.as_str())) =>
-                        {
-                            attributes.remove(&Rc::from(attribute.as_str())).unwrap()
+    fn find_children(
+        &self,
+        element: SyntaxicItem,
+        forest: &[FinalSet],
+        raw_input: &[Token],
+    ) -> Vec<SyntaxicItem> {
+        match element.kind {
+            SyntaxicItemKind::Rule(rule) => {
+                let mut boundary = vec![(List::default(), element.start)];
+                for elem in self.grammar.rules[rule].elements.iter() {
+                    let mut next_boundary = Vec::new();
+                    for (children, curpos) in boundary {
+                        match elem.element_type {
+                            ElementType::NonTerminal(id) => {
+                                if let Some(rules) = forest[curpos].index.get(&id) {
+                                    for final_item in rules
+                                        .iter()
+                                        .map(|&rule| &forest[curpos].set[rule])
+                                        .filter(|final_item| final_item.end <= element.end)
+                                    {
+                                        next_boundary.push((
+                                            children.cons(SyntaxicItem {
+                                                kind: SyntaxicItemKind::Rule(final_item.rule),
+                                                start: curpos,
+                                                end: final_item.end,
+                                            }),
+                                            final_item.end,
+                                        ))
+                                    }
+                                }
+                            }
+                            ElementType::Terminal(id)
+                                if curpos < element.end && raw_input[curpos].id() == id =>
+                            {
+                                next_boundary.push((
+                                    children.cons(SyntaxicItem {
+                                        kind: SyntaxicItemKind::Token(raw_input[curpos].clone()),
+                                        start: curpos,
+                                        end: curpos + 1,
+                                    }),
+                                    curpos + 1,
+                                ))
+                            }
+                            _ => {}
                         }
-                        _ => element,
-                    };
-                    attributes.insert(Rc::from(key.as_str()), value);
+                    }
+                    boundary = next_boundary;
                 }
-                let node = AST::Node {
+                boundary
+                    .into_iter()
+                    .find_map(|(children, pos)| {
+                        if pos == element.end {
+                            Some(
+                                children
+                                    .iter()
+                                    .cloned()
+                                    .collect::<Vec<_>>()
+                                    .into_iter()
+                                    .rev()
+                                    .collect(),
+                            )
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap()
+            }
+            SyntaxicItemKind::Token(_) => Vec::new(),
+        }
+    }
+    fn build_ast(&self, item: SyntaxicItem, forest: &[FinalSet], raw_input: &[Token]) -> AST {
+        match item.kind {
+            SyntaxicItemKind::Rule(rule) => {
+                let all_attributes = self
+                    .find_children(item, forest, raw_input)
+                    .into_iter()
+                    .map(|item| self.build_ast(item, forest, raw_input))
+                    .zip(self.grammar.rules[rule].elements.iter())
+                    .filter_map(|(item, element)| {
+                        element.key.as_ref().map(|key| match &element.attribute {
+                            Attribute::Named(attr) => {
+                                if let AST::Node { attributes, .. } = item {
+                                    (key.as_str().into(), attributes[attr.as_str()].clone())
+                                } else {
+                                    unreachable!() // TODO: remove this possibility
+                                }
+                            }
+                            Attribute::Indexed(idx) => {
+                                if let AST::Terminal(token) = item {
+                                    (
+                                        key.as_str().into(),
+                                        AST::Literal(crate::parser::parser::Value::Str(
+                                            token.attributes()[idx].clone(),
+                                        )),
+                                    )
+                                } else {
+                                    unreachable!()
+                                }
+                            }
+                            Attribute::None => (key.as_str().into(), item),
+                        })
+                    })
+                    .collect::<HashMap<Rc<str>, _>>();
+                let attributes = self.grammar.rules[rule]
+                    .proxy
+                    .iter()
+                    .map(|(key, wanted)| {
+                        (
+                            key.as_str().into(),
+                            match wanted {
+                                Value::Id(w) => all_attributes[w.as_str()].clone(),
+                                Value::Bool(v) => {
+                                    AST::Literal(crate::parser::parser::Value::Bool(*v))
+                                }
+                                Value::Int(v) => {
+                                    AST::Literal(crate::parser::parser::Value::Int(*v))
+                                }
+                                Value::Float(v) => {
+                                    AST::Literal(crate::parser::parser::Value::Float(*v))
+                                }
+                                Value::Str(v) => {
+                                    AST::Literal(crate::parser::parser::Value::Str(v.to_string()))
+                                }
+                            },
+                        )
+                    })
+                    .collect();
+                let nonterminal = self.grammar.rules[rule].id;
+                AST::Node {
                     nonterminal,
                     attributes,
-                };
-                if let Some(mut parent) = stack.pop() {
-                    parent.nodes_so_far.push(node);
-                    parent.depth += 1;
-                    boundary.push(SearchItem {
-                        position,
-                        current: parent,
-                        stack,
-                    });
-                } else if position == raw_input.len() {
-                    return node;
-                } else {
-                    // should not happen
-                    unreachable!()
-                }
-            } else {
-                let element = &rule.elements[current.depth];
-                match element.element_type {
-                    ElementType::NonTerminal(Some(nonterminal)) => {
-                        stack.push(current);
-                        for &item_id in forest[position]
-                            .index
-                            .get(&nonterminal)
-                            .map(|items| items.iter())
-                            .unwrap_or_else(|| [].iter())
-                        {
-                            let item = &forest[position].set[item_id];
-                            boundary.push(SearchItem {
-                                position,
-                                current: ScanItem {
-                                    item,
-                                    depth: 0,
-                                    nodes_so_far: Vec::new(),
-                                },
-                                stack: stack.clone(),
-                            });
-                        }
-                    }
-                    ElementType::Terminal(terminal) => {
-                        let token = &raw_input[position];
-                        if token.id() == terminal {
-                            let node = if let Attribute::Indexed(attribute) = &element.attribute {
-                                AST::Literal(token.get(*attribute).unwrap_or("").to_string())
-                            } else {
-                                AST::None
-                            };
-                            let mut nodes_so_far = current.nodes_so_far.clone();
-                            nodes_so_far.push(node);
-                            boundary.push(SearchItem {
-                                position: position + 1,
-                                current: ScanItem {
-                                    depth: current.depth + 1,
-                                    item: current.item,
-                                    nodes_so_far,
-                                },
-                                stack,
-                            });
-                        }
-                    }
-                    ElementType::NonTerminal(None) => unreachable!(),
                 }
             }
+            SyntaxicItemKind::Token(token) => AST::Terminal(token),
         }
-        panic!("Selecting an AST from an empty or malformed forest.");
+    }
+
+    /// Select one AST, assuming there is one.
+    fn select_ast(&self, forest: &[FinalSet], raw_input: &[Token]) -> AST {
+        forest[0]
+            .iter()
+            .filter(|item| {
+                item.end == raw_input.len()
+                    && self
+                        .grammar
+                        .axioms
+                        .contains(self.grammar.rules[item.rule].id)
+            })
+            .map(|item| SyntaxicItem {
+                start: 0,
+                end: raw_input.len(),
+                kind: SyntaxicItemKind::Rule(item.rule),
+            })
+            .map(|item| self.build_ast(item, forest, raw_input))
+            .next()
+            .unwrap()
     }
 
     fn to_forest(&self, table: &[StateSet], raw_input: &[Token]) -> WResult<Forest> {
@@ -1063,7 +1320,7 @@ impl EarleyParser {
                 match self.grammar().rules[item.rule].elements.get(item.position) {
                     Some(element) => match element.element_type {
                         // Prediction
-                        ElementType::NonTerminal(Some(id)) => {
+                        ElementType::NonTerminal(id) => {
                             for &rule in self.grammar().has_rules(id) {
                                 to_be_added.push(EarleyItem {
                                     rule,
@@ -1087,13 +1344,12 @@ impl EarleyParser {
                                 position: item.position + 1,
                             })
                         }
-                        ElementType::NonTerminal(None) => {}
                     },
                     // Completion
                     None => {
                         for &parent in sets[item.origin].slice() {
                             if let Some(RuleElement {
-                                element_type: ElementType::NonTerminal(Some(nonterminal)),
+                                element_type: ElementType::NonTerminal(nonterminal),
                                 ..
                             }) = self.grammar().rules[parent.rule]
                                 .elements
@@ -1152,7 +1408,7 @@ impl Parser<'_> for EarleyParser {
         &self,
         input: &'input mut LexedStream<'input, 'input>,
     ) -> WResult<ParseResult> {
-        let mut warnings = WarningSet::empty();
+        let mut warnings = WarningSet::default();
         let (table, raw_input) = ctry!(self.recognise(input), warnings);
         let forest = ctry!(self.to_forest(&table, &raw_input), warnings);
         let tree = self.select_ast(&forest, &raw_input);

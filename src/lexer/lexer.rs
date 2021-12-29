@@ -445,7 +445,7 @@ newtype! {
 ///  - `name`: the identifier of the token;
 ///  - `attributes`: the attributes of the token;
 ///  - `location`: the location of the substring that generated this token.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Token {
     name: String,
     id: TerminalId,
@@ -492,6 +492,11 @@ impl Token {
     /// or `None` otherwise.
     pub fn get(&self, key: usize) -> Option<&str> {
         self.attributes.get(&key).map(|x| x.as_str())
+    }
+
+    /// Borrows the tokens attributes, as a HashMap.
+    pub fn attributes(&self) -> &HashMap<usize, String> {
+        &self.attributes
     }
 
     /// Return the value of the first group (usually, the whole

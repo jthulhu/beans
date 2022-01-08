@@ -1,3 +1,5 @@
+use crate::error::WithWarnings;
+
 #[macro_export]
 macro_rules! rules {
     (@rule proxy insert $proxy: ident $key: ident bool $value: literal) => {
@@ -67,4 +69,12 @@ macro_rules! rules {
 		result
 	}
     };
+}
+
+pub(crate) fn is_value<E, V: PartialEq>(x: Result<V, E>, y: V) -> bool {
+    matches!(x, Ok(x_value) if x_value == y)
+}
+
+pub(crate) fn is_value_w<E, V: PartialEq>(x: Result<WithWarnings<V>, E>, y: V) -> bool {
+    is_value(x.map(|x| x.unwrap()), y)
 }

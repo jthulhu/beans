@@ -266,7 +266,7 @@ macro_rules! newtype {
 	}
 
 	impl std::fmt::Display for $name {
-	    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+	    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
 		write!(f, "{}", self.0)
 	    }
 	}

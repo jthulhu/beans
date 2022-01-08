@@ -1,5 +1,5 @@
 use super::grammarparser::{Grammar, GrammarBuilder};
-use crate::error::WResult;
+use crate::error::Result;
 use crate::lexer::{LexedStream, Token};
 use crate::newtype;
 use hashbrown::HashMap;
@@ -54,8 +54,7 @@ pub trait Parser<'deserializer> {
     /// Create a new parser.
     fn new(grammar: Self::Grammar) -> Self;
     /// Parse the given [`LexedStream`].
-    fn parse<'input>(&self, input: &'input mut LexedStream<'input, 'input>)
-        -> WResult<ParseResult>;
+    fn parse<'input>(&self, input: &'input mut LexedStream<'input, 'input>) -> Result<ParseResult>;
     /// Just return whether the input is recognised.
     fn recognise<'input>(&self, input: &'input mut LexedStream<'input, 'input>) -> bool {
         self.parse(input).is_ok()

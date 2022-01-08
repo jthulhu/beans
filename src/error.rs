@@ -8,7 +8,6 @@
 use crate::case::Case;
 use crate::location::Location;
 use std::collections::{linked_list, LinkedList};
-use std::error;
 use std::fmt;
 use std::rc::Rc;
 
@@ -17,6 +16,11 @@ use std::rc::Rc;
 /// instead of creating a new one each time.
 const EMPTY_WARNING_SET: WarningSet = WarningSet::Empty;
 
+/// `Result` is a shorthand for the usual `Result` type.
+/// It includes the crate's `Error` by default, and is inside `WithWarnings`
+/// monad.
+pub type Result<T> = std::result::Result<WithWarnings<T>, Error>;
+
 /// `ErrorType` is an enum that contains all the possible errors
 /// that `beans` might encounter when parsing.
 ///
@@ -24,33 +28,85 @@ const EMPTY_WARNING_SET: WarningSet = WarningSet::Empty;
 ///
 /// `LexerGrammarSyntax`: error that arises when there is a syntax error within the grammar file.
 /// `LexingError`: error that arises when lexing.
-#[derive(Debug, PartialEq, Eq)]
-pub enum ErrorType {
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
     /// `InternalError(message: String)`: error in the Beans implementation. This should not happen.
-    InternalError(String),
+    #[error("Error in the Beans implementation: {message}. This should not happen.")]
+    InternalError {
+        /// The message giving details about the error.
+        message: String,
+    },
     /// `SerializationError(message: String)`: error serializing.
-    SerializationError(String),
-    /// `Deserializationerror(message: String)`: error deserializing. This could be caused by a corrupted stream,
-    /// or a stream from an other version.
-    DeserializationError(String),
+    #[error("Failed to serialize or deserialize: {0}")]
+    SerializationError(#[from] bincode::Error),
     /// `LexerGrammarSyntax(message: String)`: error in the syntax of the lexer grammar.
-    LexerGrammarSyntax(String),
+    #[error("Error in the syntax of the lexer grammar: {message}, at {location}.")]
+    LexerGrammarSyntax {
+        /// The message giving details about the error.
+        message: String,
+        /// The `Location` that made the error occur. It's a hint a what should
+        /// be patched.
+        location: Location,
+    },
     /// `LexingError(message: String)`: error while transforming a string stream into a token stream.
-    LexingError(String),
+    #[error("Error while lexing: {message}, at {location}")]
+    LexingError {
+        /// The message giving details about the error.
+        message: String,
+        /// The `Location` that made the error occur. It's a hint a what should
+        /// be patched.
+        location: Location,
+    },
     /// `GrammarDuplicateDefinition(message: String, location: Location)`: duplicate definition at `location`.
-    GrammarDuplicateDefinition(String, Location),
+    #[error("Found duplicate definition of terminal in grammar: {message}, at {location}.")]
+    GrammarDuplicateDefinition {
+        /// The message giving details about the error.
+        message: String,
+        /// The `Location` where the second, offending, definition has been
+        /// found.
+        location: Location,
+        /// The `Location` where the first definition has been found.
+        old_location: Location,
+    },
     /// `GrammarNonTerminalDuplicate(message: String)`: duplicate non-terminal in the grammar.
-    GrammarNonTerminalDuplicate(String),
+    #[error("Found duplicate definition of nonterminal in grammar: {message}, at {location}.")]
+    GrammarNonTerminalDuplicate {
+        /// The message giving details about the error.
+        message: String,
+        /// The `Location` that made the error occur. It's a hint a what should
+        /// be patched.
+        location: Location,
+    },
     /// `GrammarSyntaxError(message: String)`: syntax error in the grammar.
-    GrammarSyntaxError(String),
+    #[error("Syntax error in grammar: {message}, at {location}.")]
+    GrammarSyntaxError {
+        /// The message giving details about the error.
+        message: String,
+        /// The `Location` that made the error occur. It's a hint a what should
+        /// be patched.
+        location: Location,
+    },
     /// `SyntaxError`: syntax error in the input.
-    SyntaxError,
-}
-
-impl Default for ErrorType {
-    fn default() -> Self {
-        Self::InternalError(String::from("Default error"))
-    }
+    #[error("Syntax error: {message}, at {location}.")]
+    SyntaxError {
+        /// The message giving details about the error.
+        message: String,
+        /// The `Location` that made the error occur. It's a hint a what should
+        /// be patched.
+        location: Location,
+    },
+    /// `IOError`: any io error.
+    #[error("IO error: {0}")]
+    IOError(#[from] std::io::Error),
+    /// `RegexError`: any regex error
+    #[error("Regex error: {message}, at {location}")]
+    RegexError {
+        /// The `Location` that made the error occur. It's a hint a what should
+        /// be patched.
+        location: Location,
+        /// The message giving details about the error.
+        message: String,
+    },
 }
 
 /// # Summary
@@ -212,7 +268,7 @@ impl WarningSet {
     }
 
     /// Unify two warning sets. `self` gets updated, and consumes the other warning set.
-    pub fn extend(&mut self, warningset: WarningSet) {
+    pub fn extend(&mut self, warningset: Self) {
         match self {
             Self::Set(selfwarnings) => match warningset {
                 Self::Set(mut otherwarnings) => selfwarnings.append(&mut otherwarnings),
@@ -226,8 +282,42 @@ impl WarningSet {
     }
 
     /// Return whether the warning set is empty.
+    #[inline]
     pub fn is_empty(&self) -> bool {
         matches!(self, Self::Empty)
+    }
+
+    /// Utilitary function to ease the usage of regular error types.
+    #[inline]
+    pub fn unpack<T>(&mut self, WithWarnings { content, warnings }: WithWarnings<T>) -> T {
+        self.extend(warnings);
+        content
+    }
+
+    /// Constructor of the `WithWarnings` monad.
+    #[inline]
+    pub fn with<T>(self, content: T) -> WithWarnings<T> {
+        WithWarnings {
+            content,
+            warnings: self,
+        }
+    }
+
+    /// Useful constructor of the `WithWarnings` monad when you don't have any
+    /// warnings.
+    #[inline]
+    pub fn empty_with<T>(content: T) -> WithWarnings<T> {
+        Self::empty().with(content)
+    }
+
+    /// `on` provides a shorthand by conjuging `f` with `with` and `unpack`.
+    #[inline]
+    pub fn on<T, F, U>(mut self, content: WithWarnings<T>, f: F) -> WithWarnings<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        let u = f(self.unpack(content));
+        self.with(u)
     }
 }
 
@@ -237,567 +327,59 @@ impl Default for WarningSet {
     }
 }
 
-/// # Summary
-///
-/// `WResult<T>` is a wrapper to `Result<(T, WarningSet), Error>` that allows easy manipulation
-/// of the type without bothering the warnings.
-#[derive(Debug, PartialEq, Eq)]
-pub enum WResult<T> {
-    /// `WResult` variant for `Ok`.
-    WOk(T, WarningSet),
-    /// `WResult` variant for `Err`.
-    WErr(Error),
+/// `WithWarnings` is a handy monad to carry warnings around.
+/// The idea is that instead of triggering a warning when the offeding action
+/// is executed, data carries with it warnings that were thrown to produce that
+/// data.
+/// It simplifies tracking exactly what caused certain warnings, what warnings
+/// the creation and manipulation of some data caused, and interacts nicely
+/// with the `Result` monad.
+#[derive(Debug)]
+pub struct WithWarnings<T> {
+    content: T,
+    warnings: WarningSet,
 }
 
-impl<T> WResult<T> {
-    /// Convert to a `Result`, ignoring any warnings.
-    /// `WOk(result, warnings)` maps to `Ok(result)` and `WErr(errors)` maps to `Err(errors)`.
-    pub fn flatten(self) -> Result<T, Error> {
-        match self {
-            Self::WOk(result, _) => Ok(result),
-            Self::WErr(error) => Err(error),
-        }
-    }
-
-    /// Convert to a `Result`, taking into account warnings.
-    /// `WOk(result, warnings)` maps to `Ok((result, warnings))` and `WErr(errors)` maps to `Err(errors)`.
-    pub fn flatten_with(self) -> Result<(T, WarningSet), Error> {
-        match self {
-            Self::WOk(result, warnings) => Ok((result, warnings)),
-            Self::WErr(error) => Err(error),
-        }
-    }
-
-    /// Result whether `self` is an error, ie. is of the form `WErr(_)`.
-    pub fn is_error(&self, right: Error) -> bool {
-        match self {
-            Self::WErr(result) => *result == right,
-            _ => false,
-        }
-    }
-}
-
-impl<T: PartialEq> WResult<T> {
-    /// Return whether `self` is `WOk` and matches the given value.
-    pub fn is_value(&self, right: T) -> bool {
-        match self {
-            Self::WOk(result, _) => *result == right,
-            _ => false,
-        }
-    }
-}
-
-impl<T> WResult<T> {
-    /// Return `res` if the result is [`WOk`][WResult::WOk], otherwise return the [`WErr`][WResult::WErr] value of `self`.
-    ///
-    /// # Examples
-    /// Basic usage:
-    /// ```rust
-    /// # use beans::{error::{WResult::{self, WOk, WErr}, WarningSet, Error, ErrorType}, location::Location};
-    /// let x: WResult<u32> = WOk(2, WarningSet::default());
-    /// let y: WResult<&str> = WErr(Error::new(Location::default(), ErrorType::InternalError(String::from("late error"))));
-    /// let z: WResult<&str> = WErr(Error::new(Location::default(), ErrorType::InternalError(String::from("late error"))));
-    /// assert_eq!(x.and(y), z);
-    ///
-    /// let x: WResult<u32> = WErr(Error::new(Location::default(), ErrorType::InternalError(String::from("early error"))));
-    /// let y: WResult<&str> = WOk("foo", WarningSet::default());
-    /// let z: WResult<&str> = WErr(Error::new(Location::default(), ErrorType::InternalError(String::from("early error"))));
-    /// assert_eq!(x.and(y), z);
-    ///
-    /// let x: WResult<u32> = WErr(Error::new(Location::default(), ErrorType::InternalError(String::from("early error"))));
-    /// let y: WResult<&str> = WErr(Error::new(Location::default(), ErrorType::InternalError(String::from("late error"))));
-    /// let z: WResult<&str> = WErr(Error::new(Location::default(), ErrorType::InternalError(String::from("early error"))));
-    /// assert_eq!(x.and(y), z);
-    ///
-    /// let x: WResult<u32> = WOk(2, WarningSet::default());
-    /// let y: WResult<&str> = WOk("different result type", WarningSet::default());
-    /// let z: WResult<&str> = WOk("different result type", WarningSet::default());
-    /// assert_eq!(x.and(y), z);
-    /// ```
-    pub fn and<U>(self, res: WResult<U>) -> WResult<U> {
-        match self {
-            Self::WOk(..) => res,
-            Self::WErr(error) => WResult::WErr(error),
-        }
-    }
-
-    /// Call `ok_handler` if the result is [`WOk`][WResult::WOk], otherwise return the [`WErr`][WResult::WErr] value of `self`.
-    ///
-    /// This function can be used for control flow based on [`WResult`] values.
-    ///
-    /// # Examples
-    /// Basic usage:
-    /// ```rust
-    /// # use beans::{error::{WResult::{self, WOk, WErr}, WarningSet, Error, ErrorType}, location::Location};
-    /// fn sq(x: u32) -> Result<u32, Error> { Ok(x*x) }
-    /// fn err(x: u32) -> Result<u32, Error> { Err(Error::new(Location::default(), ErrorType::InternalError(x.to_string()))) }
-    ///
-    /// assert_eq!(WOk(2, WarningSet::default()).and_then(sq).and_then(sq), WOk(16, WarningSet::default()));
-    /// assert_eq!(WOk(2, WarningSet::default()).and_then(sq).and_then(err), WErr(Error::new(Location::default(), ErrorType::InternalError(4.to_string()))));
-    /// assert_eq!(WOk(2, WarningSet::default()).and_then(err).and_then(sq), WErr(Error::new(Location::default(), ErrorType::InternalError(2.to_string()))));
-    /// assert_eq!(WErr(Error::new(Location::default(), ErrorType::InternalError(3.to_string()))).and_then(sq).and_then(sq), WErr(Error::new(Location::default(), ErrorType::InternalError(3.to_string()))));
-    /// ```
-    pub fn and_then<F, U>(self, ok_handler: F) -> WResult<U>
-    where
-        F: FnOnce(T) -> Result<U, Error>,
-    {
-        match self {
-            Self::WOk(result, warnings) => match ok_handler(result) {
-                Ok(res) => WResult::WOk(res, warnings),
-                Err(error) => WResult::WErr(error),
-            },
-            Self::WErr(error) => WResult::WErr(error),
-        }
-    }
-
-    /// Call `ok_handler` if the result is [`WOk`][WResult::WOk], otherwise return the [`WErr`][WResult::WErr] value of `self`.
-    ///
-    /// This function can be used for control flow based on [`WResult`] values.
-    ///
-    /// # Examples
-    /// Basic usage:
-    /// ```rust
-    /// # use beans::{error::{WResult::{self, WOk, WErr}, WarningSet, Error, ErrorType}, location::Location};
-    /// fn sq(x: u32, ws: WarningSet) -> WResult<u32> { WOk(x*x, ws) }
-    /// fn err(x: u32, _: WarningSet) -> WResult<u32> { WErr(Error::new(Location::default(), ErrorType::InternalError(x.to_string()))) }
-    ///
-    /// assert_eq!(WOk(2, WarningSet::default()).and_then_warn(sq).and_then_warn(sq), WOk(16, WarningSet::default()));
-    /// assert_eq!(WOk(2, WarningSet::default()).and_then_warn(sq).and_then_warn(err), WErr(Error::new(Location::default(), ErrorType::InternalError(4.to_string()))));
-    /// assert_eq!(WOk(2, WarningSet::default()).and_then_warn(err).and_then_warn(sq), WErr(Error::new(Location::default(), ErrorType::InternalError(2.to_string()))));
-    /// assert_eq!(WErr(Error::new(Location::default(), ErrorType::InternalError(3.to_string()))).and_then_warn(sq).and_then_warn(sq), WErr(Error::new(Location::default(), ErrorType::InternalError(3.to_string()))));
-    /// ```
-    pub fn and_then_warn<U, F>(self, ok_handler: F) -> WResult<U>
-    where
-        F: FnOnce(T, WarningSet) -> WResult<U>,
-    {
-        match self {
-            Self::WOk(result, warnings) => ok_handler(result, warnings),
-            Self::WErr(error) => WResult::WErr(error),
-        }
-    }
-
-    /// Unwrap the result, panicking with the given message if it was an error, and returning `(result, warnings)` otherwise.
-    pub fn expect(self, msg: &str) -> (T, WarningSet) {
-        match self {
-            Self::WOk(result, warnings) => (result, warnings),
-            Self::WErr(error) => panic!("{}: {}", msg, error),
-        }
-    }
-
-    /// Return whether the result is an error.
-    pub fn is_err(&self) -> bool {
-        matches!(self, Self::WErr(..))
-    }
-
-    /// Return whether the result is ok.
-    pub fn is_ok(&self) -> bool {
-        matches!(self, Self::WOk(..))
-    }
-
-    /// Map the content of the result, ignoring the warnings and the error.
-    /// ```rust
-    /// # use beans::error::{WResult::{WOk, WErr}, WarningSet};
-    /// assert_eq!(WOk(5, WarningSet::default()).map(|x| x+1), WOk(6, WarningSet::default()));
-    /// ```
-    pub fn map<U, O>(self, f: O) -> WResult<U>
-    where
-        O: FnOnce(T) -> U,
-    {
-        match self {
-            Self::WOk(result, warnings) => WResult::WOk(f(result), warnings),
-            Self::WErr(error) => WResult::WErr(error),
-        }
-    }
-
-    /// Map the content and the warnings of the result, ignoring the error.
-    /// ```rust
-    /// # use beans::error::{WResult::{WOk, WErr}, WarningSet, WarningType, Warning};
-    /// assert_eq!(
-    ///   WOk(5, WarningSet::default())
-    ///     .map_warn(
-    ///       |content, mut warnings| {
-    ///         warnings.add(Warning::new(WarningType::NullWarning));
-    ///         (content, warnings)
-    ///       }
-    ///     ),
-    ///   WOk(5, {
-    ///       let mut warnings = WarningSet::default();
-    ///       warnings.add(Warning::new(WarningType::NullWarning));
-    ///       warnings
-    ///     }
-    ///   )
-    /// );
-    /// ```
-    pub fn map_warn<U, O>(self, ok_handler: O) -> WResult<U>
-    where
-        O: FnOnce(T, WarningSet) -> (U, WarningSet),
-    {
-        match self {
-            Self::WOk(result, warnings) => {
-                let (content, warnings) = ok_handler(result, warnings);
-                WResult::WOk(content, warnings)
-            }
-            Self::WErr(error) => WResult::WErr(error),
-        }
-    }
-
-    /// Map the error of the result, ignoring the content and the warnings.
-    pub fn map_err<E>(self, f: E) -> Self
-    where
-        E: FnOnce(Error) -> Error,
-    {
-        match self {
-            Self::WOk(..) => self,
-            Self::WErr(error) => Self::WErr(f(error)),
-        }
-    }
-
-    /// Apply a function to the contained value (if [`WOk`][WResult::WOk]), or return
-    /// the provided default (if [`WErr`][WResult::WErr]).
-    ///
-    /// Arguments passed to `map_or` are eagerly evaluated; if you are passing the result of a function call,
-    /// it is recommended to use [`map_or_else`][WResult::map_or_else], which is lazily evaluated.
-    pub fn map_or<U, O>(self, default: (U, WarningSet), ok_handler: O) -> (U, WarningSet)
-    where
-        O: FnOnce(T) -> U,
-    {
-        match self {
-            Self::WOk(result, warnings) => (ok_handler(result), warnings),
-            Self::WErr(..) => default,
-        }
-    }
-
-    /// Apply a function to the contained value and the warnings (if [`WOk`][WResult::WOk]),
-    /// or return the provided default (if [`WErr`][WResult::WErr]).
-    ///
-    /// Arguments passed to `map_or_warn` are eagerly evaluated; if you are passing the result of a function call,
-    /// it is recommended to use [`map_or_else_warn`][WResult::map_or_else_warn], which is lazily evaluated.
-    pub fn map_or_warn<U, O>(self, default: (U, WarningSet), ok_handler: O) -> (U, WarningSet)
-    where
-        O: FnOnce(T, WarningSet) -> (U, WarningSet),
-    {
-        match self {
-            Self::WOk(result, warnings) => ok_handler(result, warnings),
-            Self::WErr(..) => default,
-        }
-    }
-
-    /// Maps a [`WResult<T>`] to a `(U, WarningSet)` by applying a function to a
-    /// contained [`WOk`] value, or a fallback function to a
-    /// contained [`WErr`] value.
-    ///
-    /// This function can be used to unpack a successful result
-    /// while handling an error.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use beans::error::{WResult::{WOk, WErr}, WarningSet};
-    /// let k = 21;
-    ///
-    /// let x = WOk("foo", WarningSet::default());
-    /// assert_eq!(x.map_or_else(|_| (k * 2, WarningSet::default()), |v| v.len()), (3, WarningSet::default()));
-    /// ```
-    pub fn map_or_else<U, E, O>(self, err_handler: E, ok_handler: O) -> (U, WarningSet)
-    where
-        E: FnOnce(Error) -> (U, WarningSet),
-        O: FnOnce(T) -> U,
-    {
-        match self {
-            Self::WOk(result, warnings) => (ok_handler(result), warnings),
-            Self::WErr(error) => err_handler(error),
-        }
-    }
-
-    /// Maps a [`WResult<T>`] to a `(U, WarningSet)` by applying a
-    /// function to a contained [`WOk`] value, or a fallback function
-    /// to a contained [`WErr`] value.
-    ///
-    /// This function can be used to unpack a successful result
-    /// while handling an error.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use beans::error::{WResult::{WOk, WErr}, WarningSet};
-    /// let k = 21;
-    ///
-    /// let x = WOk("foo", WarningSet::default());
-    /// assert_eq!(x.map_or_else_warnless(|_| k * 2, |v| v.len()), (3, WarningSet::default()));
-    /// ```
-    pub fn map_or_else_warnless<U, E, O>(self, err_handler: E, ok_handler: O) -> (U, WarningSet)
-    where
-        E: FnOnce(Error) -> U,
-        O: FnOnce(T) -> U,
-    {
-        match self {
-            Self::WOk(result, warnings) => (ok_handler(result), warnings),
-            Self::WErr(error) => (err_handler(error), WarningSet::default()),
-        }
-    }
-
-    /// Maps a `WResult<T>` to `U` by applying a function to a
-    /// contained [`WOk`] value and warnings, or fallback function
-    /// to a contained [`WErr`] value.
-    ///
-    /// This function can be used to unpack a successful result while
-    /// handling an error.
-    ///
-    /// # Examples
-    ///
-    /// Basic usage:
-    ///
-    /// ```
-    /// # use beans::error::{WResult::{WOk, WErr}, WarningSet};
-    /// let k = 21;
-    ///
-    /// let x = WOk("foo", WarningSet::default());
-    /// assert_eq!(x.map_or_else_warn(|_| (k * 2, WarningSet::default()), |v, warnings| (v.len(), WarningSet::default())), (3, WarningSet::default()));
-    pub fn map_or_else_warn<U, E, O>(self, err_handler: E, ok_handler: O) -> (U, WarningSet)
-    where
-        E: FnOnce(Error) -> (U, WarningSet),
-        O: FnOnce(T, WarningSet) -> (U, WarningSet),
-    {
-        match self {
-            Self::WOk(result, warnings) => ok_handler(result, warnings),
-            Self::WErr(error) => err_handler(error),
-        }
-    }
-
-    /// Return `res` if the result is [`WErr`], otherwise return the
-    /// [`WOk`] value of `self`.
-    ///
-    /// Arguments passed to `or` are eagerly evaluated; if you are
-    /// passing the result of a function call, it is recommended to
-    /// use [`or_else`], which is lazily evaluated.
-    pub fn or(self, res: Self) -> Self {
-        match self {
-            Self::WOk(..) => self,
-            Self::WErr(..) => res,
-        }
-    }
-
-    /// Calls `err_handler` if the result is [`WErr`], otherwise
-    /// return the [`WOk`] value of `self`.
-    ///
-    /// This function can be used for control flow based on result
-    /// value.
-    pub fn or_else<E>(self, err_handler: E) -> Self
-    where
-        E: FnOnce(Error) -> Self,
-    {
-        match self {
-            Self::WOk(..) => self,
-            Self::WErr(error) => err_handler(error),
-        }
-    }
-
-    /// Return the contained [`WOk`] value without the warnings,
-    /// consuming the `self` value.
-    ///
-    /// Because this function may panic, its use is generally
-    /// discouraged. Instead, prefer to use pattern matching and
-    /// handle the [`WErr`] case explicitly, or call [`unwrap_or`],
-    /// [`unwrap_or_else`], or [`unwrap_or_default`].
-    ///
-    /// [`unwrap_or`]: WResult::unwrap_or
-    /// [`unwrap_or_else`]: WResult::unwrap_or_else
-    /// [`unwrap_or_default`]: WResult::unwrap_or_default
+impl<T> WithWarnings<T> {
+    /// `unwrap` is a brutal way to get out of the monad.
+    /// It means you can ensure there are no warnings.
+    /// Note that this will **not** panic if there are no warnings.
+    #[inline]
     pub fn unwrap(self) -> T {
-        match self {
-            Self::WOk(result, _) => result,
-            Self::WErr(error) => panic!("called `WResult::unwrap` on an `WErr` value: {}", error),
-        }
+        self.content
     }
 
-    /// Return the contained [`WOk`] value and the warnings,
-    /// consuming the `self` value.
-    ///
-    /// Because this function may panic, its use is generally
-    /// discouraged. Instead, prefer to use pattern matching and
-    /// handle the [`WErr`] case explicitly, or call
-    /// [`unwrap_or_warn`], [`unwrap_or_else_warn`] or
-    /// [`unwrap_or_default_warn`].
-    ///
-    /// [`unwrap_or_warn`]: WResult::unwrap_or_warn
-    /// [`unwrap_or_else_warn`]: WResult::unwrap_or_else_warn
-    /// [`unwrap_or_default_warn`]: WResult::unwrap_or_default_warn
-    pub fn unwrap_warn(self) -> (T, WarningSet) {
-        match self {
-            Self::WOk(result, warnings) => (result, warnings),
-            Self::WErr(error) => panic!(
-                "called `WResult::unwrap_warns` on an `WErr` value: {}",
-                error
-            ),
-        }
-    }
-
-    /// Return the contained [`WOk`] value or a provided default.
-    ///
-    /// Arguments passed to `unwrap_or` are eagerly evaluated; if you
-    /// are passing the result of a function call, it is recommended
-    /// to use [`unwrap_or_else`], which is lazily evaluated.
-    ///
-    /// [`unwrap_or_else`]: WResult::unwrap_or_else
-    pub fn unwrap_or(self, default: T) -> T {
-        match self {
-            Self::WOk(result, _) => result,
-            Self::WErr(..) => default,
-        }
-    }
-
-    /// Return the contained [`WOk`] value or a provided default.
-    ///
-    /// Arguments passed to `unwrap_or_warn` are eagerly evaluated; if you
-    /// are passing the result of a function call, it is recommended
-    /// to use [`unwrap_or_else_warn`], which is lazily evaluated.
-    ///
-    /// [`unwrap_or_else_warn`]: WResult::unwrap_or_else
-    pub fn unwrap_or_warn(self, default: (T, WarningSet)) -> (T, WarningSet) {
-        match self {
-            Self::WOk(result, warnings) => (result, warnings),
-            Self::WErr(..) => default,
-        }
-    }
-
-    /// Return the contained [`WOk`] value or the result of `err_handler`.
-    ///
-    /// Arguments passed to `unwrap_or_else` are lazily evaluated.
-    pub fn unwrap_or_else<E>(self, err_handler: E) -> T
+    /// `chain` is to be used as the composition functor
+    /// of the WithWarnings monad.
+    /// It can be ended either with `unpack_into`, if you want
+    /// to retrieve only the value, kept as-is, or with `with` if you want
+    /// to stay in the monad (useful in return statements).
+    #[inline]
+    pub fn chain<F, U>(self, f: F) -> WithWarnings<U>
     where
-        E: FnOnce(Error) -> T,
+        F: FnOnce(T) -> WithWarnings<U>,
     {
-        match self {
-            Self::WOk(result, _) => result,
-            Self::WErr(error) => err_handler(error),
-        }
+        let WithWarnings {
+            content,
+            mut warnings,
+        } = f(self.content);
+        warnings.extend(self.warnings);
+        WithWarnings { content, warnings }
     }
 
-    /// Return the contained [`WOk`] value and the warnings
-    /// or the result of `err_handler`.
-    ///
-    /// Arguments passed to `unwrap_or_else_warn` are lazily evaluated.
-    pub fn unwrap_or_else_warn<E>(self, err_handler: E) -> (T, WarningSet)
-    where
-        E: FnOnce(Error) -> (T, WarningSet),
-    {
-        match self {
-            Self::WOk(result, warnings) => (result, warnings),
-            Self::WErr(error) => err_handler(error),
-        }
-    }
-}
-
-impl<T: Default> WResult<T> {
-    /// Return the contained [`WOk`] value, or the value provided by
-    /// the [`Default`] implementation.
-    pub fn unwrap_or_default(self) -> T {
-        match self {
-            Self::WOk(result, _) => result,
-            Self::WErr(..) => T::default(),
-        }
+    /// `unpack_into` is the symetrical operator of `unpack` for `WarningSet`,
+    /// but applied from WithWarnings. There are no differences, it's only
+    /// for practical reasons.
+    #[inline]
+    pub fn unpack_into(self, warnings: &mut WarningSet) -> T {
+        warnings.unpack(self)
     }
 
-    /// Return the contained [`WOk`] value and the warnings, or the
-    /// value provided by the [`Default`] implementation.
-    ///
-    /// This is lazily evaluated.
-    pub fn unwrap_or_default_warn(self) -> (T, WarningSet) {
-        match self {
-            Self::WOk(result, warnings) => (result, warnings),
-            Self::WErr(..) => (T::default(), WarningSet::default()),
-        }
+    /// `with` does the same job that `WarningSet`, but this one is an external
+    /// operation in the monad, whereas the other one is a constructor.
+    #[inline]
+    pub fn with(mut self, warnings: WarningSet) -> Self {
+        self.warnings.extend(warnings);
+        self
     }
 }
-
-impl<T> From<WResult<T>> for Result<(T, WarningSet), Error> {
-    fn from(wresult: WResult<T>) -> Self {
-        wresult.flatten_with()
-    }
-}
-
-impl<T> From<Result<(T, WarningSet), Error>> for WResult<T> {
-    fn from(result: Result<(T, WarningSet), Error>) -> Self {
-        match result {
-            Ok((res, warnings)) => Self::WOk(res, warnings),
-            Err(error) => Self::WErr(error),
-        }
-    }
-}
-
-impl<T> From<Result<T, Error>> for WResult<T> {
-    fn from(result: Result<T, Error>) -> Self {
-        match result {
-            Ok(res) => Self::WOk(res, WarningSet::empty()),
-            Err(error) => Self::WErr(error),
-        }
-    }
-}
-
-/// # Summary
-///
-/// `Error` is a type representing all information required
-/// about a given error. It is a tuple containing a `Location`
-/// and an `ErrorType`.
-#[derive(Debug, PartialEq, Eq, Default)]
-pub struct Error {
-    location: Location,
-    err_type: ErrorType,
-}
-
-impl Error {
-    /// Create a new `Error`, from a [`Location`] and from an [`Errortype`].
-    pub fn new(location: Location, err_type: ErrorType) -> Self {
-        Self { location, err_type }
-    }
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use ErrorType::*;
-        let (type_, msg) = match &self.err_type {
-            LexerGrammarSyntax(msg) => ("Syntax error within the lexer's grammar", msg.clone()),
-            LexingError(msg) => ("Error while lexing", msg.clone()),
-            InternalError(msg) => ("Internal error, this should not happend", msg.clone()),
-            SerializationError(msg) => ("Internal error, failed to serialize", msg.clone()),
-            DeserializationError(msg) => ("Internal error, failed to deserialize", msg.clone()),
-            GrammarDuplicateDefinition(name, pos) => (
-                "Duplicate definition in grammar",
-                format!(
-                    "{} is already definded in file {}, from {}:{} to {}:{}",
-                    name,
-                    pos.file(),
-                    pos.start().0,
-                    pos.start().1,
-                    pos.end().0,
-                    pos.end().1
-                ),
-            ),
-            GrammarSyntaxError(msg) => ("Syntax error within the grammar", msg.clone()),
-            GrammarNonTerminalDuplicate(msg) => {
-                ("Duplicate definition of a non terminal", msg.clone())
-            }
-            SyntaxError => (
-                "Syntax error",
-                String::from("the token does not make sense there."),
-            ),
-        };
-        write!(
-            f,
-            "{}\n @{}, from {}:{} to {}:{}\n{}",
-            type_,
-            self.location.file(),
-            self.location.start().0,
-            self.location.start().1,
-            self.location.end().0,
-            self.location.end().1,
-            msg
-        )
-    }
-}
-
-impl error::Error for Error {}

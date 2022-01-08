@@ -1,13 +1,10 @@
 use super::grammarparser::{LexerGrammar, LexerGrammarBuilder};
-use crate::error::{
-    Error, ErrorType,
-    WResult::{self, WErr, WOk},
-    WarningSet,
-};
+use crate::error::Result;
+use crate::error::{Error, WarningSet};
 use crate::location::Location;
+use crate::newtype;
 use crate::regex::Allowed;
 use crate::stream::{Stream, StringStream};
-use crate::{ctry, newtype};
 use hashbrown::HashMap;
 use std::fmt;
 use std::ops::Index;
@@ -76,6 +73,7 @@ mod tests {
         LexerBuilder::from_grammar(
             LexerGrammarBuilder::from_stream(StringStream::new("grammar file", "A ::= blu"))
                 .build()
+                .unwrap()
                 .unwrap(),
         )
         .build();
@@ -86,16 +84,17 @@ mod tests {
         let lexer = LexerBuilder::from_grammar(
             LexerGrammarBuilder::from_stream(StringStream::new("a file name", "A ::= blu"))
                 .build()
+                .unwrap()
                 .unwrap(),
         )
         .build();
         let mut input = StringStream::new("input file", "blu");
         let mut lexed_input = lexer.lex(&mut input);
 
-        let token = lexed_input.next(Allowed::All).unwrap().unwrap();
+        let token = lexed_input.next(Allowed::All).unwrap().unwrap().unwrap(); // nice...
         assert_eq!(token.location().start(), (0, 0));
         assert_eq!(token.location().end(), (0, 3));
-        assert!(lexed_input.next(Allowed::All).unwrap().is_none());
+        assert!(lexed_input.next(Allowed::All).unwrap().unwrap().is_none());
     }
 
     fn verify_input(
@@ -104,7 +103,7 @@ mod tests {
     ) {
         let origin = &*lexed_input.stream.origin();
         let mut i = 0;
-        while let Some(token) = lexed_input.next_any().unwrap() {
+        while let Some(token) = lexed_input.next_any().unwrap().unwrap() {
             let (start, end, name) = result[i];
             assert_eq!(
                 token.location().start(),
@@ -138,7 +137,7 @@ mod tests {
 
     #[test]
     fn default_lex_grammar() {
-        let lexer = LexerBuilder::from_file("gmrs/lexer.lx").unwrap().build();
+        let lexer = LexerBuilder::from_file("gmrs/lexer.lx").unwrap().unwrap().build();
 
         let result = [
             ((0, 0), (0, 3), "ID"),
@@ -173,8 +172,8 @@ mod tests {
 
     #[test]
     fn default_parser_grammar() {
-        let lexer = LexerBuilder::from_file("gmrs/parser.lx").unwrap().build();
-        let mut input = StringStream::from_file("gmrs/parser.gmr").unwrap();
+        let lexer = LexerBuilder::from_file("gmrs/parser.lx").unwrap().unwrap().build();
+        let mut input = StringStream::from_file("gmrs/parser.gmr").unwrap().unwrap();
         let mut lexed_input = lexer.lex(&mut input);
 
         let result = [
@@ -412,6 +411,7 @@ mod tests {
             let token = lexed_input
                 .next(Allowed::All)
                 .unwrap()
+                .unwrap()
                 .expect(format!("Expected token named {}, found EOF", tok.name).as_str());
             assert_eq!(
                 tok,
@@ -423,7 +423,7 @@ mod tests {
                 i
             );
         }
-        if let Some(token) = lexed_input.next(Allowed::All).unwrap() {
+        if let Some(token) = lexed_input.next(Allowed::All).unwrap().unwrap() {
             panic!(
                 "Lexer error @{} {}:{} does not match token EOF",
                 token.location().file(),
@@ -551,21 +551,19 @@ impl LexerBuilder {
 
     /// Instantiate a new `LexerBuilder`, giving a stream defining the grammar.
     /// Since the stream may be an ill-defined grammar, this might fail.
-    pub fn from_stream(stream: StringStream) -> WResult<Self> {
+    pub fn from_stream(stream: StringStream) -> Result<Self> {
         let mut warnings = WarningSet::empty();
-        let grammar = ctry!(LexerGrammarBuilder::from_stream(stream).build(), warnings);
-        WOk(Self { grammar }, warnings)
+        let grammar = warnings.unpack(LexerGrammarBuilder::from_stream(stream).build()?);
+        Ok(warnings.with(Self { grammar }))
     }
 
     /// Instantiate a new `LexerBuilder`, giving the path to the grammar.
     /// Since the grammar may be ill-defined, this might fail.
-    pub fn from_file<F: Into<Rc<str>>>(file: F) -> WResult<Self> {
+    pub fn from_file<F: Into<Rc<str>>>(file: F) -> Result<Self> {
         let mut warnings = WarningSet::default();
-        let grammar = ctry!(
-            ctry!(LexerGrammarBuilder::from_file(file.into()), warnings).build(),
-            warnings
-        );
-        WOk(Self { grammar }, warnings)
+        let builder = warnings.unpack(LexerGrammarBuilder::from_file(file.into())?);
+        let grammar = warnings.unpack(builder.build()?);
+        Ok(warnings.with(Self { grammar }))
     }
 
     /// Build the lexer, consuming the builder.
@@ -576,7 +574,7 @@ impl LexerBuilder {
 
 impl Default for LexerBuilder {
     fn default() -> Self {
-        Self::from_file("gmrs/lexer.lx").unwrap()
+        Self::from_file("gmrs/lexer.lx").unwrap().unwrap()
     }
 }
 
@@ -609,10 +607,10 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
         }
     }
 
-    fn lex_next(&mut self, allowed: Allowed) -> WResult<bool> {
+    fn lex_next(&mut self, allowed: Allowed) -> Result<bool> {
         let warnings = WarningSet::empty();
         if self.stream.pos() == self.stream.len() {
-            WOk(false, warnings)
+            Ok(warnings.with(false))
         } else {
             'lex: loop {
                 if let Some(result) = self
@@ -639,12 +637,12 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
                     let token = Token::new(name, id, attributes, location.clone());
                     self.last_location = location;
                     self.tokens.push((start, token));
-                    break 'lex WOk(true, warnings);
+                    break 'lex Ok(warnings.with(true));
                 } else {
-                    break 'lex WErr(Error::new(
-                        self.stream.get_at(self.stream.pos()).unwrap().1,
-                        ErrorType::LexingError(String::from("cannot recognize a token here")),
-                    ));
+                    break 'lex Err(Error::LexingError {
+                        location: self.stream.get_at(self.stream.pos()).unwrap().1,
+                        message: String::from("cannot recognize a token here"),
+                    });
                 }
             }
         }
@@ -658,18 +656,18 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
 
 impl LexedStream<'_, '_> {
     /// Lex any token.
-    pub fn next_any(&mut self) -> WResult<Option<&Token>> {
+    pub fn next_any(&mut self) -> Result<Option<&Token>> {
         self.next(Allowed::All)
     }
 
     /// Lex any allowed token.
-    pub fn next(&mut self, allowed: Allowed) -> WResult<Option<&Token>> {
+    pub fn next(&mut self, allowed: Allowed) -> Result<Option<&Token>> {
         let mut warnings = WarningSet::empty();
         self.pos += 1;
-        if ctry!(self.lex_next(allowed), warnings) {
-            WOk(self.tokens.last().map(|(_, token)| token), warnings)
+        if warnings.unpack(self.lex_next(allowed)?) {
+            Ok(warnings.with(self.tokens.last().map(|(_, token)| token)))
         } else {
-            WOk(None, warnings)
+            Ok(warnings.with(None))
         }
     }
 

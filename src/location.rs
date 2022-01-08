@@ -131,20 +131,20 @@ mod tests {
 /// )
 /// # ;
 /// ```
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Location {
-    file: Rc<str>,
+    file: String,
     start: CharLocation,
     end: CharLocation,
 }
 
-impl Default for Location {
-    fn default() -> Self {
-        Self {
-            file: Rc::from(""),
-            start: CharLocation::default(),
-            end: CharLocation::default(),
-        }
+impl std::fmt::Display for Location {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}@{}:{} to {}:{}",
+            self.file, self.start.0, self.start.1, self.end.0, self.end.1
+        )
     }
 }
 
@@ -159,7 +159,7 @@ impl Location {
     pub fn new<F: Into<Rc<str>>>(file: F, start: CharLocation, end: CharLocation) -> Self {
         assert!(start.0 < end.0 || (start.0 == end.0 && start.1 <= end.1)); // TODO: remove assert and add proper error handling.
         Self {
-            file: file.into(),
+            file: file.into().to_string(),
             start,
             end,
         }
@@ -213,7 +213,7 @@ impl Location {
         }
 
         Self {
-            file: file.into(),
+            file: file.into().to_string(),
             start,
             end,
         }

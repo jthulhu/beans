@@ -1,3 +1,4 @@
+use crate::error::{Result, WarningSet};
 use crate::location::{Location, LocationBuilder};
 use std::fs::File;
 use std::io::prelude::*;
@@ -161,12 +162,15 @@ impl StringStream {
     }
 
     /// Create a [`StringStream`] directly from a file. This will try to read the content of the file right away.
-    pub fn from_file<F: Into<Rc<str>>>(file: F) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_file<F: Into<Rc<str>>>(file: F) -> Result<Self> {
         let file = file.into();
         let mut file_stream = File::open(&*file)?;
         let mut stream_buffer = String::new();
         file_stream.read_to_string(&mut stream_buffer)?;
-        Ok(StringStream::new(file, Rc::from(stream_buffer)))
+        Ok(WarningSet::empty_with(StringStream::new(
+            file,
+            Rc::from(stream_buffer),
+        )))
     }
 
     /// Return a boolean corresponding to whether the substring of

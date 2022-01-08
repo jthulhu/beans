@@ -1,19 +1,15 @@
-use crate::error::{
-    Error, ErrorType, WResult,
-    WResult::{WErr, WOk},
-    WarningSet,
-};
+use crate::error::{Error, WarningSet};
 use crate::lexer::TerminalId;
 use crate::lexer::{LexedStream, Lexer, LexerBuilder, Token};
 use crate::location::Location;
 use crate::parser::earley::GrammarRules;
 use crate::stream::StringStream;
-use crate::{ask_case, ctry, newtype};
+use crate::{ask_case, newtype};
 // use crate::{rule, proxy, collect};
 use super::parser::NonTerminalId;
+use crate::error::Result;
 use hashbrown::HashMap;
 use serde::{Deserialize, Serialize};
-use std::error;
 use std::rc::Rc;
 
 #[cfg(test)]
@@ -160,60 +156,61 @@ pub trait GrammarBuilder<'deserializer>: Sized {
     /// [`Grammar`] that will be built by the [`GrammarBuilder`]
     type Grammar: Grammar<'deserializer>;
     /// Build with the given file as stream.
-    fn with_file(self, file: Rc<str>) -> Result<Self, Box<dyn error::Error>> {
-        Ok(self.with_stream(StringStream::from_file(file)?))
+    fn with_file(self, file: Rc<str>) -> Result<Self> {
+        let warnings = WarningSet::empty();
+        Ok(warnings.on(StringStream::from_file(file)?, |x| self.with_stream(x)))
     }
     /// Build with the given stream.
     fn with_stream(self, stream: StringStream) -> Self;
     /// Build with the given grammar.
     fn with_grammar(self, grammar: Rc<str>) -> Self;
     /// Retrieve the stream from the builder.
-    fn stream(&mut self) -> WResult<StringStream>;
+    fn stream(&mut self) -> Result<StringStream>;
     /// Retrieve the grammar from the builder.
     fn grammar(&self) -> Rc<str>;
     /// Build the grammar.
-    fn build(mut self, lexer: &Lexer) -> WResult<Self::Grammar> {
+    fn build(mut self, lexer: &Lexer) -> Result<Self::Grammar> {
         #![allow(unused)] // Bug that mark these functions as unused.
 
         /// Read a token, match it against the provided `id`.
         /// If it matches, consume the token.
         /// Return whether the token matched.
-        fn read_token_walk(lexed_input: &mut LexedStream<'_, '_>, id: &str) -> WResult<bool> {
+        fn read_token_walk(lexed_input: &mut LexedStream<'_, '_>, id: &str) -> Result<bool> {
             let mut warnings = WarningSet::empty();
-            match ctry!(lexed_input.next_any(), warnings) {
-                Some(token) if token.name() == id => WOk(true, warnings),
+            match warnings.unpack(lexed_input.next_any()?) {
+                Some(token) if token.name() == id => Ok(warnings.with(true)),
                 _ => {
                     lexed_input.drop_last();
-                    WOk(false, warnings)
+                    Ok(warnings.with(false))
                 }
             }
         }
 
         /// Generate an error of type [`GrammarSyntaxError`][beans::error::ErrorType::GrammarSyntaxError].
         fn generate_error(location: Location, expected: &str, found: &str) -> Error {
-            Error::new(
+            Error::GrammarSyntaxError {
                 location,
-                ErrorType::GrammarSyntaxError(format!("expected {}, found {}", expected, found)),
-            )
+                message: format!("expected {}, found {}", expected, found),
+            }
         }
 
         /// Read the token, match it against the provded `id`.
         /// If it matches, consume the token, fail otherwise.
         /// Return the token.
-        fn match_now<'li>(lexed_input: &'li mut LexedStream<'_, '_>, id: &str) -> WResult<Token> {
+        fn match_now<'li>(lexed_input: &'li mut LexedStream<'_, '_>, id: &str) -> Result<Token> {
             let mut warnings = WarningSet::empty();
-            match ctry!(lexed_input.next_any(), warnings) {
+            match warnings.unpack(lexed_input.next_any()?) {
                 Some(token) => {
                     if token.name() == id {
                         let token = token.clone();
-                        WOk(token, warnings)
+                        Ok(warnings.with(token))
                     } else {
                         let error = generate_error(token.location().clone(), id, token.name());
                         lexed_input.drop_last();
-                        WErr(error)
+                        Err(error)
                     }
                 }
-                None => WErr(generate_error(
+                None => Err(generate_error(
                     lexed_input.last_location().clone(),
                     id,
                     "EOF",
@@ -225,78 +222,51 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Consume the tokens.
         /// Fail if there is no proxy element.
         /// Return the proxy element as `(key, value)`.
-        fn read_proxy_element(lexed_input: &mut LexedStream<'_, '_>) -> WResult<(String, Value)> {
+        fn read_proxy_element(lexed_input: &mut LexedStream<'_, '_>) -> Result<(String, Value)> {
             let mut warnings = WarningSet::empty();
-            let id = ctry!(match_now(lexed_input, "ID"), warnings);
-            ctry!(match_now(lexed_input, "COLON"), warnings);
-            if let Some(token) = ctry!(lexed_input.next_any(), warnings) {
-                WOk(
-                    (
-                        id.content().to_string(),
-                        match token.name() {
-                            "INT" => Value::Int(ctry!(
-                                token
-                                    .content()
-                                    .parse::<i32>()
-                                    .map_err(|_| {
-                                        Error::new(
-                                            token.location().clone(),
-                                            ErrorType::GrammarSyntaxError(format!(
-                                                "cannot understand {} as an integer",
-                                                token.content()
-                                            )),
-                                        )
-                                    })
-                                    .into(),
-                                warnings
-                            )),
-                            "STRING" => Value::Str(token.content().to_string()),
-                            "FLOAT" => Value::Float(ctry!(
-                                token
-                                    .content()
-                                    .parse::<f32>()
-                                    .map_err(|_| {
-                                        Error::new(
-                                            token.location().clone(),
-                                            ErrorType::GrammarSyntaxError(format!(
-                                                "cannot understand {} as a float",
-                                                token.content()
-                                            )),
-                                        )
-                                    })
-                                    .into(),
-                                warnings
-                            )),
-                            "BOOL" => Value::Bool(ctry!(
-                                token
-                                    .content()
-                                    .parse::<bool>()
-                                    .map_err(|_| {
-                                        Error::new(
-                                            token.location().clone(),
-                                            ErrorType::GrammarSyntaxError(format!(
-                                                "cannot understand {} as a bool",
-                                                token.content()
-                                            )),
-                                        )
-                                    })
-                                    .into(),
-                                warnings
-                            )),
-                            "ID" => Value::Id(token.content().to_string()),
-                            x => {
-                                return WErr(generate_error(
-                                    token.location().clone(),
-                                    "INT, STRING, FLOAT, BOOL or ID",
-                                    x,
-                                ))
+            let id = warnings.unpack(match_now(lexed_input, "ID")?);
+            warnings.unpack(match_now(lexed_input, "COLON")?);
+            if let Some(token) = warnings.unpack(lexed_input.next_any()?) {
+                Ok(warnings.with((
+                    id.content().to_string(),
+                    match token.name() {
+                        "INT" => Value::Int(token.content().parse::<i32>().map_err(|_| {
+                            Error::GrammarSyntaxError {
+                                location: token.location().clone(),
+                                message: format!(
+                                    "cannot understand {} as an integer",
+                                    token.content()
+                                ),
                             }
-                        },
-                    ),
-                    warnings,
-                )
+                        })?),
+                        "STRING" => Value::Str(token.content().to_string()),
+                        "FLOAT" => Value::Float(token.content().parse::<f32>().map_err(|_| {
+                            Error::GrammarSyntaxError {
+                                location: token.location().clone(),
+                                message: format!(
+                                    "cannot understand {} as a float",
+                                    token.content()
+                                ),
+                            }
+                        })?),
+                        "BOOL" => Value::Bool(token.content().parse::<bool>().map_err(|_| {
+                            Error::GrammarSyntaxError {
+                                message: format!("cannot understand {} as a bool", token.content()),
+                                location: token.location().clone(),
+                            }
+                        })?),
+                        "ID" => Value::Id(token.content().to_string()),
+                        x => {
+                            return Err(generate_error(
+                                token.location().clone(),
+                                "INT, STRING, FLOAT, BOOL or ID",
+                                x,
+                            ))
+                        }
+                    },
+                )))
             } else {
-                WErr(generate_error(
+                Err(generate_error(
                     lexed_input.last_location().clone(),
                     "INT, STRING, FLOAT, BOOL or ID",
                     "EOF",
@@ -308,28 +278,26 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Consume the tokens.
         /// Fail if the proxy is malformed.
         /// Return the proxy.
-        fn read_proxy(lexed_input: &mut LexedStream<'_, '_>) -> WResult<Proxy> {
+        fn read_proxy(lexed_input: &mut LexedStream<'_, '_>) -> Result<Proxy> {
             let mut warnings = WarningSet::empty();
             match_now(lexed_input, "LPROXY");
             let mut proxy = HashMap::new();
-            while let Some(token) = ctry!(lexed_input.next_any(), warnings) {
+            while let Some(token) = warnings.unpack(lexed_input.next_any()?) {
                 match token.name() {
                     "ID" => {
                         lexed_input.drop_last();
-                        let (key, value) = ctry!(read_proxy_element(lexed_input), warnings);
+                        let (key, value) = warnings.unpack(read_proxy_element(lexed_input)?);
                         proxy.insert(key, value);
                     }
-                    "RPROXY" => {
-                        return WOk(proxy, warnings);
-                    }
+                    "RPROXY" => return Ok(warnings.with(proxy)),
                     x => {
                         let error = generate_error(token.location().clone(), "ID or RPROXY", x);
                         lexed_input.drop_last();
-                        return WErr(error);
+                        return Err(error);
                     }
                 }
             }
-            WErr(generate_error(
+            Err(generate_error(
                 lexed_input.last_location().clone(),
                 "ID or RPROXY",
                 "EOF",
@@ -340,34 +308,31 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Consume the tokens.
         /// Fail if there is a dot but no attribute.
         /// Return the attribute.
-        fn read_rule_element_attribute(
-            lexed_input: &mut LexedStream<'_, '_>,
-        ) -> WResult<Attribute> {
+        fn read_rule_element_attribute(lexed_input: &mut LexedStream<'_, '_>) -> Result<Attribute> {
             let mut warnings = WarningSet::empty();
-            if ctry!(read_token_walk(lexed_input, "DOT"), warnings) {
-                if let Some(token) = ctry!(lexed_input.next_any(), warnings) {
+            if warnings.unpack(read_token_walk(lexed_input, "DOT")?) {
+                if let Some(token) = warnings.unpack(lexed_input.next_any()?) {
                     match token.name() {
-                        "ID" => WOk(Attribute::Named(token.content().to_string()), warnings),
-                        "INT" => WOk(
-                            Attribute::Indexed(token.content().parse().unwrap()),
-                            warnings,
-                        ),
+                        "ID" => Ok(warnings.with(Attribute::Named(token.content().to_string()))),
+                        "INT" => {
+                            Ok(warnings.with(Attribute::Indexed(token.content().parse().unwrap())))
+                        }
                         x => {
                             let error = generate_error(token.location().clone(), "ID or INT", x);
                             lexed_input.drop_last();
-                            WErr(error)
+                            Err(error)
                         }
                     }
                 } else {
                     lexed_input.drop_last();
-                    WErr(generate_error(
+                    Err(generate_error(
                         lexed_input.last_location().clone(),
                         "ID or INT",
                         "EOF",
                     ))
                 }
             } else {
-                WOk(Attribute::None, warnings)
+                Ok(warnings.with(Attribute::None))
             }
         }
 
@@ -375,13 +340,13 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Consume the tokens.
         /// Fail if there is an at but no key.
         /// Return the key.
-        fn read_rule_element_key(lexed_input: &mut LexedStream<'_, '_>) -> WResult<Option<String>> {
+        fn read_rule_element_key(lexed_input: &mut LexedStream<'_, '_>) -> Result<Option<String>> {
             let mut warnings = WarningSet::empty();
-            if ctry!(read_token_walk(lexed_input, "AT"), warnings) {
-                let token = ctry!(match_now(lexed_input, "ID"), warnings);
-                WOk(Some(token.content().to_string()), warnings)
+            if warnings.unpack(read_token_walk(lexed_input, "AT")?) {
+                let token = warnings.unpack(match_now(lexed_input, "ID")?);
+                Ok(warnings.with(Some(token.content().to_string())))
             } else {
-                WOk(None, warnings)
+                Ok(warnings.with(None))
             }
         }
 
@@ -394,25 +359,22 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             id: &mut NonTerminalId,
             name_map: &mut HashMap<Rc<str>, NonTerminalId>,
             lexer: &Lexer,
-        ) -> WResult<RuleElement> {
+        ) -> Result<RuleElement> {
             let mut warnings = WarningSet::empty();
-            let name_token = ctry!(match_now(lexed_input, "ID"), warnings);
-            let attribute = ctry!(read_rule_element_attribute(lexed_input), warnings);
-            let key = ctry!(read_rule_element_key(lexed_input), warnings);
+            let name_token = warnings.unpack(match_now(lexed_input, "ID")?);
+            let attribute = warnings.unpack(read_rule_element_attribute(lexed_input)?);
+            let key = warnings.unpack(read_rule_element_key(lexed_input)?);
             let name = name_token.content();
-            WOk(
-                RuleElement::new(
-                    name,
-                    attribute,
-                    key,
-                    if let Some(id) = lexer.grammar().id(name) {
-                        ElementType::from(id)
-                    } else {
-                        ElementType::from(*name_map.entry(name.into()).or_insert(id.next()))
-                    },
-                ),
-                warnings,
-            )
+            Ok(warnings.with(RuleElement::new(
+                name,
+                attribute,
+                key,
+                if let Some(id) = lexer.grammar().id(name) {
+                    ElementType::from(id)
+                } else {
+                    ElementType::from(*name_map.entry(name.into()).or_insert(id.next()))
+                },
+            )))
         }
 
         /// Read a rule, of the form `Token(.attribute)?(@key)? ... <key: value ...>`.
@@ -424,32 +386,31 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             id: &mut NonTerminalId,
             name_map: &mut HashMap<Rc<str>, NonTerminalId>,
             lexer: &Lexer,
-        ) -> WResult<PartialRule> {
+        ) -> Result<PartialRule> {
             let mut warnings = WarningSet::empty();
             let expected = "ID";
             let mut rule_elements = Vec::new();
-            while let Some(token) = ctry!(lexed_input.next_any(), warnings) {
-		#[allow(clippy::branches_sharing_code)] // Extracting lexed_input.drop_last()
-		//                                         causes the compiler to complain.
+            while let Some(token) = warnings.unpack(lexed_input.next_any()?) {
+                #[allow(clippy::branches_sharing_code)] // Extracting lexed_input.drop_last()
+                //                                         causes the compiler to complain.
                 if token.name() == "LPROXY" {
                     lexed_input.drop_last();
-                    let proxy = ctry!(read_proxy(lexed_input), warnings);
-                    return WOk(
-                        PartialRule {
-                            elements: rule_elements,
-                            proxy,
-                        },
-                        warnings,
-                    );
+                    let proxy = warnings.unpack(read_proxy(lexed_input)?);
+                    return Ok(warnings.with(PartialRule {
+                        elements: rule_elements,
+                        proxy,
+                    }));
                 } else {
                     lexed_input.drop_last();
                 }
-                rule_elements.push(ctry!(
-                    read_rule_element(lexed_input, id, name_map, lexer),
-                    warnings
-                ));
+                rule_elements.push(warnings.unpack(read_rule_element(
+                    lexed_input,
+                    id,
+                    name_map,
+                    lexer,
+                )?));
             }
-            WErr(generate_error(
+            Err(generate_error(
                 lexed_input.last_location().clone(),
                 expected,
                 "EOF",
@@ -467,31 +428,33 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             next_id: &mut NonTerminalId,
             name_map: &mut HashMap<Rc<str>, NonTerminalId>,
             lexer: &Lexer,
-        ) -> WResult<(bool, String, NonTerminalId, Vec<Rule>)> {
+        ) -> Result<(bool, String, NonTerminalId, Vec<Rule>)> {
             let mut warnings = WarningSet::empty();
-            let axiom = ctry!(read_token_walk(lexed_input, "AT"), warnings);
-            let name = ctry!(match_now(lexed_input, "ID"), warnings);
-            ctry!(match_now(lexed_input, "ASSIGNMENT"), warnings);
+            let axiom = warnings.unpack(read_token_walk(lexed_input, "AT")?);
+            let name = warnings.unpack(match_now(lexed_input, "ID")?);
+            warnings.unpack(match_now(lexed_input, "ASSIGNMENT")?);
             let name_string = name.content();
             let id = *name_map.entry(name_string.into()).or_insert(next_id.next());
             let mut rules = Vec::new();
-            'read_rules: while let Some(token) = ctry!(lexed_input.next_any(), warnings) {
+            'read_rules: while let Some(token) = warnings.unpack(lexed_input.next_any()?) {
                 if token.name() == "SEMICOLON" {
                     break 'read_rules;
                 }
                 lexed_input.drop_last();
                 let partial_rule =
-                    ctry!(read_rule(lexed_input, next_id, name_map, lexer), warnings);
+                    warnings.unpack(read_rule(lexed_input, next_id, name_map, lexer)?);
                 let id = *name_map.entry(name_string.into()).or_insert(next_id.next());
                 let rule = Rule::new(name_string, id, partial_rule.elements, partial_rule.proxy);
                 rules.push(rule);
             }
-            WOk((axiom, name_string.to_string(), id, rules), warnings)
+            Ok(warnings.with((axiom, name_string.to_string(), id, rules)))
         }
 
         let mut warnings = WarningSet::empty();
-        let mut stream = ctry!(self.stream(), warnings);
-        let temp_lexer = ctry!(LexerBuilder::from_file(self.grammar()), warnings).build();
+        let mut stream = warnings.unpack(self.stream()?);
+        let temp_lexer = warnings
+            .unpack(LexerBuilder::from_file(self.grammar())?)
+            .build();
         let mut lexed_input = temp_lexer.lex(&mut stream);
 
         let mut rules = GrammarRules::default();
@@ -502,25 +465,28 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         let mut nonterminals = NonTerminalId::from(0);
         let mut name_map = HashMap::new();
 
-        while let Some(token) = ctry!(lexed_input.next_any(), warnings) {
+        while let Some(token) = warnings.unpack(lexed_input.next_any()?) {
             let first_location = token.location().clone();
             lexed_input.drop_last();
-            let (axiom, name, id, new_rules) = ctry!(
-                read_definition(&mut lexed_input, &mut nonterminals, &mut name_map, lexer),
-                warnings
-            );
+            let (axiom, name, id, new_rules) = warnings.unpack(read_definition(
+                &mut lexed_input,
+                &mut nonterminals,
+                &mut name_map,
+                lexer,
+            )?);
             let location = Location::extend(first_location, lexed_input.last_location().clone());
             if let Some(old_location) = done.get(&name) {
-                return WErr(Error::new(
+                return Err(Error::GrammarDuplicateDefinition {
                     location,
-                    ErrorType::GrammarDuplicateDefinition(name, old_location.clone()),
-                ));
+                    old_location: old_location.clone(),
+                    message: name,
+                });
             }
             if lexer.grammar().contains(&name) {
-                return WErr(Error::new(
+                return Err(Error::GrammarNonTerminalDuplicate {
                     location,
-                    ErrorType::GrammarNonTerminalDuplicate(name),
-                ));
+                    message: name,
+                });
             }
             if axiom {
                 axioms_vec.push(id);
@@ -548,9 +514,9 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         //     }
         // }
 
-        let grammar = ctry!(Self::Grammar::new(rules, axioms, name_map), warnings);
+        let grammar = warnings.unpack(Self::Grammar::new(rules, axioms, name_map)?);
 
-        WOk(grammar, warnings)
+        Ok(warnings.with(grammar))
     }
 }
 
@@ -560,34 +526,14 @@ pub trait Grammar<'d>: Sized + Serialize + Deserialize<'d> {
         rules: GrammarRules,
         axioms: Axioms,
         name_map: HashMap<Rc<str>, NonTerminalId>,
-    ) -> WResult<Self>;
+    ) -> Result<Self>;
 
-    fn from(bytes: &'d [u8]) -> WResult<Self> {
-        bincode::deserialize::<'d, Self>(bytes)
-            .map_err(|x| {
-                Error::new(
-                    Location::new(
-                        file!(),
-                        (line!() as usize, column!() as usize),
-                        (line!() as usize, column!() as usize),
-                    ),
-                    ErrorType::DeserializationError(format!("{}", x)),
-                )
-            })
-            .into()
+    fn from(bytes: &'d [u8]) -> Result<Self> {
+        Ok(WarningSet::empty_with(bincode::deserialize::<'d, Self>(
+            bytes,
+        )?))
     }
-    fn serialize(&self) -> WResult<Vec<u8>> {
-        bincode::serialize(self)
-            .map_err(|x| {
-                Error::new(
-                    Location::new(
-                        file!(),
-                        (line!() as usize, column!() as usize),
-                        (line!() as usize, column!() as usize),
-                    ),
-                    ErrorType::SerializationError(format!("{}", x)),
-                )
-            })
-            .into()
+    fn serialize(&self) -> Result<Vec<u8>> {
+        Ok(WarningSet::empty_with(bincode::serialize(self)?))
     }
 }

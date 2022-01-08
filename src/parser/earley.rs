@@ -3,11 +3,8 @@ use super::grammarparser::{
 };
 use super::list::List;
 use super::parser::{NonTerminalId, ParseResult, Parser, RuleId};
-use crate::error::{
-    Error, ErrorType,
-    WResult::{self, WErr, WOk},
-    WarningSet,
-};
+use crate::error::Result;
+use crate::error::{Error, WarningSet};
 use crate::lexer::LexedStream;
 use crate::lexer::TerminalId;
 use crate::lexer::Token;
@@ -15,7 +12,7 @@ use crate::parser::grammarparser::Attribute;
 use crate::parser::parser::AST;
 use crate::regex::Allowed;
 use crate::stream::StringStream;
-use crate::{ctry, newtype, nvec, retrieve};
+use crate::{newtype, nvec, retrieve};
 use hashbrown::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -270,7 +267,7 @@ Factor ::= LPAR Sum@self RPAR <self: self>
     }
 
     impl TestToken {
-	#![allow(unused)]
+        #![allow(unused)]
         fn new(name: &'static str, attributes: Vec<&'static str>) -> Self {
             Self {
                 name,
@@ -298,8 +295,11 @@ Factor ::= LPAR Sum@self RPAR <self: self>
 
     #[derive(Debug)]
     enum TestAST {
-        Node { id: usize, attributes: MapVec },
-	#[allow(unused)]
+        Node {
+            id: usize,
+            attributes: MapVec,
+        },
+        #[allow(unused)]
         Terminal(TestToken),
         Literal(crate::parser::parser::Value),
     }
@@ -362,7 +362,7 @@ Factor ::= LPAR Sum@self RPAR <self: self>
     fn earley_grammar_builder() {
 	use crate::lexer::LexerBuilder;
         let lexer = LexerBuilder::default().build();
-        let grammar = EarleyGrammarBuilder::default().build(&lexer).unwrap();
+        let grammar = EarleyGrammarBuilder::default().build(&lexer).unwrap().unwrap();
 	verify(
             grammar.rules,
             rules!(
@@ -441,7 +441,8 @@ B ::= A <>;"#;
             Rc::from("<lexer input>"),
             Rc::from(lexer_input),
         ))
-        .unwrap()
+            .unwrap()
+            .unwrap()
         .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
             .with_stream(StringStream::new(
@@ -449,6 +450,7 @@ B ::= A <>;"#;
                 Rc::from(grammar_input),
             ))
             .build(&lexer)
+            .unwrap()
             .unwrap();
         let parser = EarleyParser::new(grammar);
         let sets = sets!(
@@ -461,6 +463,7 @@ B ::= A <>;"#;
         );
         let (recognised, _) = parser
             .recognise(&mut lexer.lex(&mut StringStream::new("<input>", input)))
+            .unwrap()
             .unwrap();
         verify_sets(sets, recognised, &parser);
     }
@@ -471,17 +474,20 @@ B ::= A <>;"#;
 
         let lexer =
             LexerBuilder::from_stream(StringStream::new("<lexer input>", GRAMMAR_NUMBERS_LEXER))
+            .unwrap()
                 .unwrap()
                 .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
             .with_stream(StringStream::new("<grammar input>", GRAMMAR_NUMBERS))
             .build(&lexer)
+            .unwrap()
             .unwrap();
         let parser = EarleyParser::new(grammar);
         let (table, raw_input) = parser
             .recognise(&mut lexer.lex(&mut StringStream::new("<input>", input)))
+            .unwrap()
             .unwrap();
-        let forest = parser.to_forest(&table, &raw_input).unwrap();
+        let forest = parser.to_forest(&table, &raw_input).unwrap().unwrap();
         let ast = parser.select_ast(&forest, &raw_input);
 
         let test_ast = {
@@ -588,11 +594,13 @@ B ::= A <>;"#;
 
         let lexer =
             LexerBuilder::from_stream(StringStream::new("<lexer input>", GRAMMAR_NUMBERS_LEXER))
+            .unwrap()
                 .unwrap()
                 .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
             .with_stream(StringStream::new("<grammar input>", GRAMMAR_NUMBERS))
             .build(&lexer)
+            .unwrap()
             .unwrap();
 
         let parser = EarleyParser::new(grammar);
@@ -636,8 +644,9 @@ B ::= A <>;"#;
 
         let (table, raw_input) = parser
             .recognise(&mut lexer.lex(&mut StringStream::new("<input>", input)))
+            .unwrap()
             .unwrap();
-        let forest = parser.to_forest(&table, &raw_input).unwrap();
+        let forest = parser.to_forest(&table, &raw_input).unwrap().unwrap();
         assert_eq!(
             forest,
             sets,
@@ -662,7 +671,8 @@ B ::= A <>;"#;
             Rc::from("<lexer input>"),
             Rc::from(GRAMMAR_NUMBERS_LEXER),
         ))
-        .unwrap()
+            .unwrap()
+            .unwrap()
         .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
             .with_stream(StringStream::new(
@@ -670,6 +680,7 @@ B ::= A <>;"#;
                 Rc::from(GRAMMAR_NUMBERS),
             ))
             .build(&lexer)
+            .unwrap()
             .unwrap();
 
         let parser = EarleyParser::new(grammar);
@@ -750,6 +761,7 @@ B ::= A <>;"#;
         );
         let (recognised, _) = parser
             .recognise(&mut lexer.lex(&mut StringStream::new(Rc::from("<input>"), Rc::from(input))))
+            .unwrap()
             .unwrap();
         verify_sets(sets, recognised, &parser);
     }
@@ -818,10 +830,9 @@ impl GrammarBuilder<'_> for EarleyGrammarBuilder {
         self
     }
 
-    fn stream<'ws>(&mut self) -> WResult<StringStream> {
-        let mut warnings = WarningSet::empty();
-        let stream = retrieve!(self.stream, warnings);
-        WOk(stream, warnings)
+    fn stream<'ws>(&mut self) -> Result<StringStream> {
+        let stream = retrieve!(self.stream);
+        Ok(WarningSet::empty_with(stream))
     }
 
     fn grammar(&self) -> Rc<str> {
@@ -833,6 +844,7 @@ impl Default for EarleyGrammarBuilder {
     fn default() -> Self {
         Self::new(Rc::from("gmrs/parser.lx"))
             .with_file(Rc::from("gmrs/parser.gmr"))
+            .unwrap()
             .unwrap()
     }
 }
@@ -859,7 +871,7 @@ struct FinalItem {
 }
 
 impl fmt::Display for FinalItem {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::result::Result<(), fmt::Error> {
         write!(f, "#{}\t\t({})", self.rule, self.end)
     }
 }
@@ -905,7 +917,7 @@ impl Grammar<'_> for EarleyGrammar {
         rules: GrammarRules,
         axioms: Axioms,
         name_map: HashMap<Rc<str>, NonTerminalId>,
-    ) -> WResult<Self> {
+    ) -> Result<Self> {
         let warnings = WarningSet::empty();
         let nb_non_terminals = axioms.len_as(); // Number of non terminals
                                                 // nullables[non_term_id]: bool is whether non terminal with this id is nullable, meaning it can match ε (empty string).
@@ -948,16 +960,13 @@ impl Grammar<'_> for EarleyGrammar {
             }
         }
 
-        WOk(
-            Self {
-                axioms,
-                rules,
-                nullables,
-                name_map,
-                rules_of,
-            },
-            warnings,
-        )
+        Ok(warnings.with(Self {
+            axioms,
+            rules,
+            nullables,
+            name_map,
+            rules_of,
+        }))
     }
 }
 
@@ -1004,7 +1013,7 @@ impl FinalSet {
 }
 
 impl std::fmt::Display for FinalSet {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         write!(
             f,
             r"== ({}) ==
@@ -1266,16 +1275,16 @@ impl EarleyParser {
             .unwrap()
     }
 
-    fn to_forest(&self, table: &[StateSet], raw_input: &[Token]) -> WResult<Forest> {
+    fn to_forest(&self, table: &[StateSet], raw_input: &[Token]) -> Result<Forest> {
         let warnings = WarningSet::default();
         let mut forest = vec![FinalSet::default(); table.len()];
         for (i, set) in table.iter().enumerate() {
             forest[i].position = i;
             if set.is_empty() {
-                let location = raw_input[i].location().clone();
-                let err_type = ErrorType::SyntaxError;
-                let error = Error::new(location, err_type);
-                return WErr(error);
+                return Err(Error::SyntaxError {
+                    location: raw_input[i].location().clone(),
+                    message: format!("Syntax error at token {}", i),
+                });
             }
             set.iter()
                 .filter(|item| item.position == self.grammar.rules[item.rule].elements.len())
@@ -1289,13 +1298,13 @@ impl EarleyParser {
                     )
                 });
         }
-        WOk(forest, warnings)
+        Ok(warnings.with(forest))
     }
 
     fn recognise<'input>(
         &self,
         input: &'input mut LexedStream<'input, 'input>,
-    ) -> WResult<(Table, Vec<Token>)> {
+    ) -> Result<(Table, Vec<Token>)> {
         let mut warnings = WarningSet::empty();
         let mut sets = Vec::new();
         let mut first_state = StateSet::default();
@@ -1373,14 +1382,14 @@ impl EarleyParser {
 
             let possible_scans = scans.keys();
             let allowed = Allowed::Some(possible_scans.copied().collect());
-            if let Some(token) = ctry!(input.next(allowed), warnings) {
+            if let Some(token) = warnings.unpack(input.next(allowed)?) {
                 for item in scans.entry(token.id()).or_default() {
                     next_state.add(*item);
                 }
                 raw_input.push(token.clone());
             }
             if next_state.is_empty() {
-                break 'outer WOk((sets, raw_input), warnings);
+                break 'outer Ok(warnings.with((sets, raw_input)));
             }
             sets.push(next_state);
             pos += 1;
@@ -1404,14 +1413,11 @@ impl Parser<'_> for EarleyParser {
         self.recognise(input).is_ok()
     }
 
-    fn parse<'input>(
-        &self,
-        input: &'input mut LexedStream<'input, 'input>,
-    ) -> WResult<ParseResult> {
+    fn parse<'input>(&self, input: &'input mut LexedStream<'input, 'input>) -> Result<ParseResult> {
         let mut warnings = WarningSet::default();
-        let (table, raw_input) = ctry!(self.recognise(input), warnings);
-        let forest = ctry!(self.to_forest(&table, &raw_input), warnings);
+        let (table, raw_input) = warnings.unpack(self.recognise(input)?);
+        let forest = warnings.unpack(self.to_forest(&table, &raw_input)?);
         let tree = self.select_ast(&forest, &raw_input);
-        WOk(ParseResult { tree }, warnings)
+        Ok(warnings.with(ParseResult { tree }))
     }
 }

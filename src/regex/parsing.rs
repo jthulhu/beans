@@ -65,12 +65,12 @@ pub mod tests {
 
         assert_eq!(
             read("[a-zb-z]", 0).unwrap_err(),
-            (
-                8,
-                String::from(
+            RegexError {
+                position: 8,
+                message: String::from(
                     "Found 1 overlaps in character class from position 0 to position 8: (a-z,b-z)"
-                )
-            )
+                ),
+            }
         );
     }
 
@@ -205,7 +205,7 @@ pub mod tests {
             ("+", 0),
         ];
         for &(regex, p) in wrong_regex.iter() {
-            if let Err((pos, _)) = read(regex, 0) {
+            if let Err(RegexError { position: pos, .. }) = read(regex, 0) {
                 assert_eq!(pos, p);
             } else {
                 panic!("(/{}/ shouldn't succeed.", regex);
@@ -465,7 +465,11 @@ pub enum Regex {
 /// `RegexError` is an alias of a couple (usize, String).
 /// The first element is the position at which the error occured,
 /// and the second one is a description of the said error.
-pub type RegexError = (usize, String);
+#[derive(Debug, PartialEq, Eq)]
+pub struct RegexError {
+    pub position: usize,
+    pub message: String,
+}
 
 impl From<(Regex, Option<Regex>)> for Regex {
     fn from(t: (Regex, Option<Regex>)) -> Self {
@@ -604,20 +608,22 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                             '-' => last = Some('-'),
                             '\\' => last = Some('\\'),
                             _ => {
-                                return Err((
-                                    pos,
-                                    format!(
+                                return Err(RegexError {
+                                    position: pos,
+                                    message: format!(
                                     "Cannot escape character inside character class {}, try replacing /\\{}/ with /{}/",
                                     c, c, c
                                 ),
-                                ))
+                                })
                             }
                         };
                     } else {
-                        return Err((
-                            pos,
-                            String::from("Expected something after '\', but found EOF instead"),
-                        ));
+                        return Err(RegexError {
+                            position: pos,
+                            message: String::from(
+                                "Expected something after '\', but found EOF instead",
+                            ),
+                        });
                     }
                 }
                 '^' if pos == actual + 1 => {
@@ -628,10 +634,12 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                         if let Some((_, c2)) = input.next() {
                             insert((Included(c1), Included(c2)), &mut tree, &mut overlaps);
                         } else {
-                            return Err((
-                                pos,
-                                String::from("Expected something after '-', but found EOF instead"),
-                            ));
+                            return Err(RegexError {
+                                position: pos,
+                                message: String::from(
+                                    "Expected something after '-', but found EOF instead",
+                                ),
+                            });
                         }
                         last = None;
                     } else {
@@ -657,7 +665,10 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                         }
                         err_str.pop();
                         err_str.pop();
-                        return Err((pos + 1, err_str));
+                        return Err(RegexError {
+                            position: pos + 1,
+                            message: err_str,
+                        });
                     } else {
                         return Ok(Regex::CharacterClass(tree, negated));
                     }
@@ -670,7 +681,7 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                 }
             }
         }
-        Err((size, format!("Expected end of character class, but found EOF. Try adding ']' if you really meant to have a character class, or adding '\\' at position {} if you didn't want a character class", actual)))
+        Err(RegexError {position: size, message: format!("Expected end of character class, but found EOF. Try adding ']' if you really meant to have a character class, or adding '\\' at position {} if you didn't want a character class", actual)})
     }
 
     fn add(regex: Regex, stack: &mut Vec<(Regex, Option<Regex>, usize)>) {
@@ -690,19 +701,22 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
         match exp {
             Regex::Concat(r1, r2) => Ok(Regex::Concat(r1, Box::new(kleene_star(*r2, pos)?))),
             Regex::Option(r1, r2) => Ok(Regex::Option(r1, Box::new(kleene_star(*r2, pos)?))),
-            Regex::Empty => Err((
-                pos,
-                String::from("Cannot apply kleene star to empty regex."),
-            )),
-            Regex::KleeneStar(..) => Err((pos, String::from("Cannot apply kleene star twice."))),
-            Regex::Optional(..) => Err((
-                pos,
-                String::from("Cannot apply kleene star on an optional group."),
-            )),
-            Regex::Repetition(..) => Err((
-                pos,
-                String::from("Cannot apply kleene star and repetition."),
-            )),
+            Regex::Empty => Err(RegexError {
+                position: pos,
+                message: String::from("Cannot apply kleene star to empty regex."),
+            }),
+            Regex::KleeneStar(..) => Err(RegexError {
+                position: pos,
+                message: String::from("Cannot apply kleene star twice."),
+            }),
+            Regex::Optional(..) => Err(RegexError {
+                position: pos,
+                message: String::from("Cannot apply kleene star on an optional group."),
+            }),
+            Regex::Repetition(..) => Err(RegexError {
+                position: pos,
+                message: String::from("Cannot apply kleene star and repetition."),
+            }),
             r => Ok(Regex::KleeneStar(Box::new(r))),
         }
     }
@@ -711,16 +725,22 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
         match exp {
             Regex::Concat(r1, r2) => Ok(Regex::Concat(r1, Box::new(repetition(*r2, pos)?))),
             Regex::Option(r1, r2) => Ok(Regex::Option(r1, Box::new(repetition(*r2, pos)?))),
-            Regex::Empty => Err((pos, String::from("Cannot apply repetition to empty regex."))),
-            Regex::KleeneStar(..) => Err((pos, String::from("Cannot apply repetition twice."))),
-            Regex::Optional(..) => Err((
-                pos,
-                String::from("Cannot apply repetition on an optional group."),
-            )),
-            Regex::Repetition(..) => Err((
-                pos,
-                String::from("Cannot apply repetition and kleene star."),
-            )),
+            Regex::Empty => Err(RegexError {
+                position: pos,
+                message: String::from("Cannot apply repetition to empty regex."),
+            }),
+            Regex::KleeneStar(..) => Err(RegexError {
+                position: pos,
+                message: String::from("Cannot apply repetition twice."),
+            }),
+            Regex::Optional(..) => Err(RegexError {
+                position: pos,
+                message: String::from("Cannot apply repetition on an optional group."),
+            }),
+            Regex::Repetition(..) => Err(RegexError {
+                position: pos,
+                message: String::from("Cannot apply repetition and kleene star."),
+            }),
             r => Ok(Regex::Repetition(Box::new(r))),
         }
     }
@@ -729,17 +749,22 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
         match exp {
             Regex::Concat(r1, r2) => Ok(Regex::Concat(r1, Box::new(optional(*r2, pos)?))),
             Regex::Option(r1, r2) => Ok(Regex::Option(r1, Box::new(optional(*r2, pos)?))),
-            Regex::Empty => Err((pos, String::from("Cannot apply optional to empty regex."))),
-            Regex::KleeneStar(..) => Err((
-                pos,
-                String::from("Non-greedy kleene star is not supported."),
-            )),
-            Regex::Optional(..) => {
-                Err((pos, String::from("Non-greedy optional is not supported.")))
-            }
-            Regex::Repetition(..) => {
-                Err((pos, String::from("Non-greedy repetition is not supported.")))
-            }
+            Regex::Empty => Err(RegexError {
+                position: pos,
+                message: String::from("Cannot apply optional to empty regex."),
+            }),
+            Regex::KleeneStar(..) => Err(RegexError {
+                position: pos,
+                message: String::from("Non-greedy kleene star is not supported."),
+            }),
+            Regex::Optional(..) => Err(RegexError {
+                position: pos,
+                message: String::from("Non-greedy optional is not supported."),
+            }),
+            Regex::Repetition(..) => Err(RegexError {
+                position: pos,
+                message: String::from("Non-greedy repetition is not supported."),
+            }),
             r => Ok(Regex::Optional(Box::new(r))),
         }
     }
@@ -755,10 +780,10 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
             }
             ')' => {
                 if stack.len() <= 1 {
-                    return Err((
-                        pos,
-                        String::from("Closing parenthesis doesn't match any previously opened."),
-                    ));
+                    return Err(RegexError {
+                        position: pos,
+                        message: String::from("Closing parenthesis doesn't match any previously opened."),
+                    });
                 }
                 {
 		    let (last, remainder, nb_group) = stack.pop().unwrap();
@@ -784,76 +809,76 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                 let last = (l, remainder).into();
                 stack.push((Regex::Empty, Some(last), group));
             }
-	    '$' => return Err((
-		pos,
-		String::from("End-of-line /$/ is not supported. Matches are anchored anyways. Try /\\n/ instead.")
-	    )),
-	    '^' => return Err((
-		pos,
-		String::from("Start-of-line /^/ is not supported. Matches are anchored anyways.")
-	    )),
+	    '$' => return Err(RegexError {
+		position: pos,
+		message: String::from("End-of-line /$/ is not supported. Matches are anchored anyways. Try /\\n/ instead.")
+	    }),
+	    '^' => return Err(RegexError {
+		position: pos,
+		message: String::from("Start-of-line /^/ is not supported. Matches are anchored anyways.")
+	    }),
             '.' => add(Regex::Any, &mut stack),
             '\\' => {
                 if let Some((pos, chr)) = chrs.next() {
                     match chr {
 			'\\' | '.' | '(' | ')' | '?' | '+' | '*' | '|' | '$' | '^' | '[' => add(Regex::Char(chr), &mut stack),
-			'A' => return Err((
-			    pos,
-			    String::from("Start of the string anchor /\\A/ is not supported.")
-			)),
-			'N' => return Err((
-			    pos,
-			    String::from("Not a line break shorthand /\\N/ is not supported. Try /[^\\n]/ instead.")
-			)),
+			'A' => return Err(RegexError {
+			    position: pos,
+			    message: String::from("Start of the string anchor /\\A/ is not supported.")
+			}),
+			'N' => return Err(RegexError {
+			    position: pos,
+			    message: String::from("Not a line break shorthand /\\N/ is not supported. Try /[^\\n]/ instead.")
+			}),
 			'Z' => add(Regex::EOF, &mut stack),
 			'b' => add(Regex::WordBoundary, &mut stack),
 			'd' => add(Regex::Digit, &mut stack),
-			'h' => return Err((
-			    pos,
-			    String::from("Horizontal whitespace / hexadecimal digit shorthand /\\h/ is not supported. Try [0-9a-f] instead if you wanted hexadecimal digit.")
-			)),
-			'l' => return Err((
-			    pos,
-			    String::from("Lowercase shorthand /\\l/ is not supported. Try /[a-z]/ instead.")
-			)),
+			'h' => return Err(RegexError {
+			    position: pos,
+			    message: String::from("Horizontal whitespace / hexadecimal digit shorthand /\\h/ is not supported. Try [0-9a-f] instead if you wanted hexadecimal digit.")
+			}),
+			'l' => return Err(RegexError {
+			    position: pos,
+			    message: String::from("Lowercase shorthand /\\l/ is not supported. Try /[a-z]/ instead.")
+			}),
 			'n' => add(Regex::Char('\n'), &mut stack),
-			'r' => return Err((
-			    pos,
-			    String::from("Nonsense EOL /\\r/ is not supported. Try /\\n/ instead.")
-			)),
+			'r' => return Err(RegexError {
+			    position: pos,
+			    message: String::from("Nonsense EOL /\\r/ is not supported. Try /\\n/ instead.")
+			}),
 			's' => add(Regex::Whitespace, &mut stack),
 			't' => add(Regex::Char('\t'), &mut stack),
-			'u' => return Err((
-			    pos,
-			    String::from("Uppercase shorthand /\\u/ is not supported. Try /[A-Z]/ instead.")
-			)),
-			'v' => return Err((
-			    pos,
-			    String::from("Vertical whitespace shorthand /\\v/ is not supported.")
-			)),
+			'u' => return Err(RegexError {
+			    position: pos,
+			    message: String::from("Uppercase shorthand /\\u/ is not supported. Try /[A-Z]/ instead.")
+			}),
+			'v' => return Err(RegexError {
+			    position: pos,
+			    message: String::from("Vertical whitespace shorthand /\\v/ is not supported.")
+			}),
                         'w' => add(Regex::WordChar, &mut stack),
-			'x' => return Err((
-			    pos,
-			    String::from("Hexadecimal escape /\\xFF/ is not supported.")
-			)),
+			'x' => return Err(RegexError {
+			    position: pos,
+			    message: String::from("Hexadecimal escape /\\xFF/ is not supported.")
+			}),
 			'z' => add(Regex::EOF, &mut stack),
                         _ => {
-                            return Err((
-                                pos,
-                                format!(
+                            return Err(RegexError {
+                                position: pos,
+                                message: format!(
                                     "Cannot escape character {}, try replacing /\\{}/ with /{}/",
                                     chr, chr, chr
                                 ),
-                            ))
+                            })
                         }
                     }
                 } else {
-                    return Err((
-                        pos,
-                        String::from(
+                    return Err(RegexError {
+                        position: pos,
+                        message: String::from(
                             "Expected something after character '\', but found EOF instead",
                         ),
-                    ));
+                    });
                 }
             }
             '[' => {
@@ -863,13 +888,13 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
         }
     }
     if stack.len() != 1 {
-        Err((
-            size,
-            format!(
+        Err(RegexError {
+            position: size,
+            message: format!(
                 "Expected {} closing parenthesis, found EOF",
                 stack.len() - 1
             ),
-        ))
+        })
     } else {
         Ok((
             {

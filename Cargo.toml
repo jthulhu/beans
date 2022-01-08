@@ -10,6 +10,7 @@ fixedbitset = { version = "0.4.0", features = ["serde"] }
 unbounded-interval-tree = "0.2.3"
 serde = { version = "1.0.125", features = ["derive", "rc"] }
 bincode = "1.3.2"
+thiserror = "1.0.30"
 # clap = { version = "~j/2.33.3", features = ["yaml"] }
 
 [dev-dependencies]

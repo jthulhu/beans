@@ -30,17 +30,13 @@ macro_rules! retrieve {
 #[macro_export]
 macro_rules! ask_case {
     ($string: expr, $case: ident, $warnings: expr) => {
-        use crate::{
-            case::{Case, CaseProcess},
-            error::{Warning, WarningType},
-        };
         use std::rc::Rc;
-        match $string.case() {
-            Case::$case => {}
-            c => $warnings.add(Warning::new(WarningType::CaseConvention(
+        match $crate::case::CaseProcess::case($string) {
+            $crate::case::Case::$case => {}
+            c => $warnings.add($crate::error::Warning::new($crate::error::WarningType::CaseConvention(
                 Rc::from($string.as_str()),
                 c,
-                Case::$case,
+                $crate::case::Case::$case,
             ))),
         }
     };

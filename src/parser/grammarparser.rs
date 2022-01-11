@@ -4,6 +4,7 @@ use crate::lexer::{LexedStream, Lexer, LexerBuilder, Token};
 use crate::location::Location;
 use crate::parser::earley::GrammarRules;
 use crate::stream::StringStream;
+use crate::case::Case;
 use crate::{ask_case, newtype};
 // use crate::{rule, proxy, collect};
 use super::parser::NonTerminalId;
@@ -492,7 +493,10 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                 axioms_vec.push(id);
             }
             rules.extend(new_rules);
-            ask_case!(&name, PascalCase, warnings);
+	    {
+		use Case::PascalCase;
+		ask_case!(&name, PascalCase, warnings);
+	    }
             done.insert(name, location);
         }
 

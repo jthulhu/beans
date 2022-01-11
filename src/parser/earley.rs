@@ -97,6 +97,11 @@ Factor ::= LPAR Sum@self RPAR <self: self>
         }
     }
 
+    /// `sets!` eases the creation of mock Earley Sets.
+    /// Useful for tests.
+    ///
+    /// The syntax is aimed to be simple and intuitive, matching the one
+    /// usually used in the literature.
     macro_rules! sets {
 	(
 	    $(
@@ -121,6 +126,8 @@ Factor ::= LPAR Sum@self RPAR <self: self>
 	};
     }
 
+    /// `earley_item` creates mock Earley Items.
+    /// Useful for tests.
     macro_rules! earley_item {
 	($name: ident -> $($left_element: ident)* . $($right_element: ident)* ($origin: literal)) => {
 	    {

@@ -1,6 +1,5 @@
 #![allow(clippy::upper_case_acronyms)]
 #![warn(rust_2018_idioms, missing_debug_implementations, missing_docs)]
-#![allow(unused_extern_crates)]
 
 //! # Beans
 //!

@@ -5,6 +5,8 @@ authors = ["Adrien Mathieu <adrien.lc.mathieu@gmail.com>"]
 license = "MIT OR GPL-3.0-or-later"
 edition = "2021"
 description = "A parser generator library based on the Earley parser"
+homepage = "https://github.com/TheBlackBeans/beans"
+repository = "https://github.com/TheBlackBeans/beans"
 
 [dependencies]
 hashbrown = { version = "0.11.2", features = ["serde"] }

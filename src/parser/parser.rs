@@ -1,14 +1,14 @@
 use super::grammarparser::{Grammar, GrammarBuilder};
 use crate::error::Result;
 use crate::lexer::{LexedStream, Token};
-use crate::newtype;
-use hashbrown::HashMap;
+use newty::newty;
+use std::collections::HashMap;
 use std::rc::Rc;
 
-newtype! {
+newty! {
     pub id RuleId
 }
-newtype! {
+newty! {
     pub id NonTerminalId
     impl {
         pub fn next(&mut self) -> Self {

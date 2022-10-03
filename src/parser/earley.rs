@@ -12,8 +12,9 @@ use crate::parser::grammarparser::Attribute;
 use crate::parser::parser::AST;
 use crate::regex::Allowed;
 use crate::stream::StringStream;
-use crate::{newtype, nvec, retrieve};
-use hashbrown::{HashMap, HashSet};
+use crate::retrieve;
+use newty::{newty, nvec};
+use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::fmt;
@@ -798,12 +799,12 @@ B ::= A <>;"#;
 type Table = Vec<StateSet>;
 type Forest = Vec<FinalSet>;
 
-newtype! {
+newty! {
     #[derive(serde::Serialize, serde::Deserialize)]
     pub vec RulesMap(Vec<RuleId>)[NonTerminalId]
 }
 
-newtype! {
+newty! {
     pub vec IsIn(Vec<RuleId>)[NonTerminalId]
 }
 
@@ -883,12 +884,12 @@ impl fmt::Display for FinalItem {
     }
 }
 
-newtype! {
+newty! {
     #[derive(serde::Serialize, serde::Deserialize)]
     pub vec GrammarRules(Rule)[RuleId]
 }
 
-newtype! {
+newty! {
     pub set Nullables[NonTerminalId]
 }
 
@@ -977,17 +978,18 @@ impl Grammar<'_> for EarleyGrammar {
     }
 }
 
-newtype! {
+newty! {
     id FinalItemId
 }
-newtype! {
+newty! {
     #[derive(PartialEq, Eq, Clone)]
     vec FinalSetVec(FinalItem)[FinalItemId]
 }
-newtype! {
+newty! {
     #[derive(Clone)]
     map FinalSetIndex(Vec<FinalItemId>)[NonTerminalId]
 }
+
 #[derive(Default, Debug, Clone, Eq)]
 struct FinalSet {
     /// An index mapping a nonterminal to every item in the set derived from that nonterminal.

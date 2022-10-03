@@ -5,11 +5,12 @@ use crate::location::Location;
 use crate::parser::earley::GrammarRules;
 use crate::stream::StringStream;
 use crate::case::Case;
-use crate::{ask_case, newtype};
+use crate::ask_case;
+use newty::newty;
 // use crate::{rule, proxy, collect};
 use super::parser::NonTerminalId;
 use crate::error::Result;
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use std::rc::Rc;
 
@@ -45,7 +46,7 @@ impl From<TerminalId> for ElementType {
     }
 }
 
-newtype! {
+newty! {
     pub set Axioms [NonTerminalId]
 }
 

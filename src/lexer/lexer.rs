@@ -2,10 +2,10 @@ use super::grammarparser::{LexerGrammar, LexerGrammarBuilder};
 use crate::error::Result;
 use crate::error::{Error, WarningSet};
 use crate::location::Location;
-use crate::newtype;
+use newty::newty;
 use crate::regex::Allowed;
 use crate::stream::{Stream, StringStream};
-use hashbrown::HashMap;
+use std::collections::HashMap;
 use std::fmt;
 use std::ops::Index;
 use std::rc::Rc;
@@ -434,7 +434,7 @@ mod tests {
     }
 }
 
-newtype! {
+newty! {
     #[derive(PartialOrd, Ord)]
     pub id TerminalId
 }

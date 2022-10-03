@@ -1,5 +1,5 @@
 use crate::lexer::TerminalId;
-use crate::newtype;
+use newty::newty;
 use unbounded_interval_tree::IntervalTree;
 
 #[cfg(test)]
@@ -88,7 +88,7 @@ mod tests {
     }
 }
 
-newtype! {
+newty! {
     pub id InstructionPointer
     impl {
     pub fn incr(&self) -> Self {
@@ -180,7 +180,7 @@ pub struct Match {
 // /// A way to referencing a `Program` without have an explicit `&Vec<_>` (which clippy doesn't like), but instead a slice referece.
 // pub type ProgramRef<'a> = &'a [Instruction];
 
-newtype! {
+newty! {
     #[derive(PartialEq)]
     pub vec Program (Instruction) [InstructionPointer]
     impl {
@@ -190,16 +190,16 @@ newtype! {
     }
 }
 
-newtype! {
+newty! {
     pub slice ProgramSlice (Instruction) [InstructionPointer]
     of Program
 }
 
-newtype! {
+newty! {
     set DoneThreads [InstructionPointer]
 }
 
-newtype! {
+newty! {
     pub set AllowedTerminals [TerminalId]
 }
 

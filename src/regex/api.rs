@@ -1,7 +1,7 @@
 use super::matching::{self, AllowedTerminals, Instruction, Program};
 use super::parsing::{build, read, Regex, RegexError};
 use crate::lexer::TerminalId;
-use crate::newtype;
+use newty::newty;
 use crate::regex::matching::InstructionPointer;
 
 #[cfg(test)]
@@ -146,12 +146,12 @@ mod tests {
     }
 }
 
-newtype! {
+newty! {
     #[derive(PartialEq, Eq)]
     pub vec Groups((usize, usize))[TerminalId]
 }
 
-newtype! {
+newty! {
     #[derive(PartialEq, Eq)]
     vec GroupNames(String)[TerminalId]
 }

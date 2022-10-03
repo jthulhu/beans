@@ -1,10 +1,10 @@
 use crate::error::{Error, Result, WarningSet};
 use crate::lexer::TerminalId;
 use crate::location::Location;
-use crate::newtype;
+use newty::newty;
 use crate::regex::{CompiledRegex, RegexBuilder, RegexError};
 use crate::stream::{Char, Stream, StringStream};
-use hashbrown::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 #[cfg(test)]
@@ -129,11 +129,11 @@ mod tests {
     }
 }
 
-newtype! {
+newty! {
     pub id TokenId
 }
 
-newtype! {
+newty! {
     pub set Ignores [TerminalId]
 }
 

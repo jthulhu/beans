@@ -11,12 +11,12 @@ use crate::lexer::Token;
 use crate::parser::grammarparser::Attribute;
 use crate::parser::parser::AST;
 use crate::regex::Allowed;
-use crate::stream::StringStream;
 use crate::retrieve;
+use crate::stream::StringStream;
 use newty::{newty, nvec};
-use std::collections::{HashMap, HashSet};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
 
@@ -449,8 +449,8 @@ B ::= A <>;"#;
             Rc::from("<lexer input>"),
             Rc::from(lexer_input),
         ))
-            .unwrap()
-            .unwrap()
+        .unwrap()
+        .unwrap()
         .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
             .with_stream(StringStream::new(
@@ -482,7 +482,7 @@ B ::= A <>;"#;
 
         let lexer =
             LexerBuilder::from_stream(StringStream::new("<lexer input>", GRAMMAR_NUMBERS_LEXER))
-            .unwrap()
+                .unwrap()
                 .unwrap()
                 .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
@@ -602,7 +602,7 @@ B ::= A <>;"#;
 
         let lexer =
             LexerBuilder::from_stream(StringStream::new("<lexer input>", GRAMMAR_NUMBERS_LEXER))
-            .unwrap()
+                .unwrap()
                 .unwrap()
                 .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
@@ -679,8 +679,8 @@ B ::= A <>;"#;
             Rc::from("<lexer input>"),
             Rc::from(GRAMMAR_NUMBERS_LEXER),
         ))
-            .unwrap()
-            .unwrap()
+        .unwrap()
+        .unwrap()
         .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
             .with_stream(StringStream::new(

@@ -1,17 +1,17 @@
+use crate::ask_case;
+use crate::case::Case;
 use crate::error::{Error, WarningSet};
 use crate::lexer::TerminalId;
 use crate::lexer::{LexedStream, Lexer, LexerBuilder, Token};
 use crate::location::Location;
 use crate::parser::earley::GrammarRules;
 use crate::stream::StringStream;
-use crate::case::Case;
-use crate::ask_case;
 use newty::newty;
 // use crate::{rule, proxy, collect};
 use super::parser::NonTerminalId;
 use crate::error::Result;
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 #[cfg(test)]
@@ -494,10 +494,10 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                 axioms_vec.push(id);
             }
             rules.extend(new_rules);
-	    {
-		use Case::PascalCase;
-		ask_case!(&name, PascalCase, warnings);
-	    }
+            {
+                use Case::PascalCase;
+                ask_case!(&name, PascalCase, warnings);
+            }
             done.insert(name, location);
         }
 

@@ -2,9 +2,9 @@ use super::grammarparser::{LexerGrammar, LexerGrammarBuilder};
 use crate::error::Result;
 use crate::error::{Error, WarningSet};
 use crate::location::Location;
-use newty::newty;
 use crate::regex::Allowed;
 use crate::stream::{Stream, StringStream};
+use newty::newty;
 use std::collections::HashMap;
 use std::fmt;
 use std::ops::Index;
@@ -137,7 +137,10 @@ mod tests {
 
     #[test]
     fn default_lex_grammar() {
-        let lexer = LexerBuilder::from_file("gmrs/lexer.lx").unwrap().unwrap().build();
+        let lexer = LexerBuilder::from_file("gmrs/lexer.lx")
+            .unwrap()
+            .unwrap()
+            .build();
 
         let result = [
             ((0, 0), (0, 3), "ID"),
@@ -172,7 +175,10 @@ mod tests {
 
     #[test]
     fn default_parser_grammar() {
-        let lexer = LexerBuilder::from_file("gmrs/parser.lx").unwrap().unwrap().build();
+        let lexer = LexerBuilder::from_file("gmrs/parser.lx")
+            .unwrap()
+            .unwrap()
+            .build();
         let mut input = StringStream::from_file("gmrs/parser.gmr").unwrap().unwrap();
         let mut lexed_input = lexer.lex(&mut input);
 

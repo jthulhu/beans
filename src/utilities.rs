@@ -33,11 +33,13 @@ macro_rules! ask_case {
         use std::rc::Rc;
         match $crate::case::CaseProcess::case($string) {
             $crate::case::Case::$case => {}
-            c => $warnings.add($crate::error::Warning::new($crate::error::WarningType::CaseConvention(
-                Rc::from($string.as_str()),
-                c,
-                $crate::case::Case::$case,
-            ))),
+            c => $warnings.add($crate::error::Warning::new(
+                $crate::error::WarningType::CaseConvention(
+                    Rc::from($string.as_str()),
+                    c,
+                    $crate::case::Case::$case,
+                ),
+            )),
         }
     };
 }

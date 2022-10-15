@@ -1,8 +1,8 @@
-IF ::= if\b
-ELSE ::= else\b
-ELIF ::= elif\b
-WHILE ::= while\b
-FOR ::= for\b
+keyword IF ::= if
+keyword ELSE ::= else
+keyword ELIF ::= elif
+keyword WHILE ::= while
+keyword FOR ::= for
 
 STRING ::= "(([^"\\]|(\\[^\\])|(\\\\))*)"
 FLOAT ::= ((\d*\.\d+)|(\d+\.\d*))
@@ -26,10 +26,10 @@ RBRACEU ::= \|}
 LBRACKETU ::= \[\|
 RBRACKETU ::= \|]
 
-AND ::= and\b
-OR ::= or\b
-XOR ::= xor\b
-NOT ::= not\b
+keyword AND ::= and
+keyword OR ::= or
+keyword XOR ::= xor
+keyword NOT ::= not
 
 EQUALS ::= =
 ASTERISK ::= \*

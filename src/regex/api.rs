@@ -17,9 +17,9 @@ mod tests {
         assert_eq!(regex.size, 0);
 
         let regex = RegexBuilder::new()
-            .with_named_regex("a+", String::from("As"))
+            .with_named_regex("a+", String::from("As"), false)
             .unwrap()
-            .with_named_regex("b", String::from("B"))
+            .with_named_regex("b", String::from("B"), false)
             .unwrap()
             .build();
         assert_eq!(
@@ -44,9 +44,9 @@ mod tests {
         assert_eq!(regex.size, 0);
 
         let regex = RegexBuilder::new()
-            .with_named_regex("(a+)", String::from("As"))
+            .with_named_regex("(a+)", String::from("As"), false)
             .unwrap()
-            .with_named_regex("(b)", String::from("B"))
+            .with_named_regex("(b)", String::from("B"), false)
             .unwrap()
             .build();
         assert_eq!(
@@ -81,9 +81,9 @@ mod tests {
     #[test]
     fn find() {
         let regex = RegexBuilder::new()
-            .with_named_regex("(a+)", String::from("As"))
+            .with_named_regex("(a+)", String::from("As"), false)
             .unwrap()
-            .with_named_regex("(b)(c)", String::from("BC"))
+            .with_named_regex("(b)(c)", String::from("BC"), false)
             .unwrap()
             .build();
 
@@ -118,9 +118,9 @@ mod tests {
     #[test]
     fn groups() {
         let regex = RegexBuilder::new()
-            .with_named_regex("'(.*)'", String::from("STRING"))
+            .with_named_regex("'(.*)'", String::from("STRING"), false)
             .unwrap()
-            .with_named_regex("\"(.*)\"", String::from("STRING"))
+            .with_named_regex("\"(.*)\"", String::from("STRING"), false)
             .unwrap()
             .build();
         let match1 = regex.find("'blabla'", &Allowed::All).unwrap();
@@ -137,7 +137,7 @@ mod tests {
     #[test]
     fn any() {
         let regex = RegexBuilder::new()
-            .with_named_regex(".*", String::from("Default"))
+            .with_named_regex(".*", String::from("Default"), false)
             .unwrap()
             .build();
         assert_eq!(regex.find("0123456", &Allowed::All).unwrap().length, 7);
@@ -392,9 +392,19 @@ impl RegexBuilder {
     /// Add a regex, and bind it to the given name.
     /// The regex is read when it is added, so `with_named_regex`
     /// might fail, if the provided regex is malformed.
-    pub fn with_named_regex(mut self, regex: &str, name: String) -> Result<Self, RegexError> {
+    pub fn with_named_regex(
+        mut self,
+        regex: &str,
+        name: String,
+        keyword: bool,
+    ) -> Result<Self, RegexError> {
         self.names.push(name);
         let (regex, groups) = read(regex, self.current)?;
+        let regex = if keyword {
+            Regex::Concat(Box::new(regex), Box::new(Regex::WordBoundary))
+        } else {
+            regex
+        };
         self.groups.push((self.current, groups));
         self.current = groups;
         self.regexes.push(regex);

@@ -67,7 +67,7 @@ mod tests {
                 .unwrap()
                 .pattern(),
             RegexBuilder::new()
-                .with_named_regex("wot!", String::from("A"))
+                .with_named_regex("wot!", String::from("A"), false)
                 .unwrap()
                 .build(),
         );
@@ -78,7 +78,7 @@ mod tests {
                 .unwrap()
                 .pattern(),
             RegexBuilder::new()
-                .with_named_regex("wot!  ", String::from("B"))
+                .with_named_regex("wot!  ", String::from("B"), false)
                 .unwrap()
                 .build()
         );
@@ -92,9 +92,9 @@ mod tests {
             .unwrap()
             .pattern(),
             RegexBuilder::new()
-                .with_named_regex("wot!", String::from("A"))
+                .with_named_regex("wot!", String::from("A"), false)
                 .unwrap()
-                .with_named_regex("wheel", String::from("B"))
+                .with_named_regex("wheel", String::from("B"), false)
                 .unwrap()
                 .build()
         );
@@ -174,6 +174,8 @@ impl LexerGrammarBuilder {
         while stream.pos() < size {
             let ignore = Self::read_keyword(&mut stream, "ignore");
             Self::ignore_blank(&mut stream);
+            let keyword = Self::read_keyword(&mut stream, "keyword");
+            Self::ignore_blank(&mut stream);
             let name = warnings.unpack(Self::read_id(&mut stream)?);
             Self::ignore_blank(&mut stream);
             warnings.unpack(Self::ignore_assignment(&mut stream)?);
@@ -183,7 +185,7 @@ impl LexerGrammarBuilder {
                 Location::from_stream_pos(stream.origin(), &stream.borrow(), start, stream.pos());
             let pattern = Self::read_pattern(&mut stream);
             regex_builder = regex_builder
-                .with_named_regex(pattern.as_str(), name.clone())
+                .with_named_regex(pattern.as_str(), name.clone(), keyword)
                 .map_err(|RegexError { message, position }| Error::RegexError {
                     location: Location::from_stream_pos(
                         stream.origin(),

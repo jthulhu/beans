@@ -10,8 +10,8 @@ mod case;
 pub mod error;
 pub mod lexer;
 pub mod location;
-pub(crate) mod parser;
-pub(crate) mod regex;
+pub mod parser;
+pub mod regex;
 pub(crate) mod stream;
 // Macros
 #[macro_use]

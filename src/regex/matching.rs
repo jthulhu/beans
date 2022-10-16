@@ -1,6 +1,7 @@
 use crate::lexer::TerminalId;
 use newty::newty;
-use unbounded_interval_tree::IntervalTree;
+use serde::{Serialize, Deserialize};
+use unbounded_interval_tree::interval_tree::IntervalTree;
 
 #[cfg(test)]
 mod tests {
@@ -123,7 +124,8 @@ newty! {
 ///              It is however (much) more efficient than if those instructions
 ///              were executed indipendently.
 /// `Any`: match any character at the current location
-#[derive(PartialEq, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum Instruction {
     Switch(Vec<(TerminalId, InstructionPointer)>),
     Save(usize),
@@ -181,7 +183,8 @@ pub struct Match {
 // pub type ProgramRef<'a> = &'a [Instruction];
 
 newty! {
-    #[derive(PartialEq)]
+    #[derive(Serialize, Deserialize)]
+    #[cfg_attr(test, derive(PartialEq))]
     pub vec Program (Instruction) [InstructionPointer]
     impl {
     pub fn len_ip(&self) -> InstructionPointer {
@@ -412,7 +415,7 @@ fn match_next(
             }
         }
         Instruction::CharacterClass(class, negated) => {
-            if negated ^ class.contains_point(chr) {
+            if negated ^ class.contains_point(&chr) {
                 advance(thread, next);
             }
         }

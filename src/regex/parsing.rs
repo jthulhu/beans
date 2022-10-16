@@ -1,6 +1,6 @@
 use super::matching::{Instruction, Program};
 use crate::regex::matching::InstructionPointer;
-use unbounded_interval_tree::IntervalTree;
+use unbounded_interval_tree::interval_tree::IntervalTree;
 
 #[cfg(test)]
 pub mod tests {
@@ -441,7 +441,8 @@ pub mod tests {
 /// # Summary
 ///
 /// `Regex` represents any successfully parsed regex.
-#[derive(PartialEq, Debug)]
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug)]
 pub enum Regex {
     Char(char),
     Option(Box<Regex>, Box<Regex>),

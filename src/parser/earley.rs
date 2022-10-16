@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::path::Path;
 use std::rc::Rc;
 
 #[cfg(test)]
@@ -445,17 +446,15 @@ Factor ::= LPAR Sum@self RPAR <self: self>
  B <>;
 B ::= A <>;"#;
         let input = r#""#;
-        let lexer = LexerBuilder::from_stream(StringStream::new(
-            Rc::from("<lexer input>"),
-            Rc::from(lexer_input),
-        ))
-        .unwrap()
-        .unwrap()
-        .build();
+        let lexer =
+            LexerBuilder::from_stream(StringStream::new(Path::new("<lexer input>"), lexer_input))
+                .unwrap()
+                .unwrap()
+                .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
             .with_stream(StringStream::new(
-                Rc::from("<grammar input>"),
-                Rc::from(grammar_input),
+                Path::new("<grammar input>"),
+                grammar_input,
             ))
             .build(&lexer)
             .unwrap()
@@ -470,7 +469,7 @@ B ::= A <>;"#;
             B -> A . (0)
         );
         let (recognised, _) = parser
-            .recognise(&mut lexer.lex(&mut StringStream::new("<input>", input)))
+            .recognise(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
             .unwrap()
             .unwrap();
         verify_sets(sets, recognised, &parser);
@@ -481,18 +480,18 @@ B ::= A <>;"#;
         let input = r#"1+(2*3-4)"#;
 
         let lexer =
-            LexerBuilder::from_stream(StringStream::new("<lexer input>", GRAMMAR_NUMBERS_LEXER))
+            LexerBuilder::from_stream(StringStream::new(Path::new("<lexer input>"), GRAMMAR_NUMBERS_LEXER))
                 .unwrap()
                 .unwrap()
                 .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
-            .with_stream(StringStream::new("<grammar input>", GRAMMAR_NUMBERS))
+            .with_stream(StringStream::new(Path::new("<grammar input>"), GRAMMAR_NUMBERS))
             .build(&lexer)
             .unwrap()
             .unwrap();
         let parser = EarleyParser::new(grammar);
         let (table, raw_input) = parser
-            .recognise(&mut lexer.lex(&mut StringStream::new("<input>", input)))
+            .recognise(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
             .unwrap()
             .unwrap();
         let forest = parser.to_forest(&table, &raw_input).unwrap().unwrap();
@@ -601,12 +600,12 @@ B ::= A <>;"#;
         let input = r#"1+(2*3-4)"#;
 
         let lexer =
-            LexerBuilder::from_stream(StringStream::new("<lexer input>", GRAMMAR_NUMBERS_LEXER))
+            LexerBuilder::from_stream(StringStream::new(Path::new("<lexer input>"), GRAMMAR_NUMBERS_LEXER))
                 .unwrap()
                 .unwrap()
                 .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
-            .with_stream(StringStream::new("<grammar input>", GRAMMAR_NUMBERS))
+            .with_stream(StringStream::new(Path::new("<grammar input>"), GRAMMAR_NUMBERS))
             .build(&lexer)
             .unwrap()
             .unwrap();
@@ -651,7 +650,7 @@ B ::= A <>;"#;
             );
 
         let (table, raw_input) = parser
-            .recognise(&mut lexer.lex(&mut StringStream::new("<input>", input)))
+            .recognise(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
             .unwrap()
             .unwrap();
         let forest = parser.to_forest(&table, &raw_input).unwrap().unwrap();
@@ -676,16 +675,16 @@ B ::= A <>;"#;
         let input = r#"1+(2*3-4)"#;
 
         let lexer = LexerBuilder::from_stream(StringStream::new(
-            Rc::from("<lexer input>"),
-            Rc::from(GRAMMAR_NUMBERS_LEXER),
+            Path::new("<lexer input>"),
+            GRAMMAR_NUMBERS_LEXER,
         ))
         .unwrap()
         .unwrap()
         .build();
         let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
             .with_stream(StringStream::new(
-                Rc::from("<grammar input>"),
-                Rc::from(GRAMMAR_NUMBERS),
+                Path::new("<grammar input>"),
+                GRAMMAR_NUMBERS,
             ))
             .build(&lexer)
             .unwrap()
@@ -768,7 +767,7 @@ B ::= A <>;"#;
             Sum -> Sum . PM Product (0)
         );
         let (recognised, _) = parser
-            .recognise(&mut lexer.lex(&mut StringStream::new(Rc::from("<input>"), Rc::from(input))))
+            .recognise(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
             .unwrap()
             .unwrap();
         verify_sets(sets, recognised, &parser);
@@ -812,15 +811,16 @@ newty! {
 #[derive(Debug)]
 pub struct EarleyGrammarBuilder {
     stream: Option<StringStream>,
-    grammar: Rc<str>,
+    grammar_source_file: Rc<Path>,
 }
 
 impl EarleyGrammarBuilder {
     /// Create a new builder. It takes an Rc of a string refearing to the grammar.
-    pub fn new(grammar: Rc<str>) -> Self {
+    pub fn new(grammar: impl Into<Rc<Path>>) -> Self {
+        let grammar = grammar.into();
         Self {
             stream: None,
-            grammar,
+            grammar_source_file: grammar,
         }
     }
 }
@@ -833,8 +833,8 @@ impl GrammarBuilder<'_> for EarleyGrammarBuilder {
         self
     }
 
-    fn with_grammar(mut self, grammar: Rc<str>) -> Self {
-        self.grammar = grammar;
+    fn with_grammar(mut self, grammar: impl Into<Rc<Path>>) -> Self {
+        self.grammar_source_file = grammar.into();
         self
     }
 
@@ -843,15 +843,15 @@ impl GrammarBuilder<'_> for EarleyGrammarBuilder {
         Ok(WarningSet::empty_with(stream))
     }
 
-    fn grammar(&self) -> Rc<str> {
-        self.grammar.clone()
+    fn grammar(&self) -> Rc<Path> {
+        self.grammar_source_file.clone()
     }
 }
 
 impl Default for EarleyGrammarBuilder {
     fn default() -> Self {
-        Self::new(Rc::from("gmrs/parser.lx"))
-            .with_file(Rc::from("gmrs/parser.gmr"))
+        Self::new(Path::new("gmrs/parser.lx"))
+            .with_file(Path::new("gmrs/parser.gmr"))
             .unwrap()
             .unwrap()
     }

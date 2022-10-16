@@ -12,6 +12,7 @@ use super::parser::NonTerminalId;
 use crate::error::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::Path;
 use std::rc::Rc;
 
 #[cfg(test)]
@@ -158,18 +159,19 @@ pub trait GrammarBuilder<'deserializer>: Sized {
     /// [`Grammar`] that will be built by the [`GrammarBuilder`]
     type Grammar: Grammar<'deserializer>;
     /// Build with the given file as stream.
-    fn with_file(self, file: Rc<str>) -> Result<Self> {
+    fn with_file(self, file: impl Into<Rc<Path>>) -> Result<Self> {
+        let file = file.into();
         let warnings = WarningSet::empty();
         Ok(warnings.on(StringStream::from_file(file)?, |x| self.with_stream(x)))
     }
     /// Build with the given stream.
     fn with_stream(self, stream: StringStream) -> Self;
     /// Build with the given grammar.
-    fn with_grammar(self, grammar: Rc<str>) -> Self;
+    fn with_grammar(self, grammar: impl Into<Rc<Path>>) -> Self;
     /// Retrieve the stream from the builder.
     fn stream(&mut self) -> Result<StringStream>;
     /// Retrieve the grammar from the builder.
-    fn grammar(&self) -> Rc<str>;
+    fn grammar(&self) -> Rc<Path>;
     /// Build the grammar.
     fn build(mut self, lexer: &Lexer) -> Result<Self::Grammar> {
         #![allow(unused)] // Bug that mark these functions as unused.

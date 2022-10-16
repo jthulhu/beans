@@ -107,6 +107,10 @@ pub enum Error {
         /// The message giving details about the error.
         message: String,
     },
+    /// `SameOutputAndInput`: writing to the output file would overwrite the
+    /// input file, which Beans refuses to do.
+    #[error("The file to be written is the same as the source file.")]
+    SameOutputAndInput
 }
 
 /// # Summary

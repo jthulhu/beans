@@ -9,13 +9,19 @@ homepage = "https://github.com/TheBlackBeans/beans"
 repository = "https://github.com/TheBlackBeans/beans"
 
 [dependencies]
-newty = "0.4.0"
-unbounded-interval-tree = "0.2.3"
-serde = { version = "1.0.125", features = ["derive", "rc"] }
-bincode = "1.3.2"
-thiserror = "1.0.30"
+newty = "0.5.0"
+serde = { version = "1.0.145", features = ["derive", "rc"] }
+bincode = "1.3.3"
+thiserror = "1.0.37"
 fixedbitset = "0.4.2"
-# clap = { version = "~j/2.33.3", features = ["yaml"] }
+clap = { version = "4.0.15", features = ["derive"] }
+anyhow = "1.0.65"
+
+[dependencies.unbounded-interval-tree]
+version = "1.1.1"
+features = ["serde"]
+git = "https://github.com/TheBlackBeans/Unbounded-Interval-Tree"
+branch = "add-serde"
 
 [dev-dependencies]
 criterion = "0.3"

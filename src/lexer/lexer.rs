@@ -8,6 +8,7 @@ use newty::newty;
 use std::collections::HashMap;
 use std::fmt;
 use std::ops::Index;
+use std::path::Path;
 use std::rc::Rc;
 
 #[cfg(test)]
@@ -57,12 +58,12 @@ mod tests {
             String::from("wow"),
             0.into(),
             HashMap::new(),
-            Location::new("test_file", (3, 0), (3, 3)),
+            Location::new(Path::new("test_file"), (3, 0), (3, 3)),
         );
 
         assert_eq!(token.name(), "wow");
         assert_eq!(token.id(), 0.into());
-        assert_eq!(token.location().file(), "test_file");
+        assert_eq!(&*token.location().file(), Path::new("test_file"));
         assert_eq!(token.location().start(), (3, 0));
         assert_eq!(token.location().end(), (3, 3));
     }
@@ -71,7 +72,7 @@ mod tests {
     fn lexer_builder() {
         // A grammar: succeeds
         LexerBuilder::from_grammar(
-            LexerGrammarBuilder::from_stream(StringStream::new("grammar file", "A ::= blu"))
+            LexerGrammarBuilder::from_stream(StringStream::new(Path::new("grammar file"), "A ::= blu"))
                 .build()
                 .unwrap()
                 .unwrap(),
@@ -82,13 +83,13 @@ mod tests {
     #[test]
     fn lex_basic() {
         let lexer = LexerBuilder::from_grammar(
-            LexerGrammarBuilder::from_stream(StringStream::new("a file name", "A ::= blu"))
+            LexerGrammarBuilder::from_stream(StringStream::new(Path::new("a file name"), "A ::= blu"))
                 .build()
                 .unwrap()
                 .unwrap(),
         )
         .build();
-        let mut input = StringStream::new("input file", "blu");
+        let mut input = StringStream::new(Path::new("input file"), "blu");
         let mut lexed_input = lexer.lex(&mut input);
 
         let token = lexed_input.next(Allowed::All).unwrap().unwrap().unwrap(); // nice...
@@ -111,7 +112,7 @@ mod tests {
                 "Token #{} {} differ by start location in stream {}.",
                 i,
                 token,
-                origin
+                origin.display()
             );
             assert_eq!(
                 token.location().end(),
@@ -119,7 +120,7 @@ mod tests {
                 "Token #{} {} differ by end location in stream {}.",
                 i,
                 token,
-                origin
+                origin.display()
             );
             assert_eq!(
                 token.name(),
@@ -127,7 +128,7 @@ mod tests {
                 "Token #{} {} differ by name in stream {}.",
                 i,
                 token,
-                origin
+                origin.display()
             );
             i += 1;
         }
@@ -137,7 +138,7 @@ mod tests {
 
     #[test]
     fn default_lex_grammar() {
-        let lexer = LexerBuilder::from_file("gmrs/lexer.lx")
+        let lexer = LexerBuilder::from_file(Path::new("gmrs/lexer.lx"))
             .unwrap()
             .unwrap()
             .build();
@@ -148,7 +149,7 @@ mod tests {
             ((0, 6), (0, 9), "ID"),
         ];
         verify_input(
-            lexer.lex(&mut StringStream::new("<input>", "one + two")),
+            lexer.lex(&mut StringStream::new(Path::new("<input>"), "one + two")),
             &result,
         );
 
@@ -166,7 +167,7 @@ mod tests {
         ];
         verify_input(
             lexer.lex(&mut StringStream::new(
-                "<input>",
+                Path::new("<input>"),
                 "if true and false {\n\tifeat(\"something\")\n}",
             )),
             &result,
@@ -175,11 +176,11 @@ mod tests {
 
     #[test]
     fn default_parser_grammar() {
-        let lexer = LexerBuilder::from_file("gmrs/parser.lx")
+        let lexer = LexerBuilder::from_file(Path::new("gmrs/parser.lx"))
             .unwrap()
             .unwrap()
             .build();
-        let mut input = StringStream::from_file("gmrs/parser.gmr").unwrap().unwrap();
+        let mut input = StringStream::from_file(Path::new("gmrs/parser.gmr")).unwrap().unwrap();
         let mut lexed_input = lexer.lex(&mut input);
 
         let result = [
@@ -423,7 +424,7 @@ mod tests {
                 tok,
                 token,
                 "Lexer error @{} {}:{} does not match token #{}",
-                token.location().file(),
+                token.location().file().display(),
                 token.location().start().0 + 1,
                 token.location().end().0 + 1,
                 i
@@ -432,7 +433,7 @@ mod tests {
         if let Some(token) = lexed_input.next(Allowed::All).unwrap().unwrap() {
             panic!(
                 "Lexer error @{} {}:{} does not match token EOF",
-                token.location().file(),
+                token.location().file().display(),
                 token.location().start().0 + 1,
                 token.location().end().0 + 1
             );
@@ -565,9 +566,10 @@ impl LexerBuilder {
 
     /// Instantiate a new `LexerBuilder`, giving the path to the grammar.
     /// Since the grammar may be ill-defined, this might fail.
-    pub fn from_file<F: Into<Rc<str>>>(file: F) -> Result<Self> {
+    pub fn from_file(file: impl Into<Rc<Path>>) -> Result<Self> {
         let mut warnings = WarningSet::default();
-        let builder = warnings.unpack(LexerGrammarBuilder::from_file(file.into())?);
+        let file = file.into();
+        let builder = warnings.unpack(LexerGrammarBuilder::from_file(file)?);
         let grammar = warnings.unpack(builder.build()?);
         Ok(warnings.with(Self { grammar }))
     }
@@ -580,7 +582,9 @@ impl LexerBuilder {
 
 impl Default for LexerBuilder {
     fn default() -> Self {
-        Self::from_file("gmrs/lexer.lx").unwrap().unwrap()
+        Self::from_file(Path::new("gmrs/lexer.lx"))
+            .unwrap()
+            .unwrap()
     }
 }
 

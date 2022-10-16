@@ -3,7 +3,7 @@
 //! Data to locate span of text, in files.
 //! The main struct is [`Location`].
 
-use std::rc::Rc;
+use std::{path::Path, rc::Rc};
 
 /// # Summary
 ///
@@ -26,12 +26,12 @@ mod tests {
     use super::*;
     #[test]
     fn location() {
-        let location = Location::new("a cool filename", (0, 3), (1, 6));
-        assert_eq!(location.file(), "a cool filename");
+        let location = Location::new(Path::new("a cool filename"), (0, 3), (1, 6));
+        assert_eq!(&*location.file(), Path::new("a cool filename"));
         assert_eq!(location.start(), (0, 3));
         assert_eq!(location.end(), (1, 6));
-        let location = Location::new("", (0, 0), (0, 0));
-        assert_eq!(location.file(), "");
+        let location = Location::new(Path::new(""), (0, 0), (0, 0));
+        assert_eq!(&*location.file(), Path::new(""));
         assert_eq!(location.start(), (0, 0));
         assert_eq!(location.end(), (0, 0));
     }
@@ -40,58 +40,58 @@ mod tests {
     fn location2() {
         //                                   0         1          2           3           4
         let location_builder =	//           01234567890123456789 0 1234567 8901234567 89 01
-            LocationBuilder::new("<input>", "if true and false {\n\tifeat(\"something\")\n}");
+            LocationBuilder::new(Path::new("<input>"), "if true and false {\n\tifeat(\"something\")\n}");
         assert_eq!(
             location_builder.from(0, 2),
-            Location::new("<input>", (0, 0), (0, 2))
+            Location::new(Path::new("<input>"), (0, 0), (0, 2))
         );
         assert_eq!(
             location_builder.from(3, 7),
-            Location::new("<input>", (0, 3), (0, 7))
+            Location::new(Path::new("<input>"), (0, 3), (0, 7))
         );
         assert_eq!(
             location_builder.from(8, 11),
-            Location::new("<input>", (0, 8), (0, 11))
+            Location::new(Path::new("<input>"), (0, 8), (0, 11))
         );
         assert_eq!(
             location_builder.from(12, 17),
-            Location::new("<input>", (0, 12), (0, 17))
+            Location::new(Path::new("<input>"), (0, 12), (0, 17))
         );
         assert_eq!(
             location_builder.from(18, 19),
-            Location::new("<input>", (0, 18), (0, 19))
+            Location::new(Path::new("<input>"), (0, 18), (0, 19))
         );
         assert_eq!(
             location_builder.from(21, 26),
-            Location::new("<input>", (1, 1), (1, 6))
+            Location::new(Path::new("<input>"), (1, 1), (1, 6))
         );
         assert_eq!(
             location_builder.from(26, 27),
-            Location::new("<input>", (1, 6), (1, 7))
+            Location::new(Path::new("<input>"), (1, 6), (1, 7))
         );
         assert_eq!(
             location_builder.from(27, 38),
-            Location::new("<input>", (1, 7), (1, 18))
+            Location::new(Path::new("<input>"), (1, 7), (1, 18))
         );
         assert_eq!(
             location_builder.from(38, 39),
-            Location::new("<input>", (1, 18), (1, 19))
+            Location::new(Path::new("<input>"), (1, 18), (1, 19))
         );
         assert_eq!(
             location_builder.from(40, 41),
-            Location::new("<input>", (2, 0), (2, 1))
+            Location::new(Path::new("<input>"), (2, 0), (2, 1))
         );
     }
 
     #[test]
     #[should_panic]
     fn wrong_location() {
-        Location::new("some file", (1, 0), (0, 0));
+        Location::new(Path::new("some file"), (1, 0), (0, 0));
     }
     #[test]
     #[should_panic]
     fn wrong_location2() {
-        Location::new("some file", (1, 5), (1, 3));
+        Location::new(Path::new("some file"), (1, 5), (1, 3));
     }
 }
 
@@ -109,8 +109,8 @@ mod tests {
 ///
 /// ```rust
 /// # use beans::location::Location;
-/// # use std::rc::Rc;
-/// let location = Location::new("myfile", (0, 0), (0, 1));
+/// # use std::path::Path;
+/// let location = Location::new(Path::new("myfile"), (0, 0), (0, 1));
 /// ```
 ///
 /// Example 2 -- `afile`
@@ -124,16 +124,17 @@ mod tests {
 ///
 /// ```rust
 /// # use beans::location::Location;
+/// # use std::path::Path;
 /// Location::new(
-///   "afile",
+///   Path::new("afile"),
 ///   (0, 4),
 ///   (1, 2)
 /// )
 /// # ;
 /// ```
-#[derive(Debug, PartialEq, Eq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Location {
-    file: String,
+    file: Rc<Path>,
     start: CharLocation,
     end: CharLocation,
 }
@@ -143,7 +144,11 @@ impl std::fmt::Display for Location {
         write!(
             f,
             "{}@{}:{} to {}:{}",
-            self.file, self.start.0, self.start.1, self.end.0, self.end.1
+            self.file.display(),
+            self.start.0,
+            self.start.1,
+            self.end.0,
+            self.end.1
         )
     }
 }
@@ -156,21 +161,18 @@ impl Location {
     ///  * end: the location (exclusive) of the end of the data.
     ///
     /// Panic if start > end (lexicographic order)
-    pub fn new<F: Into<Rc<str>>>(file: F, start: CharLocation, end: CharLocation) -> Self {
+    pub fn new(file: impl Into<Rc<Path>>, start: CharLocation, end: CharLocation) -> Self {
         assert!(start.0 < end.0 || (start.0 == end.0 && start.1 <= end.1)); // TODO: remove assert and add proper error handling.
-        Self {
-            file: file.into().to_string(),
-            start,
-            end,
-        }
+        let file = file.into();
+        Self { file, start, end }
     }
 
     /// Generate of new `Location` object.
     /// Take the locations as index of the stream,
     /// and convert them as actual locations in the file.
-    pub fn from_stream_pos<F: Into<Rc<str>>, S: AsRef<str>>(
-        file: F,
-        stream: S,
+    pub fn from_stream_pos(
+        file: impl Into<Rc<Path>>,
+        stream: impl AsRef<str>,
         start_pos: usize,
         end_pos: usize,
     ) -> Self {
@@ -213,7 +215,7 @@ impl Location {
         }
 
         Self {
-            file: file.into().to_string(),
+            file: file.into(),
             start,
             end,
         }
@@ -229,8 +231,8 @@ impl Location {
     }
 
     /// Returns the file from which the data is taken.
-    pub fn file(&self) -> &str {
-        &self.file
+    pub fn file(&self) -> Rc<Path> {
+        self.file.clone()
     }
 
     /// Returns the location of the beginning of the chunk of data in the file.
@@ -248,13 +250,14 @@ impl Location {
 /// `LocationBuilder` allows building locations from a source stream faster.
 #[derive(Debug)]
 pub struct LocationBuilder {
-    file: Rc<str>,
+    file: Rc<Path>,
     newlines: Vec<usize>,
 }
 
 impl LocationBuilder {
     /// Create a new Builder for a Location.
-    pub fn new<F: Into<Rc<str>>, S: AsRef<str>>(file: F, stream: S) -> Self {
+    pub fn new(file: impl Into<Rc<Path>>, stream: impl AsRef<str>) -> Self {
+        let file = file.into();
         let newlines = stream
             .as_ref()
             .chars()
@@ -263,10 +266,7 @@ impl LocationBuilder {
             .map(|(i, _)| i)
             .collect();
 
-        Self {
-            file: file.into(),
-            newlines,
-        }
+        Self { file, newlines }
     }
 
     /// Create a new location from two indexes.

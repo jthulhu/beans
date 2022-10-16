@@ -4,7 +4,9 @@ use crate::location::Location;
 use crate::regex::{CompiledRegex, RegexBuilder, RegexError};
 use crate::stream::{Char, Stream, StringStream};
 use newty::newty;
+use serde::{Serialize, Deserialize};
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::rc::Rc;
 
 #[cfg(test)]
@@ -15,7 +17,7 @@ mod tests {
 
     #[test]
     fn grammar_parser_read_keyword() {
-        let mut stream = StringStream::new("whatever", "ignore");
+        let mut stream = StringStream::new(Path::new("whatever"), "ignore");
         assert_eq!(stream.pos(), 0);
         assert_eq!(
             LexerGrammarBuilder::read_keyword(&mut stream, "something"),
@@ -31,7 +33,7 @@ mod tests {
 
     #[test]
     fn grammar_parser_read_id() {
-        let mut stream = StringStream::new("whatever", "to del");
+        let mut stream = StringStream::new(Path::new("whatever"), "to del");
         assert_eq!(stream.pos(), 0);
         assert!(is_value_w(
             LexerGrammarBuilder::read_id(&mut stream),
@@ -48,7 +50,7 @@ mod tests {
         assert!(
             if let Err(error) = LexerGrammarBuilder::read_id(&mut stream).map(|x| x.unwrap()) {
                 if let Error::LexerGrammarSyntax { location, message } = error {
-                    location == Location::new("whatever", (0, 6), (0, 6))
+                    location == Location::new(Path::new("whatever"), (0, 6), (0, 6))
                         && message == String::from("expected id")
                 } else {
                     false
@@ -61,22 +63,28 @@ mod tests {
     #[test]
     fn grammar_parser_regex() {
         assert_eq!(
-            *LexerGrammarBuilder::from_stream(StringStream::new("whatever", "A ::= wot!"))
-                .build()
-                .unwrap()
-                .unwrap()
-                .pattern(),
+            *LexerGrammarBuilder::from_stream(StringStream::new(
+                Path::new("whatever"),
+                "A ::= wot!"
+            ))
+            .build()
+            .unwrap()
+            .unwrap()
+            .pattern(),
             RegexBuilder::new()
                 .with_named_regex("wot!", String::from("A"), false)
                 .unwrap()
                 .build(),
         );
         assert_eq!(
-            *LexerGrammarBuilder::from_stream(StringStream::new("whatever", "B ::= wot!  "))
-                .build()
-                .unwrap()
-                .unwrap()
-                .pattern(),
+            *LexerGrammarBuilder::from_stream(StringStream::new(
+                Path::new("whatever"),
+                "B ::= wot!  "
+            ))
+            .build()
+            .unwrap()
+            .unwrap()
+            .pattern(),
             RegexBuilder::new()
                 .with_named_regex("wot!  ", String::from("B"), false)
                 .unwrap()
@@ -84,7 +92,7 @@ mod tests {
         );
         assert_eq!(
             *LexerGrammarBuilder::from_stream(StringStream::new(
-                "whatever",
+                Path::new("whatever"),
                 "A ::= wot!\n\nB ::= wheel"
             ))
             .build()
@@ -99,7 +107,7 @@ mod tests {
                 .build()
         );
         assert_eq!(
-            *LexerGrammarBuilder::from_stream(StringStream::new("whatever", ""))
+            *LexerGrammarBuilder::from_stream(StringStream::new(Path::new("whatever"), ""))
                 .build()
                 .unwrap()
                 .unwrap()
@@ -110,7 +118,7 @@ mod tests {
     #[test]
     fn lexer_grammar() {
         let grammar = LexerGrammarBuilder::from_stream(StringStream::new(
-            "whatever",
+            Path::new("whatever"),
             "ignore A ::= [ ]\nignore B ::= bbb\nC ::= ccc",
         ))
         .build()
@@ -152,8 +160,7 @@ pub struct LexerGrammarBuilder {
 }
 
 impl LexerGrammarBuilder {
-    pub fn from_file<F: Into<Rc<str>>>(file: F) -> Result<Self> {
-        let file = file.into();
+    pub fn from_file(file: impl Into<Rc<Path>>) -> Result<Self> {
         let mut warnings = WarningSet::empty();
         let stream = warnings.unpack(StringStream::from_file(file)?);
         Ok(warnings.with(Self { stream }))
@@ -300,7 +307,7 @@ impl LexerGrammarBuilder {
 ///
 /// `ignored`: return if the token with the given id should be ignored.
 /// `name`: return the name of the token with the given id.
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LexerGrammar {
     pattern: CompiledRegex,
     names: Vec<String>,

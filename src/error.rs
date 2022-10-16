@@ -193,7 +193,7 @@ impl fmt::Display for Warning {
                 f,
                 "{}\n @{}, from {}:{} to {}:{}\n{}",
                 r#type,
-                location.file(),
+                location.file().display(),
                 location.start().0,
                 location.start().1,
                 location.end().0,

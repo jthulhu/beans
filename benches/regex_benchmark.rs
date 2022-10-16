@@ -8,7 +8,7 @@ pub fn regex_email(criterion: &mut Criterion) {
     let mut group = criterion.benchmark_group("Email");
     let pattern = r"(.*[a-zA-Z0-9.\-]+@[a-zA-Z0-9.\-]+\.\w+.*)";
     let beans_engine = RegexBuilder::new()
-        .with_named_regex(pattern, String::from("Email"))
+        .with_named_regex(pattern, String::from("Email"), false)
         .unwrap()
         .build();
     let std_engine = Regex::new(pattern).unwrap();

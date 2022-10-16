@@ -3,6 +3,7 @@ use super::parsing::{build, read, Regex, RegexError};
 use crate::lexer::TerminalId;
 use crate::regex::matching::InstructionPointer;
 use newty::newty;
+use serde::{Serialize, Deserialize};
 
 #[cfg(test)]
 mod tests {
@@ -147,12 +148,12 @@ mod tests {
 }
 
 newty! {
-    #[derive(PartialEq, Eq)]
+    #[derive(PartialEq, Eq, Serialize, Deserialize)]
     pub vec Groups((usize, usize))[TerminalId]
 }
 
 newty! {
-    #[derive(PartialEq, Eq)]
+    #[derive(PartialEq, Eq, Serialize, Deserialize)]
     vec GroupNames(String)[TerminalId]
 }
 
@@ -291,7 +292,8 @@ impl Match<'_, '_> {
 /// # Method
 ///
 /// `find`: match against a given input
-#[derive(Debug, PartialEq)]
+#[cfg_attr(test, derive(PartialEq))]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CompiledRegex {
     names: GroupNames,
     program: Program,

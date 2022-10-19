@@ -2,6 +2,9 @@
 *.bo
 *.bns
 
+*.clx
+*.cgr
+
 .direnv
 
 #Added by cargo

@@ -3,7 +3,7 @@ use super::parsing::{build, read, Regex, RegexError};
 use crate::lexer::TerminalId;
 use crate::regex::matching::InstructionPointer;
 use newty::newty;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 mod tests {
@@ -302,7 +302,12 @@ pub struct CompiledRegex {
 }
 
 impl CompiledRegex {
-    fn new(program: Program, names: GroupNames, groups: Groups, size: usize) -> Self {
+    fn new(
+        program: Program,
+        names: GroupNames,
+        groups: Groups,
+        size: usize,
+    ) -> Self {
         Self {
             names,
             program,
@@ -439,7 +444,12 @@ impl RegexBuilder {
         }
 
         program[InstructionPointer(0)] = Instruction::Switch(switch);
-        CompiledRegex::new(program, self.names.into(), self.groups.into(), self.current)
+        CompiledRegex::new(
+            program,
+            self.names.into(),
+            self.groups.into(),
+            self.current,
+        )
     }
 }
 

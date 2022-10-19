@@ -594,38 +594,50 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
         let mut last = None;
         let mut overlaps = Vec::new();
         let mut negated = false;
+
+        fn read_escaped_char(
+            input: &mut Enumerate<Chars<'_>>,
+            pos: usize,
+        ) -> Result<char, RegexError> {
+            if let Some((pos, c)) = input.next() {
+                match c {
+                    ']' => Ok(c),
+                    't' => Ok('\t'),
+                    'n' => Ok('\n'),
+                    '^' => Ok('^'),
+                    '-' => Ok('-'),
+                    '\\' => Ok('\\'),
+                    _ => {
+                        Err(RegexError {
+                            position: pos,
+                            message: format!(
+                                "Cannot escape character inside character class {}, try replacing /\\{}/ with /{}/",
+                                c, c, c
+                            ),
+                        })
+                    }
+                }
+            } else {
+                Err(RegexError {
+                    position: pos,
+                    message: String::from(
+                        "Expected something after '\', but found EOF instead",
+                    ),
+                })
+            }
+        }
+
         while let Some((pos, chr)) = input.next() {
             match chr {
                 '\\' => {
-                    if let Some((pos, c)) = input.next() {
-                        if let Some(cr) = last {
-                            insert((Included(cr), Included(cr)), &mut tree, &mut overlaps);
-                        }
-                        match c {
-                            ']' => last = Some(c),
-                            't' => last = Some('\t'),
-                            'n' => last = Some('\n'),
-                            '^' => last = Some('^'),
-                            '-' => last = Some('-'),
-                            '\\' => last = Some('\\'),
-                            _ => {
-                                return Err(RegexError {
-                                    position: pos,
-                                    message: format!(
-                                    "Cannot escape character inside character class {}, try replacing /\\{}/ with /{}/",
-                                    c, c, c
-                                ),
-                                })
-                            }
-                        };
-                    } else {
-                        return Err(RegexError {
-                            position: pos,
-                            message: String::from(
-                                "Expected something after '\', but found EOF instead",
-                            ),
-                        });
+                    if let Some(cr) = last {
+                        insert(
+                            (Included(cr), Included(cr)),
+                            &mut tree,
+                            &mut overlaps,
+                        );
                     }
+                    last = Some(read_escaped_char(input, pos)?);
                 }
                 '^' if pos == actual + 1 => {
                     negated = true;
@@ -633,7 +645,16 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                 '-' => {
                     if let Some(c1) = last {
                         if let Some((_, c2)) = input.next() {
-                            insert((Included(c1), Included(c2)), &mut tree, &mut overlaps);
+                            let chr = if c2 == '\\' {
+                                read_escaped_char(input, pos)?
+                            } else {
+                                c2
+                            };
+                            insert(
+                                (Included(c1), Included(chr)),
+                                &mut tree,
+                                &mut overlaps,
+                            );
                         } else {
                             return Err(RegexError {
                                 position: pos,

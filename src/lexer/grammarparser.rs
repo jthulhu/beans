@@ -389,4 +389,24 @@ impl LexerGrammar {
     pub fn id(&self, name: &str) -> Option<TerminalId> {
         self.name_map.get(name).copied()
     }
+
+    pub fn deserialize_from(file: impl Into<Rc<Path>>) -> Result<Self> {
+        let file = file.into();
+        let mut warnings = WarningSet::default();
+        let mut fs = File::open(file.clone())?;
+        let mut buffer = Vec::new();
+        fs.read_to_end(&mut buffer)?;
+        let lexer_grammar =
+            if let Some("clx") = file.extension().and_then(|x| x.to_str()) {
+                deserialize(&buffer)?
+            } else {
+                LexerGrammarBuilder::from_stream(StringStream::new(
+                    file,
+                    String::from_utf8_lossy(&buffer),
+                ))
+                .build()?
+                .unpack_into(&mut warnings)
+            };
+        Ok(warnings.with(lexer_grammar))
+    }
 }

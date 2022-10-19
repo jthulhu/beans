@@ -12,7 +12,7 @@ pub mod lexer;
 pub mod location;
 pub mod parser;
 pub mod regex;
-pub(crate) mod stream;
+pub mod stream;
 // Macros
 #[macro_use]
 mod utilities;

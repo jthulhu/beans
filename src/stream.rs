@@ -170,7 +170,7 @@ impl StringStream {
         file_stream.read_to_string(&mut stream_buffer)?;
         Ok(WarningSet::empty_with(StringStream::new(
             file,
-            Rc::from(stream_buffer),
+            stream_buffer,
         )))
     }
 

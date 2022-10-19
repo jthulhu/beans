@@ -36,13 +36,15 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
 name = "beans"
-version = "2.2.0"
+version = "2.3.0"
 dependencies = [
  "anyhow",
  "bincode",
  "clap 4.0.15",
  "criterion",
  "fixedbitset",
+ "fragile",
+ "itertools",
  "newty",
  "rand",
  "regex",
@@ -259,6 +261,12 @@ checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
 dependencies = [
  "serde",
 ]
+
+[[package]]
+name = "fragile"
+version = "1.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "85dcb89d2b10c5f6133de2efd8c11959ce9dbb46a2f7a4cab208c4eeda6ce1ab"
 
 [[package]]
 name = "getrandom"

@@ -337,26 +337,37 @@ pub struct LexerGrammar {
     pattern: CompiledRegex,
     names: Vec<String>,
     ignores: Ignores,
+    default_allowed: Vec<TerminalId>,
     name_map: HashMap<String, TerminalId>,
 }
 
 impl LexerGrammar {
-    pub fn new(pattern: CompiledRegex, names: Vec<String>, ignores: Ignores) -> Self {
+    pub fn new(
+        pattern: CompiledRegex,
+        names: Vec<String>,
+        ignores: Ignores,
+    ) -> Self {
         let mut name_map = HashMap::new();
         for (i, name) in names.iter().enumerate() {
             let id = TerminalId(i);
             name_map.insert(name.clone(), id);
         }
+	let default_allowed = ignores.0.ones().map(|i| TerminalId(i)).collect();
         Self {
             pattern,
             names,
             ignores,
+	    default_allowed,
             name_map,
         }
     }
 
-    pub fn name(&self, idx: usize) -> &str {
-        &self.names[idx][..]
+    pub fn default_allowed(&self) -> impl Iterator<Item=TerminalId> + '_ {
+	self.default_allowed.iter().copied()
+    }
+    
+    pub fn name(&self, idx: TerminalId) -> &str {
+        &self.names[idx.0][..]
     }
 
     pub fn contains(&self, name: &str) -> bool {

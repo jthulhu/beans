@@ -4,6 +4,7 @@ use crate::error::{Error, WarningSet};
 use crate::location::Location;
 use crate::regex::Allowed;
 use crate::stream::{Stream, StringStream};
+use fragile::Fragile;
 use newty::newty;
 use std::collections::HashMap;
 use std::fmt;
@@ -619,41 +620,39 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
 
     fn lex_next(&mut self, allowed: Allowed) -> Result<bool> {
         let warnings = WarningSet::empty();
-        if self.stream.pos() == self.stream.len() {
-            Ok(warnings.with(false))
-        } else {
-            'lex: loop {
-                if let Some(result) = self
-                    .lexer
-                    .grammar()
-                    .pattern()
-                    .find(&self.stream.borrow()[self.stream.pos()..], &allowed)
-                {
-                    let start = self.stream.pos();
-                    let end = start + result.length();
-                    self.stream.set_pos(end);
-                    if self.lexer.grammar().ignored(result.id()) {
-                        continue;
-                    }
-                    let location = self.stream.loc_at(start, end);
-                    let name = result.name().to_string();
-                    let mut attributes = HashMap::new();
-                    for (i, attr) in result.groups().iter().enumerate() {
-                        if let Some(a) = attr {
-                            attributes.insert(i, a.text().to_string());
-                        }
-                    }
-                    let id = self.lexer.grammar.id(&name).unwrap();
-                    let token = Token::new(name, id, attributes, location.clone());
-                    self.last_location = location;
-                    self.tokens.push((start, token));
-                    break 'lex Ok(warnings.with(true));
-                } else {
-                    break 'lex Err(Error::LexingError {
-                        location: self.stream.get_at(self.stream.pos()).unwrap().1,
-                        message: String::from("cannot recognize a token here"),
-                    });
+        'lex: loop {
+            if self.stream.pos() == self.stream.len() {
+                break 'lex Ok(warnings.with(false));
+            } else if let Some(result) = self
+                .lexer
+                .grammar()
+                .pattern()
+                .find(&self.stream.borrow()[self.stream.pos()..], &allowed)
+            {
+                let start = self.stream.pos();
+                let end = start + result.length();
+                self.stream.set_pos(end);
+                if self.lexer.grammar().ignored(result.id()) {
+                    continue;
                 }
+                let location = self.stream.loc_at(start, end);
+                let name = result.name().to_string();
+                let mut attributes = HashMap::new();
+                for (i, attr) in result.groups().iter().enumerate() {
+                    if let Some(a) = attr {
+                        attributes.insert(i, a.text().to_string());
+                    }
+                }
+                let id = self.lexer.grammar.id(&name).unwrap();
+                let token = Token::new(name, id, attributes, location.clone());
+                self.last_location = location;
+                self.tokens.push((start, token));
+                break 'lex Ok(warnings.with(true));
+            } else {
+                break 'lex Err(Error::LexingError {
+                    location: Fragile::new(self.stream.get_at(self.stream.pos()).unwrap().1),
+                    message: String::from("cannot recognize a token here"),
+                });
             }
         }
     }

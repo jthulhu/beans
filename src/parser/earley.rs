@@ -13,6 +13,8 @@ use crate::parser::parser::AST;
 use crate::regex::Allowed;
 use crate::retrieve;
 use crate::stream::StringStream;
+use fragile::Fragile;
+use itertools::Itertools;
 use newty::{newty, nvec};
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
@@ -1284,19 +1286,26 @@ impl EarleyParser {
             .unwrap()
     }
 
-    fn to_forest(&self, table: &[StateSet], raw_input: &[Token]) -> Result<Forest> {
+    fn to_forest(
+        &self,
+        table: &[StateSet],
+        raw_input: &[Token],
+    ) -> Result<Forest> {
         let warnings = WarningSet::default();
         let mut forest = vec![FinalSet::default(); table.len()];
         for (i, set) in table.iter().enumerate() {
             forest[i].position = i;
             if set.is_empty() {
                 return Err(Error::SyntaxError {
-                    location: raw_input[i].location().clone(),
+                    location: Fragile::new(raw_input[i].location().clone()),
                     message: format!("Syntax error at token {}", i),
                 });
             }
             set.iter()
-                .filter(|item| item.position == self.grammar.rules[item.rule].elements.len())
+                .filter(|item| {
+                    item.position
+                        == self.grammar.rules[item.rule].elements.len()
+                })
                 .for_each(|item| {
                     forest[item.origin].add(
                         FinalItem {
@@ -1389,9 +1398,49 @@ impl EarleyParser {
                 }
             }
 
-            let possible_scans = scans.keys();
-            let allowed = Allowed::Some(possible_scans.copied().collect());
-            if let Some(token) = warnings.unpack(input.next(allowed)?) {
+            let possible_scans = input
+                .lexer()
+                .grammar()
+                .default_allowed()
+                .chain(scans.keys().cloned())
+                .collect::<Vec<_>>();
+            let allowed = Allowed::Some(possible_scans.clone());
+            if let Some(token) = warnings.unpack(match input.next(allowed) {
+                Ok(token) => token,
+                Err(_) => {
+                    let error = if let Some(token) =
+                        input.next(Allowed::All)?.unpack_into(&mut warnings)
+                    {
+                        let name = token.name().to_string();
+                        let location = token.location().clone();
+                        let alternatives = format!(
+                            "You could try {} instead",
+                            scans
+                                .keys()
+                                .map(|tok| input.lexer().grammar().name(*tok))
+                                .intersperse(", ")
+                                .collect::<String>()
+                        );
+                        Error::SyntaxError {
+                            message: format!(
+                                "The token {} doesn't make sense here.\n{}",
+                                name, alternatives,
+                            ),
+                            location: Fragile::new(location),
+                        }
+                    } else {
+                        Error::SyntaxError {
+                            message: String::from(
+                                "Reached EOF but parsing isn't done.",
+                            ),
+                            location: Fragile::new(
+                                input.last_location().clone(),
+                            ),
+                        }
+                    };
+                    return Err(error);
+                }
+            }) {
                 for item in scans.entry(token.id()).or_default() {
                     next_state.add(*item);
                 }

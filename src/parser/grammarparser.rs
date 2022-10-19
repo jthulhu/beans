@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
+use fragile::Fragile;
 
 #[cfg(test)]
 mod tests {}
@@ -191,9 +192,13 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         }
 
         /// Generate an error of type [`GrammarSyntaxError`][beans::error::ErrorType::GrammarSyntaxError].
-        fn generate_error(location: Location, expected: &str, found: &str) -> Error {
+        fn generate_error(
+            location: Location,
+            expected: &str,
+            found: &str,
+        ) -> Error {
             Error::GrammarSyntaxError {
-                location,
+                location: Fragile::new(location),
                 message: format!("expected {}, found {}", expected, found),
             }
         }
@@ -234,31 +239,40 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                 Ok(warnings.with((
                     id.content().to_string(),
                     match token.name() {
-                        "INT" => Value::Int(token.content().parse::<i32>().map_err(|_| {
-                            Error::GrammarSyntaxError {
-                                location: token.location().clone(),
-                                message: format!(
-                                    "cannot understand {} as an integer",
-                                    token.content()
-                                ),
-                            }
-                        })?),
+                        "INT" => {
+                            Value::Int(token.content().parse::<i32>().map_err(
+                                |_| Error::GrammarSyntaxError {
+                                    location: Fragile::new(token.location().clone()),
+                                    message: format!(
+                                        "cannot understand {} as an integer",
+                                        token.content()
+                                    ),
+                                },
+                            )?)
+                        }
                         "STRING" => Value::Str(token.content().to_string()),
-                        "FLOAT" => Value::Float(token.content().parse::<f32>().map_err(|_| {
-                            Error::GrammarSyntaxError {
-                                location: token.location().clone(),
-                                message: format!(
-                                    "cannot understand {} as a float",
-                                    token.content()
-                                ),
-                            }
-                        })?),
-                        "BOOL" => Value::Bool(token.content().parse::<bool>().map_err(|_| {
-                            Error::GrammarSyntaxError {
-                                message: format!("cannot understand {} as a bool", token.content()),
-                                location: token.location().clone(),
-                            }
-                        })?),
+                        "FLOAT" => Value::Float(
+                            token.content().parse::<f32>().map_err(|_| {
+                                Error::GrammarSyntaxError {
+                                    location: Fragile::new(token.location().clone()),
+                                    message: format!(
+                                        "cannot understand {} as a float",
+                                        token.content()
+                                    ),
+                                }
+                            })?,
+                        ),
+                        "BOOL" => Value::Bool(
+                            token.content().parse::<bool>().map_err(|_| {
+                                Error::GrammarSyntaxError {
+                                    message: format!(
+                                        "cannot understand {} as a bool",
+                                        token.content()
+                                    ),
+                                    location: Fragile::new(token.location().clone()),
+                                }
+                            })?,
+                        ),
                         "ID" => Value::Id(token.content().to_string()),
                         x => {
                             return Err(generate_error(
@@ -472,23 +486,27 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         while let Some(token) = warnings.unpack(lexed_input.next_any()?) {
             let first_location = token.location().clone();
             lexed_input.drop_last();
-            let (axiom, name, id, new_rules) = warnings.unpack(read_definition(
-                &mut lexed_input,
-                &mut nonterminals,
-                &mut name_map,
-                lexer,
-            )?);
-            let location = Location::extend(first_location, lexed_input.last_location().clone());
+            let (axiom, name, id, new_rules) =
+                warnings.unpack(read_definition(
+                    &mut lexed_input,
+                    &mut nonterminals,
+                    &mut name_map,
+                    lexer,
+                )?);
+            let location = Location::extend(
+                first_location,
+                lexed_input.last_location().clone(),
+            );
             if let Some(old_location) = done.get(&name) {
                 return Err(Error::GrammarDuplicateDefinition {
-                    location,
-                    old_location: old_location.clone(),
+                    location: Fragile::new(location),
+                    old_location: Fragile::new(old_location.clone()),
                     message: name,
                 });
             }
             if lexer.grammar().contains(&name) {
                 return Err(Error::GrammarNonTerminalDuplicate {
-                    location,
+                    location: Fragile::new(location),
                     message: name,
                 });
             }

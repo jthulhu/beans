@@ -10,6 +10,7 @@ use crate::location::Location;
 use std::collections::{linked_list, LinkedList};
 use std::fmt;
 use std::rc::Rc;
+use fragile::Fragile;
 
 /// [`EMPTY_WARNING_SET`] is a warning set without any warnings.
 /// It is useful to use this set as an empty warning set
@@ -40,13 +41,23 @@ pub enum Error {
     #[error("Failed to serialize or deserialize: {0}")]
     SerializationError(#[from] bincode::Error),
     /// `LexerGrammarSyntax(message: String)`: error in the syntax of the lexer grammar.
-    #[error("Error in the syntax of the lexer grammar: {message}, at {location}.")]
+    #[error(
+        "Error in the syntax of the lexer grammar: {message}, at {location}."
+    )]
     LexerGrammarSyntax {
         /// The message giving details about the error.
         message: String,
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
-        location: Location,
+        location: Fragile<Location>,
+    },
+    /// `LexerGrammarDuplicateDefinition(token: String)`: duplicate terminal definition.
+    #[error(
+	"Duplicate definition of the token {token}, at {location}."
+    )]
+    LexerGrammarDuplicateDefinition {
+	token: String,
+	location: Fragile<Location>,
     },
     /// `LexingError(message: String)`: error while transforming a string stream into a token stream.
     #[error("Error while lexing: {message}, at {location}")]
@@ -55,7 +66,7 @@ pub enum Error {
         message: String,
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
-        location: Location,
+        location: Fragile<Location>,
     },
     /// `GrammarDuplicateDefinition(message: String, location: Location)`: duplicate definition at `location`.
     #[error("Found duplicate definition of terminal in grammar: {message}, at {location}.")]
@@ -64,9 +75,9 @@ pub enum Error {
         message: String,
         /// The `Location` where the second, offending, definition has been
         /// found.
-        location: Location,
+        location: Fragile<Location>,
         /// The `Location` where the first definition has been found.
-        old_location: Location,
+        old_location: Fragile<Location>,
     },
     /// `GrammarNonTerminalDuplicate(message: String)`: duplicate non-terminal in the grammar.
     #[error("Found duplicate definition of nonterminal in grammar: {message}, at {location}.")]
@@ -75,7 +86,7 @@ pub enum Error {
         message: String,
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
-        location: Location,
+        location: Fragile<Location>,
     },
     /// `GrammarSyntaxError(message: String)`: syntax error in the grammar.
     #[error("Syntax error in grammar: {message}, at {location}.")]
@@ -84,7 +95,7 @@ pub enum Error {
         message: String,
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
-        location: Location,
+        location: Fragile<Location>,
     },
     /// `SyntaxError`: syntax error in the input.
     #[error("Syntax error: {message}, at {location}.")]
@@ -93,7 +104,7 @@ pub enum Error {
         message: String,
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
-        location: Location,
+        location: Fragile<Location>,
     },
     /// `IOError`: any io error.
     #[error("IO error: {0}")]
@@ -103,14 +114,14 @@ pub enum Error {
     RegexError {
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
-        location: Location,
+        location: Fragile<Location>,
         /// The message giving details about the error.
         message: String,
     },
     /// `SameOutputAndInput`: writing to the output file would overwrite the
     /// input file, which Beans refuses to do.
     #[error("The file to be written is the same as the source file.")]
-    SameOutputAndInput
+    SameOutputAndInput,
 }
 
 /// # Summary

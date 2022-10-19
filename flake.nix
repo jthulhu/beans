@@ -40,6 +40,7 @@
         };
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
+            gdb
             cargo
             cargo-edit
             rustc

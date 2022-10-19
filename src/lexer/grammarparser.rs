@@ -3,9 +3,14 @@ use crate::lexer::TerminalId;
 use crate::location::Location;
 use crate::regex::{CompiledRegex, RegexBuilder, RegexError};
 use crate::stream::{Char, Stream, StringStream};
+use bincode::deserialize;
+use fragile::Fragile;
 use newty::newty;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
+use std::fs::File;
+use std::io::Read;
+use std::mem;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -47,18 +52,19 @@ mod tests {
             String::from("del")
         ));
         assert_eq!(stream.pos(), 6);
-        assert!(
-            if let Err(error) = LexerGrammarBuilder::read_id(&mut stream).map(|x| x.unwrap()) {
-                if let Error::LexerGrammarSyntax { location, message } = error {
-                    location == Location::new(Path::new("whatever"), (0, 6), (0, 6))
-                        && message == String::from("expected id")
-                } else {
-                    false
-                }
+        assert!(if let Err(error) =
+            LexerGrammarBuilder::read_id(&mut stream).map(|x| x.unwrap())
+        {
+            if let Error::LexerGrammarSyntax { location, message } = error {
+                location.into_inner()
+                    == Location::new(Path::new("whatever"), (0, 6), (0, 6))
+                    && message == String::from("expected id")
             } else {
                 false
-            },
-        );
+            }
+        } else {
+            false
+        },);
     }
     #[test]
     fn grammar_parser_regex() {
@@ -177,30 +183,43 @@ impl LexerGrammarBuilder {
         let mut ignores = HashSet::<String>::new();
         let mut names = vec![];
         let mut regex_builder = RegexBuilder::new();
+        let mut found_identifiers = HashSet::new();
         Self::ignore_blank_lines(&mut stream);
         while stream.pos() < size {
             let ignore = Self::read_keyword(&mut stream, "ignore");
             Self::ignore_blank(&mut stream);
             let keyword = Self::read_keyword(&mut stream, "keyword");
             Self::ignore_blank(&mut stream);
-            let name = warnings.unpack(Self::read_id(&mut stream)?);
+            let (name, span) = warnings.unpack(Self::read_id(&mut stream)?);
+            if !found_identifiers.insert(name.clone()) {
+                return Err(Error::LexerGrammarDuplicateDefinition {
+                    token: name,
+                    location: Fragile::new(span),
+                });
+            }
             Self::ignore_blank(&mut stream);
             warnings.unpack(Self::ignore_assignment(&mut stream)?);
             Self::ignore_blank(&mut stream);
             let start = stream.pos();
-            let _location =
-                Location::from_stream_pos(stream.origin(), &stream.borrow(), start, stream.pos());
+            let _location = Location::from_stream_pos(
+                stream.origin(),
+                &stream.borrow(),
+                start,
+                stream.pos(),
+            );
             let pattern = Self::read_pattern(&mut stream);
             regex_builder = regex_builder
                 .with_named_regex(pattern.as_str(), name.clone(), keyword)
-                .map_err(|RegexError { message, position }| Error::RegexError {
-                    location: Location::from_stream_pos(
-                        stream.origin(),
-                        &stream.borrow(),
-                        start + position,
-                        start + position + 1,
-                    ),
-                    message,
+                .map_err(|RegexError { message, position }| {
+                    Error::RegexError {
+                        location: Fragile::new(Location::from_stream_pos(
+                            stream.origin(),
+                            &stream.borrow(),
+                            start + position,
+                            start + position + 1,
+                        )),
+                        message,
+                    }
                 })?;
             names.push(name.clone());
             if ignore {
@@ -272,29 +291,35 @@ impl LexerGrammarBuilder {
 
     fn generate_error(stream: &StringStream, err_message: &str) -> Error {
         Error::LexerGrammarSyntax {
-            location: Location::from_stream_pos(
+            location: Fragile::new(Location::from_stream_pos(
                 stream.origin(),
                 &stream.borrow(),
                 stream.pos(),
                 stream.pos() + 1,
-            ),
+            )),
             message: String::from(err_message),
         }
     }
 
-    fn read_id(stream: &mut StringStream) -> Result<String> {
+    fn read_id(stream: &mut StringStream) -> Result<(String, Location)> {
         let mut result = String::new();
-        while let (Char::Char(chr), _) = stream.get().unwrap() {
+        let mut span: Option<Location> = None;
+        while let (Char::Char(chr), loc) = stream.get().unwrap() {
             if !chr.is_ascii_alphabetic() {
                 break;
             }
             result.push(chr);
             stream.pos_pp();
+            span = Some(if let Some(span) = mem::take(&mut span) {
+                Location::extend(span, loc)
+            } else {
+                loc
+            });
         }
-        if result.is_empty() {
-            Err(Self::generate_error(stream, "expected id"))
+        if let Some(span) = span {
+            Ok(WarningSet::empty_with((result, span)))
         } else {
-            Ok(WarningSet::empty_with(result))
+            Err(Self::generate_error(stream, "expected id"))
         }
     }
 }

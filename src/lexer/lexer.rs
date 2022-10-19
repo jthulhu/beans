@@ -708,7 +708,7 @@ impl LexedStream<'_, '_> {
 
     /// Get the lexer
     pub fn lexer(&self) -> &Lexer {
-	&self.lexer
+	self.lexer
     }
 }
 /// # Summary

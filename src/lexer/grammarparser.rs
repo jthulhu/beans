@@ -355,7 +355,7 @@ impl LexerGrammar {
             let id = TerminalId(i);
             name_map.insert(name.clone(), id);
         }
-	let default_allowed = ignores.0.ones().map(|i| TerminalId(i)).collect();
+	let default_allowed = ignores.0.ones().map(TerminalId).collect();
         Self {
             pattern,
             names,

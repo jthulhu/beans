@@ -1266,7 +1266,7 @@ impl EarleyParser {
     ) -> AST {
         match item.kind {
             SyntaxicItemKind::Rule(rule) => {
-                let all_attributes = self
+                let mut all_attributes = self
                     .find_children(item, forest, raw_input)
                     .into_iter()
                     .map(|item| self.build_ast(item, forest, raw_input))
@@ -1296,7 +1296,7 @@ impl EarleyParser {
                         })
                     })
                     .collect::<HashMap<Rc<str>, _>>();
-                let attributes = self.grammar.rules[rule]
+                let mut attributes: HashMap<_, _> = self.grammar.rules[rule]
                     .proxy
                     .iter()
                     .map(|(key, wanted)| {
@@ -1304,7 +1304,7 @@ impl EarleyParser {
                             key.as_str().into(),
                             match wanted {
                                 Value::Id(w) => {
-                                    all_attributes[w.as_str()].clone()
+                                    all_attributes.remove(w.as_str()).unwrap()
                                 }
                                 Value::Bool(v) => AST::Literal(
                                     crate::parser::parser::Value::Bool(*v),
@@ -1324,6 +1324,7 @@ impl EarleyParser {
                         )
                     })
                     .collect();
+		attributes.extend(all_attributes.into_iter());
                 let nonterminal = self.grammar.rules[rule].id;
                 AST::Node {
                     nonterminal,

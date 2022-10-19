@@ -154,7 +154,7 @@ fn main() -> anyhow::Result<()> {
                 for (key, value) in token.attributes().iter() {
                     write!(output_buffer, "{}: {}, ", key, value)?;
                 }
-                write!(output_buffer, "}}\n")?;
+                writeln!(output_buffer, "}}")?;
             }
             output_buffer.flush()?;
         }

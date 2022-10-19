@@ -422,7 +422,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                     ElementType::from(id)
                 } else {
                     ElementType::from(
-                        *name_map.entry(name.into()).or_insert(id.next()),
+                        *name_map.entry(name.into()).or_insert_with(|| id.next()),
                     )
                 },
             )))
@@ -487,7 +487,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             warnings.unpack(match_now(lexed_input, "ASSIGNMENT")?);
             let name_string = name.content();
             let id =
-                *name_map.entry(name_string.into()).or_insert(next_id.next());
+                *name_map.entry(name_string.into()).or_insert_with(|| next_id.next());
             let mut rules = Vec::new();
             'read_rules: while let Some(token) =
                 warnings.unpack(lexed_input.next_any()?)
@@ -504,7 +504,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                 )?);
                 let id = *name_map
                     .entry(name_string.into())
-                    .or_insert(next_id.next());
+                    .or_insert_with(|| next_id.next());
                 let rule = Rule::new(
                     name_string,
                     id,

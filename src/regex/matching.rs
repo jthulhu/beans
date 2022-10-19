@@ -331,7 +331,7 @@ fn match_next(
     /// Return whether `chr` is a digit,
     /// matched by /[0-9]/.
     fn is_digit(chr: char) -> bool {
-        chr.is_digit(10)
+        chr.is_ascii_digit()
     }
 
     /// Return whether `chr` is a whitespace,

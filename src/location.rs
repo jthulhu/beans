@@ -26,7 +26,8 @@ mod tests {
     use super::*;
     #[test]
     fn location() {
-        let location = Location::new(Path::new("a cool filename"), (0, 3), (1, 6));
+        let location =
+            Location::new(Path::new("a cool filename"), (0, 3), (1, 6));
         assert_eq!(&*location.file(), Path::new("a cool filename"));
         assert_eq!(location.start(), (0, 3));
         assert_eq!(location.end(), (1, 6));
@@ -141,15 +142,32 @@ pub struct Location {
 
 impl std::fmt::Display for Location {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}@{}:{} to {}:{}",
-            self.file.display(),
-            self.start.0,
-            self.start.1,
-            self.end.0,
-            self.end.1
-        )
+	write!(f, "in file {}, ", self.file.display())?;
+	if self.start == self.end {
+	    write!(
+		f,
+		"at character {} of line {}",
+		self.start.1,
+		self.start.0+1,
+	    )
+	} else if self.start.0 == self.end.0 {
+	    write!(
+		f,
+		"at characters {}-{} of line {}",
+		self.start.1,
+		self.end.1,
+		self.start.0+1,
+	    )
+	} else {
+            write!(
+		f,
+		"from character {} of line {} to character {} of line {}",
+		self.start.1,
+		self.start.0+1,
+		self.end.1,
+		self.end.0+1,
+            )
+	}
     }
 }
 
@@ -161,7 +179,11 @@ impl Location {
     ///  * end: the location (exclusive) of the end of the data.
     ///
     /// Panic if start > end (lexicographic order)
-    pub fn new(file: impl Into<Rc<Path>>, start: CharLocation, end: CharLocation) -> Self {
+    pub fn new(
+        file: impl Into<Rc<Path>>,
+        start: CharLocation,
+        end: CharLocation,
+    ) -> Self {
         assert!(start.0 < end.0 || (start.0 == end.0 && start.1 <= end.1)); // TODO: remove assert and add proper error handling.
         let file = file.into();
         Self { file, start, end }

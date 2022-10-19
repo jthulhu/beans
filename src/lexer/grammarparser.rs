@@ -113,11 +113,14 @@ mod tests {
                 .build()
         );
         assert_eq!(
-            *LexerGrammarBuilder::from_stream(StringStream::new(Path::new("whatever"), ""))
-                .build()
-                .unwrap()
-                .unwrap()
-                .pattern(),
+            *LexerGrammarBuilder::from_stream(StringStream::new(
+                Path::new("whatever"),
+                ""
+            ))
+            .build()
+            .unwrap()
+            .unwrap()
+            .pattern(),
             RegexBuilder::new().build()
         );
     }

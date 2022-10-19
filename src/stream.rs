@@ -34,8 +34,12 @@ mod tests {
                         i, &string
                     );
                 }
-                let location =
-                    Location::from_stream_pos(origin, string, string.len(), string.len());
+                let location = Location::from_stream_pos(
+                    origin,
+                    string,
+                    string.len(),
+                    string.len(),
+                );
                 assert_eq!(location, loc);
             }
         }
@@ -132,7 +136,10 @@ pub struct StringStream {
 
 impl StringStream {
     /// Build a new `StringStream`, based on its `origin` and on a given `string`.
-    pub fn new(origin: impl Into<Rc<Path>>, string: impl Into<Rc<str>>) -> Self {
+    pub fn new(
+        origin: impl Into<Rc<Path>>,
+        string: impl Into<Rc<str>>,
+    ) -> Self {
         let origin = origin.into();
         let string = string.into();
         let mut current_char = 0;
@@ -150,9 +157,9 @@ impl StringStream {
         }
         Self {
             origin: origin.clone(),
+            length: stream.len(),
             stream,
             pos: 0,
-            length: string.len(),
             location_builder: LocationBuilder::new(origin.clone(), string),
             end_pos: Location::new(
                 origin,

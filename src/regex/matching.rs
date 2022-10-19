@@ -1,6 +1,6 @@
 use crate::lexer::TerminalId;
 use newty::newty;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use unbounded_interval_tree::interval_tree::IntervalTree;
 
 #[cfg(test)]
@@ -57,7 +57,10 @@ mod tests {
         for (regex, tests) in escaped {
             let (program, _) = compile(regex, TerminalId(0)).unwrap();
             for (string, result) in tests {
-                assert_eq!(find(&program, string, 0, &Allowed::All).is_some(), result);
+                assert_eq!(
+                    find(&program, string, 0, &Allowed::All).is_some(),
+                    result
+                );
             }
         }
     }
@@ -187,9 +190,9 @@ newty! {
     #[cfg_attr(test, derive(PartialEq))]
     pub vec Program (Instruction) [InstructionPointer]
     impl {
-    pub fn len_ip(&self) -> InstructionPointer {
-        InstructionPointer(self.len())
-    }
+	pub fn len_ip(&self) -> InstructionPointer {
+            InstructionPointer(self.len())
+	}
     }
 }
 
@@ -437,8 +440,16 @@ fn match_next(
 }
 
 /// Simulate a VM with program `prog` on `input`. There should be `size` groups.
-pub fn find(prog: &ProgramSlice, input: &str, size: usize, allowed: &Allowed) -> Option<Match> {
-    let mut current = ThreadList::from(vec![Thread::new(InstructionPointer(0), size)], prog.len());
+pub fn find(
+    prog: &ProgramSlice,
+    input: &str,
+    size: usize,
+    allowed: &Allowed,
+) -> Option<Match> {
+    let mut current = ThreadList::from(
+        vec![Thread::new(InstructionPointer(0), size)],
+        prog.len(),
+    );
     let mut best_match = None;
     let mut last = None;
     for (pos, chr) in input.chars().enumerate() {

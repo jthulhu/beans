@@ -73,10 +73,13 @@ mod tests {
     fn lexer_builder() {
         // A grammar: succeeds
         LexerBuilder::from_grammar(
-            LexerGrammarBuilder::from_stream(StringStream::new(Path::new("grammar file"), "A ::= blu"))
-                .build()
-                .unwrap()
-                .unwrap(),
+            LexerGrammarBuilder::from_stream(StringStream::new(
+                Path::new("grammar file"),
+                "A ::= blu",
+            ))
+            .build()
+            .unwrap()
+            .unwrap(),
         )
         .build();
     }
@@ -84,10 +87,13 @@ mod tests {
     #[test]
     fn lex_basic() {
         let lexer = LexerBuilder::from_grammar(
-            LexerGrammarBuilder::from_stream(StringStream::new(Path::new("a file name"), "A ::= blu"))
-                .build()
-                .unwrap()
-                .unwrap(),
+            LexerGrammarBuilder::from_stream(StringStream::new(
+                Path::new("a file name"),
+                "A ::= blu",
+            ))
+            .build()
+            .unwrap()
+            .unwrap(),
         )
         .build();
         let mut input = StringStream::new(Path::new("input file"), "blu");
@@ -150,7 +156,8 @@ mod tests {
             ((0, 6), (0, 9), "ID"),
         ];
         verify_input(
-            lexer.lex(&mut StringStream::new(Path::new("<input>"), "one + two")),
+            lexer
+                .lex(&mut StringStream::new(Path::new("<input>"), "one + two")),
             &result,
         );
 
@@ -181,7 +188,9 @@ mod tests {
             .unwrap()
             .unwrap()
             .build();
-        let mut input = StringStream::from_file(Path::new("gmrs/parser.gmr")).unwrap().unwrap();
+        let mut input = StringStream::from_file(Path::new("gmrs/parser.gmr"))
+            .unwrap()
+            .unwrap();
         let mut lexed_input = lexer.lex(&mut input);
 
         let result = [
@@ -416,11 +425,11 @@ mod tests {
         ];
 
         for (i, tok) in result.iter().enumerate() {
-            let token = lexed_input
-                .next(Allowed::All)
-                .unwrap()
-                .unwrap()
-                .expect(format!("Expected token named {}, found EOF", tok.name).as_str());
+            let token =
+                lexed_input.next(Allowed::All).unwrap().unwrap().expect(
+                    format!("Expected token named {}, found EOF", tok.name)
+                        .as_str(),
+                );
             assert_eq!(
                 tok,
                 token,
@@ -561,7 +570,8 @@ impl LexerBuilder {
     /// Since the stream may be an ill-defined grammar, this might fail.
     pub fn from_stream(stream: StringStream) -> Result<Self> {
         let mut warnings = WarningSet::empty();
-        let grammar = warnings.unpack(LexerGrammarBuilder::from_stream(stream).build()?);
+        let grammar =
+            warnings.unpack(LexerGrammarBuilder::from_stream(stream).build()?);
         Ok(warnings.with(Self { grammar }))
     }
 
@@ -608,7 +618,10 @@ pub struct LexedStream<'lexer, 'stream> {
 
 impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
     /// Create a new [`LexedStream`] instance.
-    pub fn new(lexer: &'lexer Lexer, stream: &'stream mut StringStream) -> Self {
+    pub fn new(
+        lexer: &'lexer Lexer,
+        stream: &'stream mut StringStream,
+    ) -> Self {
         Self {
             last_location: Location::new(stream.origin(), (0, 0), (0, 0)),
             lexer,
@@ -691,6 +704,11 @@ impl LexedStream<'_, '_> {
             self.pos -= 1;
             self.stream.set_pos(pos);
         }
+    }
+
+    /// Get the lexer
+    pub fn lexer(&self) -> &Lexer {
+	&self.lexer
     }
 }
 /// # Summary

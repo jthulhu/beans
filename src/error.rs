@@ -32,7 +32,9 @@ pub type Result<T> = std::result::Result<WithWarnings<T>, Error>;
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     /// `InternalError(message: String)`: error in the Beans implementation. This should not happen.
-    #[error("Error in the Beans implementation: {message}. This should not happen.")]
+    #[error(
+        "Error in the Beans implementation: {message}. This should not happen."
+    )]
     InternalError {
         /// The message giving details about the error.
         message: String,
@@ -286,7 +288,9 @@ impl WarningSet {
     pub fn extend(&mut self, warningset: Self) {
         match self {
             Self::Set(selfwarnings) => match warningset {
-                Self::Set(mut otherwarnings) => selfwarnings.append(&mut otherwarnings),
+                Self::Set(mut otherwarnings) => {
+                    selfwarnings.append(&mut otherwarnings)
+                }
                 Self::Empty => {}
             },
             Self::Empty => match warningset {
@@ -304,7 +308,10 @@ impl WarningSet {
 
     /// Utilitary function to ease the usage of regular error types.
     #[inline]
-    pub fn unpack<T>(&mut self, WithWarnings { content, warnings }: WithWarnings<T>) -> T {
+    pub fn unpack<T>(
+        &mut self,
+        WithWarnings { content, warnings }: WithWarnings<T>,
+    ) -> T {
         self.extend(warnings);
         content
     }
@@ -327,7 +334,11 @@ impl WarningSet {
 
     /// `on` provides a shorthand by conjuging `f` with `with` and `unpack`.
     #[inline]
-    pub fn on<T, F, U>(mut self, content: WithWarnings<T>, f: F) -> WithWarnings<U>
+    pub fn on<T, F, U>(
+        mut self,
+        content: WithWarnings<T>,
+        f: F,
+    ) -> WithWarnings<U>
     where
         F: FnOnce(T) -> U,
     {

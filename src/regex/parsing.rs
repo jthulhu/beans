@@ -1,3 +1,5 @@
+use std::{iter::Enumerate, str::Chars};
+
 use super::matching::{Instruction, Program};
 use crate::regex::matching::InstructionPointer;
 use unbounded_interval_tree::interval_tree::IntervalTree;
@@ -8,7 +10,10 @@ pub mod tests {
     use crate::lexer::TerminalId;
 
     /// Compile a regex into a program executable on the VM.
-    pub fn compile(regex: &str, id: TerminalId) -> Result<(Program, usize), RegexError> {
+    pub fn compile(
+        regex: &str,
+        id: TerminalId,
+    ) -> Result<(Program, usize), RegexError> {
         let mut program = Program::new();
         let (regex, nb_groups) = read(regex, 0)?;
         build(regex, &mut program);
@@ -110,8 +115,14 @@ pub mod tests {
             read("(a+)(b+)", 0).unwrap(),
             (
                 Concat(
-                    Box::new(Group(Box::new(Repetition(Box::new(Char('a')))), 0)),
-                    Box::new(Group(Box::new(Repetition(Box::new(Char('b')))), 1))
+                    Box::new(Group(
+                        Box::new(Repetition(Box::new(Char('a')))),
+                        0
+                    )),
+                    Box::new(Group(
+                        Box::new(Repetition(Box::new(Char('b')))),
+                        1
+                    ))
                 ),
                 2
             )
@@ -137,8 +148,14 @@ pub mod tests {
             read("(a*)(b*)", 0).unwrap(),
             (
                 Concat(
-                    Box::new(Group(Box::new(KleeneStar(Box::new(Char('a')))), 0)),
-                    Box::new(Group(Box::new(KleeneStar(Box::new(Char('b')))), 1))
+                    Box::new(Group(
+                        Box::new(KleeneStar(Box::new(Char('a')))),
+                        0
+                    )),
+                    Box::new(Group(
+                        Box::new(KleeneStar(Box::new(Char('b')))),
+                        1
+                    ))
                 ),
                 2
             )
@@ -154,11 +171,17 @@ pub mod tests {
             (
                 Option(
                     Box::new(Concat(
-                        Box::new(Concat(Box::new(Char('a')), Box::new(Char('b')),)),
+                        Box::new(Concat(
+                            Box::new(Char('a')),
+                            Box::new(Char('b')),
+                        )),
                         Box::new(Char('c'))
                     )),
                     Box::new(Concat(
-                        Box::new(Concat(Box::new(Char('b')), Box::new(Char('c')),)),
+                        Box::new(Concat(
+                            Box::new(Char('b')),
+                            Box::new(Char('c')),
+                        )),
                         Box::new(Char('d'))
                     )),
                 ),
@@ -171,8 +194,14 @@ pub mod tests {
             (
                 Option(
                     Box::new(Option(
-                        Box::new(Concat(Box::new(Char('a')), Box::new(Char('b')))),
-                        Box::new(Concat(Box::new(Char('c')), Box::new(Char('d'))))
+                        Box::new(Concat(
+                            Box::new(Char('a')),
+                            Box::new(Char('b'))
+                        )),
+                        Box::new(Concat(
+                            Box::new(Char('c')),
+                            Box::new(Char('d'))
+                        ))
                     )),
                     Box::new(Concat(Box::new(Char('e')), Box::new(Char('f'))))
                 ),
@@ -255,7 +284,10 @@ pub mod tests {
         assert_eq!(
             program,
             (
-                Program::from(vec![CharacterClass(tree, false), Match(TerminalId(0))]),
+                Program::from(vec![
+                    CharacterClass(tree, false),
+                    Match(TerminalId(0))
+                ]),
                 0
             )
         );
@@ -275,9 +307,15 @@ pub mod tests {
     fn build_eof() {
         use Instruction::*;
         let program = compile(r"\z", TerminalId(0)).unwrap();
-        assert_eq!(program, (Program::from(vec![EOF, Match(TerminalId(0))]), 0));
+        assert_eq!(
+            program,
+            (Program::from(vec![EOF, Match(TerminalId(0))]), 0)
+        );
         let program = compile(r"\Z", TerminalId(0)).unwrap();
-        assert_eq!(program, (Program::from(vec![EOF, Match(TerminalId(0))]), 0));
+        assert_eq!(
+            program,
+            (Program::from(vec![EOF, Match(TerminalId(0))]), 0)
+        );
     }
 
     #[test]
@@ -378,7 +416,10 @@ pub mod tests {
     fn build_any() {
         use Instruction::*;
         let program = compile(".", TerminalId(0)).unwrap();
-        assert_eq!(program, (Program::from(vec![Any, Match(TerminalId(0))]), 0));
+        assert_eq!(
+            program,
+            (Program::from(vec![Any, Match(TerminalId(0))]), 0)
+        );
     }
 
     #[test]
@@ -408,7 +449,8 @@ pub mod tests {
     fn build_string() {
         use std::collections::Bound::Included;
         use Instruction::*;
-        let program = compile(r"'(([^'\\]|\\[^\\]|\\\\)*)'", TerminalId(0)).unwrap();
+        let program =
+            compile(r"'(([^'\\]|\\[^\\]|\\\\)*)'", TerminalId(0)).unwrap();
         let mut first_char_class = IntervalTree::default();
         first_char_class.insert((Included('\''), Included('\'')));
         first_char_class.insert((Included('\\'), Included('\\')));
@@ -504,7 +546,8 @@ pub fn build(regex: Regex, program: &mut Program) {
             let jmp_pos = program.len_ip();
             program.push(Instruction::Jump(InstructionPointer(0)));
             build(*r2, program);
-            program[split_pos] = Instruction::Split(split_pos.incr(), jmp_pos.incr());
+            program[split_pos] =
+                Instruction::Split(split_pos.incr(), jmp_pos.incr());
             program[jmp_pos] = Instruction::Jump(program.len_ip());
         }
         Regex::Concat(r1, r2) => {
@@ -518,7 +561,8 @@ pub fn build(regex: Regex, program: &mut Program) {
                 InstructionPointer(0),
             ));
             build(*r, program);
-            program[split_pos] = Instruction::Split(split_pos.incr(), program.len_ip());
+            program[split_pos] =
+                Instruction::Split(split_pos.incr(), program.len_ip());
         }
         Regex::KleeneStar(r) => {
             let split_pos = program.len_ip();
@@ -528,7 +572,8 @@ pub fn build(regex: Regex, program: &mut Program) {
             ));
             build(*r, program);
             program.push(Instruction::Jump(split_pos));
-            program[split_pos] = Instruction::Split(split_pos.incr(), program.len_ip());
+            program[split_pos] =
+                Instruction::Split(split_pos.incr(), program.len_ip());
         }
         Regex::Repetition(r) => {
             let init_pos = program.len_ip();
@@ -556,7 +601,10 @@ pub fn build(regex: Regex, program: &mut Program) {
 /// Parse a regex. The parsing technique is quite efficient,
 /// essentially linear time.
 /// **This is a private function, please use the API instead.**
-pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError> {
+pub fn read(
+    regex: &str,
+    mut groups: usize,
+) -> Result<(Regex, usize), RegexError> {
     /// Parse a character class.
     fn read_char_class(
         input: &mut std::iter::Enumerate<std::str::Chars<'_>>,
@@ -665,12 +713,20 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                         }
                         last = None;
                     } else {
-                        insert((Included('-'), Included('-')), &mut tree, &mut overlaps);
+                        insert(
+                            (Included('-'), Included('-')),
+                            &mut tree,
+                            &mut overlaps,
+                        );
                     }
                 }
                 ']' => {
                     if let Some(c) = last {
-                        insert((Included(c), Included(c)), &mut tree, &mut overlaps);
+                        insert(
+                            (Included(c), Included(c)),
+                            &mut tree,
+                            &mut overlaps,
+                        );
                     }
                     if !overlaps.is_empty() {
                         let mut err_str = format!("Found {} overlaps in character class from position {} to position {}: ", overlaps.len(), actual, pos+1);
@@ -697,7 +753,11 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
                 }
                 c => {
                     if let Some(cr) = last {
-                        insert((Included(cr), Included(cr)), &mut tree, &mut overlaps);
+                        insert(
+                            (Included(cr), Included(cr)),
+                            &mut tree,
+                            &mut overlaps,
+                        );
                     }
                     last = Some(c);
                 }
@@ -721,11 +781,17 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
 
     fn kleene_star(exp: Regex, pos: usize) -> Result<Regex, RegexError> {
         match exp {
-            Regex::Concat(r1, r2) => Ok(Regex::Concat(r1, Box::new(kleene_star(*r2, pos)?))),
-            Regex::Option(r1, r2) => Ok(Regex::Option(r1, Box::new(kleene_star(*r2, pos)?))),
+            Regex::Concat(r1, r2) => {
+                Ok(Regex::Concat(r1, Box::new(kleene_star(*r2, pos)?)))
+            }
+            Regex::Option(r1, r2) => {
+                Ok(Regex::Option(r1, Box::new(kleene_star(*r2, pos)?)))
+            }
             Regex::Empty => Err(RegexError {
                 position: pos,
-                message: String::from("Cannot apply kleene star to empty regex."),
+                message: String::from(
+                    "Cannot apply kleene star to empty regex.",
+                ),
             }),
             Regex::KleeneStar(..) => Err(RegexError {
                 position: pos,
@@ -733,11 +799,15 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
             }),
             Regex::Optional(..) => Err(RegexError {
                 position: pos,
-                message: String::from("Cannot apply kleene star on an optional group."),
+                message: String::from(
+                    "Cannot apply kleene star on an optional group.",
+                ),
             }),
             Regex::Repetition(..) => Err(RegexError {
                 position: pos,
-                message: String::from("Cannot apply kleene star and repetition."),
+                message: String::from(
+                    "Cannot apply kleene star and repetition.",
+                ),
             }),
             r => Ok(Regex::KleeneStar(Box::new(r))),
         }
@@ -745,11 +815,17 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
 
     fn repetition(exp: Regex, pos: usize) -> Result<Regex, RegexError> {
         match exp {
-            Regex::Concat(r1, r2) => Ok(Regex::Concat(r1, Box::new(repetition(*r2, pos)?))),
-            Regex::Option(r1, r2) => Ok(Regex::Option(r1, Box::new(repetition(*r2, pos)?))),
+            Regex::Concat(r1, r2) => {
+                Ok(Regex::Concat(r1, Box::new(repetition(*r2, pos)?)))
+            }
+            Regex::Option(r1, r2) => {
+                Ok(Regex::Option(r1, Box::new(repetition(*r2, pos)?)))
+            }
             Regex::Empty => Err(RegexError {
                 position: pos,
-                message: String::from("Cannot apply repetition to empty regex."),
+                message: String::from(
+                    "Cannot apply repetition to empty regex.",
+                ),
             }),
             Regex::KleeneStar(..) => Err(RegexError {
                 position: pos,
@@ -757,11 +833,15 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
             }),
             Regex::Optional(..) => Err(RegexError {
                 position: pos,
-                message: String::from("Cannot apply repetition on an optional group."),
+                message: String::from(
+                    "Cannot apply repetition on an optional group.",
+                ),
             }),
             Regex::Repetition(..) => Err(RegexError {
                 position: pos,
-                message: String::from("Cannot apply repetition and kleene star."),
+                message: String::from(
+                    "Cannot apply repetition and kleene star.",
+                ),
             }),
             r => Ok(Regex::Repetition(Box::new(r))),
         }
@@ -769,15 +849,21 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
 
     fn optional(exp: Regex, pos: usize) -> Result<Regex, RegexError> {
         match exp {
-            Regex::Concat(r1, r2) => Ok(Regex::Concat(r1, Box::new(optional(*r2, pos)?))),
-            Regex::Option(r1, r2) => Ok(Regex::Option(r1, Box::new(optional(*r2, pos)?))),
+            Regex::Concat(r1, r2) => {
+                Ok(Regex::Concat(r1, Box::new(optional(*r2, pos)?)))
+            }
+            Regex::Option(r1, r2) => {
+                Ok(Regex::Option(r1, Box::new(optional(*r2, pos)?)))
+            }
             Regex::Empty => Err(RegexError {
                 position: pos,
                 message: String::from("Cannot apply optional to empty regex."),
             }),
             Regex::KleeneStar(..) => Err(RegexError {
                 position: pos,
-                message: String::from("Non-greedy kleene star is not supported."),
+                message: String::from(
+                    "Non-greedy kleene star is not supported.",
+                ),
             }),
             Regex::Optional(..) => Err(RegexError {
                 position: pos,
@@ -785,7 +871,9 @@ pub fn read(regex: &str, mut groups: usize) -> Result<(Regex, usize), RegexError
             }),
             Regex::Repetition(..) => Err(RegexError {
                 position: pos,
-                message: String::from("Non-greedy repetition is not supported."),
+                message: String::from(
+                    "Non-greedy repetition is not supported.",
+                ),
             }),
             r => Ok(Regex::Optional(Box::new(r))),
         }

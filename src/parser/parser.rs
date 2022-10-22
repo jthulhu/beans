@@ -21,7 +21,7 @@ newty! {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Int(i32),
-    Str(String),
+    Str(Rc<str>),
     Float(f32),
     Bool(bool),
 }

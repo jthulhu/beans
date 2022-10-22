@@ -133,11 +133,11 @@ mod tests {
         .build()
         .unwrap()
         .unwrap();
-        assert_eq!(grammar.name(0), "A");
+        assert_eq!(grammar.name(TerminalId(0)), "A");
         assert!(grammar.ignored(0.into()));
-        assert_eq!(grammar.name(1), "B");
+        assert_eq!(grammar.name(TerminalId(1)), "B");
         assert!(grammar.ignored(1.into()));
-        assert_eq!(grammar.name(2), "C");
+        assert_eq!(grammar.name(TerminalId(2)), "C");
         assert!(!grammar.ignored(2.into()));
     }
     #[test]

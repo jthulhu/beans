@@ -97,6 +97,11 @@ pub enum Error {
         /// be patched.
         location: Fragile<Location>,
     },
+    /// `GrammarVariantKey(message: String)`: have a variant key in proxy is bad.
+    #[error("The `variant` key is reserved in proxies, at {location}.")]
+    GrammarVariantKey {
+	location: Fragile<Location>,
+    },
     /// `SyntaxError`: syntax error in the input.
     #[error("Syntax error: {message}, at {location}.")]
     SyntaxError {

@@ -1,5 +1,5 @@
 use super::grammarparser::{
-    Axioms, ElementType, Grammar, GrammarBuilder, Rule, RuleElement, Value,
+    Axioms, ElementType, Grammar, GrammarBuilder, Rule, RuleElement,
 };
 use super::list::List;
 use super::parser::{NonTerminalId, ParseResult, Parser, RuleId};
@@ -9,7 +9,7 @@ use crate::lexer::LexedStream;
 use crate::lexer::TerminalId;
 use crate::lexer::Token;
 use crate::parser::grammarparser::Attribute;
-use crate::parser::parser::AST;
+use crate::parser::parser::{Value, AST};
 use crate::regex::Allowed;
 use crate::retrieve;
 use crate::stream::StringStream;
@@ -31,7 +31,7 @@ mod tests {
     use crate::{
         lexer::LexerBuilder,
         parser::grammarparser::{
-            Attribute, ElementType, Key, Proxy, Rule, RuleElement, Value,
+            Attribute, ElementType, Key, Proxy, Rule, RuleElement,
         },
     };
 
@@ -44,14 +44,14 @@ RPAR ::= \)
 "#;
 
     const GRAMMAR_NUMBERS: &str = r#"
-@Sum ::= Sum@left PM Product@right <left: left right: right>
- Product@self <self: self>;
+@Sum ::= Sum@left PM Product@right <>
+ Product@self <>;
 
-Product ::= Product@left TD Factor@right <left: left right: right>
- Factor.self@self <self: self>;
+Product ::= Product@left TD Factor@right <>
+ Factor.self@self <>;
 
-Factor ::= LPAR Sum@self RPAR <self: self>
- NUMBER.0@self <self: self>;"#;
+Factor ::= LPAR Sum@self RPAR <>
+ NUMBER.0@self <>;"#;
 
     struct TestEarleyItem {
         name: &'static str,
@@ -514,7 +514,7 @@ B ::= A <>;"#;
                     (
                         "right",
                         Node {
-                            id: 2,
+                            id: 1,
                             attributes: vec![(
                                 "self",
                                 Node {
@@ -523,10 +523,10 @@ B ::= A <>;"#;
                                         (
                                             "right",
                                             Node {
-                                                id: 2,
+                                                id: 1,
                                                 attributes: vec![(
                                                     "self",
-                                                    Literal(Str("4".to_string())),
+                                                    Literal(Str("4".into())),
                                                 )]
                                                 .into(),
                                             },
@@ -538,16 +538,16 @@ B ::= A <>;"#;
                                                 attributes: vec![(
                                                     "self",
                                                     Node {
-                                                        id: 2,
+                                                        id: 1,
                                                         attributes: vec![
                                                             (
                                                                 "right",
                                                                 Node {
-                                                                    id: 8,
+                                                                    id: 2,
                                                                     attributes: vec![(
                                                                         "self",
                                                                         Literal(Str(
-                                                                            "3".to_string()
+                                                                            "3".into()
                                                                         )),
                                                                     )]
                                                                     .into(),
@@ -556,11 +556,11 @@ B ::= A <>;"#;
                                                             (
                                                                 "left",
                                                                 Node {
-                                                                    id: 2,
+                                                                    id: 1,
                                                                     attributes: vec![(
                                                                         "self",
                                                                         Literal(Str(
-                                                                            "2".to_string()
+                                                                            "2".into()
                                                                         )),
                                                                     )]
                                                                     .into(),
@@ -587,8 +587,8 @@ B ::= A <>;"#;
                             attributes: vec![(
                                 "self",
                                 Node {
-                                    id: 2,
-                                    attributes: vec![("self", Literal(Str("1".to_string())))]
+                                    id: 1,
+                                    attributes: vec![("self", Literal(Str("1".into())))]
                                         .into(),
                                 },
                             )]
@@ -1290,65 +1290,62 @@ impl EarleyParser {
     ) -> AST {
         match item.kind {
             SyntaxicItemKind::Rule(rule) => {
-                let mut all_attributes = self
+                let all_attributes = self
                     .find_children(item, forest, raw_input)
                     .into_iter()
                     .map(|item| self.build_ast(item, forest, raw_input))
                     .zip(self.grammar.rules[rule].elements.iter())
                     .filter_map(|(item, element)| {
-                        element.key.as_ref().map(|key| match &element.attribute {
-                            Attribute::Named(attr) => {
-                                if let AST::Node { attributes, .. } = item {
-                                    (key.as_str().into(), attributes[attr.as_str()].clone())
-                                } else {
-                                    unreachable!() // TODO: remove this possibility
+                        element.key.as_ref().map(|key| {
+                            match &element.attribute {
+                                Attribute::Named(attr) => {
+                                    if let AST::Node { attributes, .. } = item {
+                                        (
+                                            key.as_str().into(),
+                                            attributes[attr.as_str()].clone(),
+                                        )
+                                    } else {
+                                        unreachable!() // TODO: remove this possibility
+                                    }
                                 }
-                            }
-                            Attribute::Indexed(idx) => {
-                                if let AST::Terminal(token) = item {
-                                    (
-                                        key.as_str().into(),
-                                        AST::Literal(crate::parser::parser::Value::Str(
-                                            token.attributes()[idx].clone(),
-                                        )),
-                                    )
-                                } else {
-                                    unreachable!()
+                                Attribute::Indexed(idx) => {
+                                    if let AST::Terminal(token) = item {
+                                        (
+                                            key.as_str().into(),
+                                            AST::Literal(Value::Str(Rc::from(
+                                                token.attributes()[idx]
+                                                    .as_str(),
+                                            ))),
+                                        )
+                                    } else {
+                                        unreachable!()
+                                    }
                                 }
+                                Attribute::None => (key.as_str().into(), item),
                             }
-                            Attribute::None => (key.as_str().into(), item),
                         })
                     })
                     .collect::<HashMap<Rc<str>, _>>();
+                let mut removed: HashSet<Rc<str>> = HashSet::new();
                 let mut attributes: HashMap<_, _> = self.grammar.rules[rule]
                     .proxy
                     .iter()
                     .map(|(key, wanted)| {
                         (
                             key.as_str().into(),
-                            match wanted {
-                                Value::Id(w) => {
-                                    all_attributes.remove(w.as_str()).unwrap()
-                                }
-                                Value::Bool(v) => AST::Literal(
-                                    crate::parser::parser::Value::Bool(*v),
-                                ),
-                                Value::Int(v) => AST::Literal(
-                                    crate::parser::parser::Value::Int(*v),
-                                ),
-                                Value::Float(v) => AST::Literal(
-                                    crate::parser::parser::Value::Float(*v),
-                                ),
-                                Value::Str(v) => AST::Literal(
-                                    crate::parser::parser::Value::Str(
-                                        v.to_string(),
-                                    ),
-                                ),
-                            },
+                            wanted.evaluate(
+                                &all_attributes,
+                                &mut removed,
+                                &self.grammar().name_map,
+                            ),
                         )
                     })
                     .collect();
-		attributes.extend(all_attributes.into_iter());
+                attributes.extend(
+                    all_attributes
+                        .into_iter()
+                        .filter(|(key, _)| !removed.contains(key)),
+                );
                 let nonterminal = self.grammar.rules[rule].id;
                 AST::Node {
                     nonterminal,

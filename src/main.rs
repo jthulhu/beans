@@ -3,12 +3,13 @@ use beans::error::{Error, WarningSet, WithWarnings};
 use beans::lexer::{LexerBuilder, LexerGrammar, LexerGrammarBuilder};
 use beans::parser::earley::EarleyGrammarBuilder;
 use beans::parser::grammarparser::GrammarBuilder;
-use beans::parser::parser::Parser;
+use beans::parser::parser::{Parser, Value, AST};
 use beans::parser::EarleyParser;
 use beans::regex::Allowed;
 use beans::stream::StringStream;
 use bincode::{deserialize, serialize};
 use clap::{Parser as CliParser, Subcommand};
+use ptree::{print_tree, TreeBuilder};
 use std::fs::File;
 use std::io::{prelude::*, stdout, BufWriter};
 use std::path::PathBuf;
@@ -202,9 +203,7 @@ fn main() -> anyhow::Result<()> {
                 fd.read_to_end(&mut buffer)?;
                 deserialize(&buffer)?
             } else {
-                EarleyGrammarBuilder::default()
-                    .with_file(parser_grammar_path.as_path())?
-                    .unpack_into(&mut warnings)
+                EarleyGrammarBuilder::new(parser_grammar_path.as_path())
                     .build(&lexer)?
                     .unpack_into(&mut warnings)
             };
@@ -219,13 +218,18 @@ fn main() -> anyhow::Result<()> {
             //     )?
             //     .unpack_into(&mut warnings);
             // println!("{:#?}\n{}", table, raw_input.len());
-            let ast = parser.parse(
-                &mut lexer.lex(
-                    &mut StringStream::from_file(source)?
-                        .unpack_into(&mut warnings),
-                ),
-            )?.unpack_into(&mut warnings);
-            println!("{:#?}", ast);
+            let ast = parser
+                .parse(
+                    &mut lexer.lex(
+                        &mut StringStream::from_file(source)?
+                            .unpack_into(&mut warnings),
+                    ),
+                )?
+                .unpack_into(&mut warnings);
+            let mut tree = TreeBuilder::new(String::from("AST"));
+            build_tree(&mut tree, &ast.tree);
+            let tree = tree.build();
+            print_tree(&tree)?;
         }
     }
     for warning in warnings.iter() {

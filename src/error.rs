@@ -367,6 +367,7 @@ impl Default for WarningSet {
 /// the creation and manipulation of some data caused, and interacts nicely
 /// with the `Result` monad.
 #[derive(Debug)]
+#[must_use]
 pub struct WithWarnings<T> {
     content: T,
     warnings: WarningSet,

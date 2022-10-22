@@ -3,10 +3,15 @@ use crate::error::WithWarnings;
 #[macro_export]
 macro_rules! rules {
     (@rule proxy insert $proxy: ident $key: ident bool $value: literal) => {
-	$proxy.insert(stringify!($key).to_string(), Value::Bool($value));
+	$proxy.insert(stringify!($key).to_string(), $crate::parser::grammarparser::ValueTemplate::Bool($value));
     };
     (@rule proxy insert $proxy: ident $key: ident str $value: literal) => {
-	$proxy.insert(stringify!($key).to_string(), Value::Str($value.to_string()));
+	$proxy.insert(
+	    stringify!($key).to_string(),
+	    $crate::parser::grammarparser::ValueTemplate::Str(
+		Rc::from($value)
+	    )
+	);
     };
     (@rule proxy $($key: ident = $type: ident $value: literal)*) => {
 	{
@@ -75,9 +80,9 @@ pub(crate) fn is_value<E, V: PartialEq>(x: Result<V, E>, y: V) -> bool {
     matches!(x, Ok(x_value) if x_value == y)
 }
 
-pub(crate) fn is_value_w<E, V: PartialEq>(
-    x: Result<WithWarnings<V>, E>,
+pub(crate) fn is_value_w<U, E, V: PartialEq>(
+    x: Result<WithWarnings<(V, U)>, E>,
     y: V,
 ) -> bool {
-    is_value(x.map(|x| x.unwrap()), y)
+    is_value(x.map(|x| x.unwrap().0), y)
 }

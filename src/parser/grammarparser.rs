@@ -8,16 +8,18 @@ use crate::parser::earley::GrammarRules;
 use crate::stream::StringStream;
 use newty::newty;
 // use crate::{rule, proxy, collect};
-use super::parser::NonTerminalId;
+use super::parser::{NonTerminalId, Value, AST};
 use crate::error::Result;
+use fragile::Fragile;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
-use fragile::Fragile;
 
 #[cfg(test)]
 mod tests {}
+
+const VARIANT_NAME: &'static str = "variant";
 
 pub type Key = String;
 /// # Summary
@@ -63,8 +65,8 @@ pub struct RuleElement {
 impl RuleElement {
     #![allow(unused)]
 
-    pub fn new<N: Into<Rc<str>>>(
-        name: N,
+    pub fn new(
+        name: impl Into<Rc<str>>,
         attribute: Attribute,
         key: Option<Key>,
         element_type: ElementType,
@@ -93,7 +95,7 @@ impl RuleElement {
     }
 }
 
-pub type Proxy = HashMap<String, Value>;
+pub type Proxy = HashMap<String, ValueTemplate>;
 
 #[derive(Debug, PartialEq)]
 struct PartialRule {
@@ -112,8 +114,8 @@ pub struct Rule {
 
 impl Rule {
     #[allow(unused)]
-    pub fn new<N: Into<Rc<str>>>(
-        name: N,
+    pub fn new(
+        name: impl Into<Rc<str>>,
         id: NonTerminalId,
         elements: Vec<RuleElement>,
         proxy: Proxy,
@@ -139,18 +141,64 @@ impl Rule {
 /// [`Id`] is an identifier.
 /// [`Float`] is a floating point number (on 32 bits).
 /// [`Bool`] is a boolean.
+/// [`InlineRule`] is an inlined rule.
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub enum Value {
+pub enum ValueTemplate {
     /// Signed integer
     Int(i32),
     /// String
-    Str(String),
+    Str(Rc<str>),
     /// Identifier
-    Id(String),
+    Id(Rc<str>),
     /// Float
     Float(f32),
     /// Boolean
     Bool(bool),
+    /// Inline node
+    InlineRule {
+        name: Rc<str>,
+        attributes: HashMap<Rc<str>, ValueTemplate>,
+    },
+}
+
+impl ValueTemplate {
+    pub(crate) fn evaluate(
+        &self,
+        all_attributes: &HashMap<Rc<str>, AST>,
+        removed: &mut HashSet<Rc<str>>,
+        name_map: &HashMap<Rc<str>, NonTerminalId>,
+    ) -> AST {
+        match self {
+            ValueTemplate::Int(int) => AST::Literal(Value::Int(int.clone())),
+            ValueTemplate::Str(string) => {
+                AST::Literal(Value::Str(string.clone()))
+            }
+            ValueTemplate::Id(name) => {
+                removed.insert(name.clone());
+                all_attributes[name].clone()
+            }
+            ValueTemplate::Float(number) => {
+                AST::Literal(Value::Float(number.clone()))
+            }
+            ValueTemplate::Bool(b) => AST::Literal(Value::Bool(b.clone())),
+            ValueTemplate::InlineRule { name, attributes } => AST::Node {
+                nonterminal: name_map[name].clone(),
+                attributes: attributes
+                    .iter()
+                    .map(|(key, value_template)| {
+                        (
+                            key.clone(),
+                            value_template.evaluate(
+                                all_attributes,
+                                removed,
+                                name_map,
+                            ),
+                        )
+                    })
+                    .collect(),
+            },
+        }
+    }
 }
 
 /// # Summary
@@ -300,18 +348,20 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                                 }
                             })?,
                         ),
-                        "BOOL" => Value::Bool(
+                        "BOOL" => ValueTemplate::Bool(
                             token.content().parse::<bool>().map_err(|_| {
                                 Error::GrammarSyntaxError {
                                     message: format!(
                                         "cannot understand {} as a bool",
                                         token.content()
                                     ),
-                                    location: Fragile::new(token.location().clone()),
+                                    location: Fragile::new(
+                                        token.location().clone(),
+                                    ),
                                 }
                             })?,
                         ),
-                        "ID" => Value::Id(token.content().to_string()),
+                        "ID" => ValueTemplate::Id(Rc::from(token.content())),
                         x => {
                             return Err(generate_error(
                                 token.location().clone(),
@@ -452,10 +502,12 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                     ElementType::from(id)
                 } else {
                     ElementType::from(
-                        *name_map.entry(name.into()).or_insert_with(|| id.next()),
+                        *name_map
+                            .entry(name.into())
+                            .or_insert_with(|| id.next()),
                     )
                 },
-            )))
+            ))
         }
 
         /// Read a rule, of the form `Token(.attribute)?(@key)? ... <key: value ...>`.

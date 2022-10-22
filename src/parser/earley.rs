@@ -1484,14 +1484,17 @@ impl EarleyParser {
                 .chain(scans.keys().cloned())
                 .collect::<Vec<_>>();
             let allowed = Allowed::Some(possible_scans.clone());
-            if let Some(token) = warnings.unpack(match input.next(allowed) {
-                Ok(token) => token,
+            if let Some(token) = match input.next(allowed) {
+                Ok(token) => token.unpack_into(&mut warnings),
                 Err(_) => {
                     let error = if let Some(token) =
                         input.next(Allowed::All)?.unpack_into(&mut warnings)
                     {
                         let name = token.name().to_string();
                         let location = token.location().clone();
+                        // `intersperse` may be added to the standard
+                        // library someday. Let's hope sooner than later.
+                        #[allow(unstable_name_collisions)]
                         let alternatives = format!(
                             "You could try {} instead",
                             scans

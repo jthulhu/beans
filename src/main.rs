@@ -160,7 +160,7 @@ fn main() -> anyhow::Result<()> {
     let mut warnings = WarningSet::default();
     match action {
         Action::Compile(compile_action) => {
-            warnings.unpack(compile(compile_action)?)
+            compile(compile_action)?.unpack_into(&mut warnings)
         }
         Action::Lex {
             lexer_grammar: lexer_grammar_path,

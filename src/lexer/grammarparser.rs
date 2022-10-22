@@ -171,8 +171,8 @@ pub struct LexerGrammarBuilder {
 impl LexerGrammarBuilder {
     pub fn from_file(file: impl Into<Rc<Path>>) -> Result<Self> {
         let mut warnings = WarningSet::empty();
-        let stream = warnings.unpack(StringStream::from_file(file)?);
-        Ok(warnings.with(Self { stream }))
+        let stream = StringStream::from_file(file)?.unpack_into(&mut warnings);
+        warnings.with_ok(Self { stream })
     }
 
     pub fn from_stream(stream: StringStream) -> Self {
@@ -238,7 +238,7 @@ impl LexerGrammarBuilder {
                 ignores_set.insert(id);
             }
         }
-        Ok(warnings.with(LexerGrammar::new(re, names, ignores_set)))
+        warnings.with_ok(LexerGrammar::new(re, names, ignores_set))
     }
 
     fn read_pattern(stream: &mut StringStream) -> String {
@@ -410,6 +410,6 @@ impl LexerGrammar {
                 .build()?
                 .unpack_into(&mut warnings)
             };
-        Ok(warnings.with(lexer_grammar))
+        warnings.with_ok(lexer_grammar)
     }
 }

@@ -323,6 +323,14 @@ impl WarningSet {
         }
     }
 
+    #[inline]
+    pub fn with_ok<T, E>(
+        self,
+        content: T,
+    ) -> std::result::Result<WithWarnings<T>, E> {
+        Ok(self.with(content))
+    }
+
     /// Useful constructor of the `WithWarnings` monad when you don't have any
     /// warnings.
     #[inline]
@@ -405,5 +413,14 @@ impl<T> WithWarnings<T> {
     pub fn with(mut self, warnings: WarningSet) -> Self {
         self.warnings.extend(warnings);
         self
+    }
+
+    /// `with_ok` is `with` wrapped in `Ok`.
+    #[inline]
+    pub fn with_ok<E>(
+        self,
+        warnings: WarningSet,
+    ) -> std::result::Result<WithWarnings<T>, E> {
+        Ok(self.with(warnings))
     }
 }

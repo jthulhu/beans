@@ -188,7 +188,7 @@ mod tests {
             .unwrap()
             .unwrap()
             .build();
-        let mut input = StringStream::from_file(Path::new("gmrs/parser.gmr"))
+        let mut input = StringStream::from_file(Path::new("gmrs/parser.gr"))
             .unwrap()
             .unwrap();
         let mut lexed_input = lexer.lex(&mut input);

@@ -356,20 +356,20 @@ impl LexerGrammar {
             let id = TerminalId(i);
             name_map.insert(name.clone(), id);
         }
-	let default_allowed = ignores.0.ones().map(TerminalId).collect();
+        let default_allowed = ignores.0.ones().map(TerminalId).collect();
         Self {
             pattern,
             names,
             ignores,
-	    default_allowed,
+            default_allowed,
             name_map,
         }
     }
 
-    pub fn default_allowed(&self) -> impl Iterator<Item=TerminalId> + '_ {
-	self.default_allowed.iter().copied()
+    pub fn default_allowed(&self) -> impl Iterator<Item = TerminalId> + '_ {
+        self.default_allowed.iter().copied()
     }
-    
+
     pub fn name(&self, idx: TerminalId) -> &str {
         &self.names[idx.0][..]
     }

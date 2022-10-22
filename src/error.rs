@@ -7,10 +7,10 @@
 
 use crate::case::Case;
 use crate::location::Location;
+use fragile::Fragile;
 use std::collections::{linked_list, LinkedList};
 use std::fmt;
 use std::rc::Rc;
-use fragile::Fragile;
 
 /// [`EMPTY_WARNING_SET`] is a warning set without any warnings.
 /// It is useful to use this set as an empty warning set
@@ -54,12 +54,10 @@ pub enum Error {
         location: Fragile<Location>,
     },
     /// `LexerGrammarDuplicateDefinition(token: String)`: duplicate terminal definition.
-    #[error(
-	"Duplicate definition of the token {token}, at {location}."
-    )]
+    #[error("Duplicate definition of the token {token}, at {location}.")]
     LexerGrammarDuplicateDefinition {
-	token: String,
-	location: Fragile<Location>,
+        token: String,
+        location: Fragile<Location>,
     },
     /// `LexingError(message: String)`: error while transforming a string stream into a token stream.
     #[error("Error while lexing: {message}, at {location}")]

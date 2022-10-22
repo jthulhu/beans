@@ -193,7 +193,8 @@ impl LexerGrammarBuilder {
             Self::ignore_blank(&mut stream);
             let keyword = Self::read_keyword(&mut stream, "keyword");
             Self::ignore_blank(&mut stream);
-            let (name, span) = warnings.unpack(Self::read_id(&mut stream)?);
+            let (name, span) =
+                Self::read_id(&mut stream)?.unpack_into(&mut warnings);
             if !found_identifiers.insert(name.clone()) {
                 return Err(Error::LexerGrammarDuplicateDefinition {
                     token: name,
@@ -201,7 +202,7 @@ impl LexerGrammarBuilder {
                 });
             }
             Self::ignore_blank(&mut stream);
-            warnings.unpack(Self::ignore_assignment(&mut stream)?);
+            Self::ignore_assignment(&mut stream)?.unpack_into(&mut warnings);
             Self::ignore_blank(&mut stream);
             let start = stream.pos();
             let _location = Location::from_stream_pos(

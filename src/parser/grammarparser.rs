@@ -513,26 +513,25 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             lexer: &Lexer,
         ) -> Result<(bool, String, NonTerminalId, Vec<Rule>)> {
             let mut warnings = WarningSet::empty();
-            let axiom = warnings.unpack(read_token_walk(lexed_input, "AT")?);
-            let name = warnings.unpack(match_now(lexed_input, "ID")?);
-            warnings.unpack(match_now(lexed_input, "ASSIGNMENT")?);
+            let axiom =
+                read_token_walk(lexed_input, "AT")?.unpack_into(&mut warnings);
+            let name = match_now(lexed_input, "ID")?.unpack_into(&mut warnings);
+            match_now(lexed_input, "ASSIGNMENT")?.unpack_into(&mut warnings);
             let name_string = name.content();
-            let id =
-                *name_map.entry(name_string.into()).or_insert_with(|| next_id.next());
+            let id = *name_map
+                .entry(name_string.into())
+                .or_insert_with(|| next_id.next());
             let mut rules = Vec::new();
             'read_rules: while let Some(token) =
-                warnings.unpack(lexed_input.next_any()?)
+                lexed_input.next_any()?.unpack_into(&mut warnings)
             {
                 if token.name() == "SEMICOLON" {
                     break 'read_rules;
                 }
                 lexed_input.drop_last();
-                let partial_rule = warnings.unpack(read_rule(
-                    lexed_input,
-                    next_id,
-                    name_map,
-                    lexer,
-                )?);
+                let partial_rule =
+                    read_rule(lexed_input, next_id, name_map, lexer)?
+                        .unpack_into(&mut warnings);
                 let id = *name_map
                     .entry(name_string.into())
                     .or_insert_with(|| next_id.next());
@@ -562,16 +561,18 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         let mut nonterminals = NonTerminalId::from(0);
         let mut name_map = HashMap::new();
 
-        while let Some(token) = warnings.unpack(lexed_input.next_any()?) {
+        while let Some(token) =
+            lexed_input.next_any()?.unpack_into(&mut warnings)
+        {
             let first_location = token.location().clone();
             lexed_input.drop_last();
-            let (axiom, name, id, new_rules) =
-                warnings.unpack(read_definition(
-                    &mut lexed_input,
-                    &mut nonterminals,
-                    &mut name_map,
-                    lexer,
-                )?);
+            let (axiom, name, id, new_rules) = read_definition(
+                &mut lexed_input,
+                &mut nonterminals,
+                &mut name_map,
+                lexer,
+            )?
+            .unpack_into(&mut warnings);
             let location = Location::extend(
                 first_location,
                 lexed_input.last_location().clone(),

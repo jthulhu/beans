@@ -188,11 +188,11 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             id: &str,
         ) -> Result<bool> {
             let mut warnings = WarningSet::empty();
-            match warnings.unpack(lexed_input.next_any()?) {
-                Some(token) if token.name() == id => Ok(warnings.with(true)),
+            match lexed_input.next_any()?.unpack_into(&mut warnings) {
+                Some(token) if token.name() == id => warnings.with_ok(true),
                 _ => {
                     lexed_input.drop_last();
-                    Ok(warnings.with(false))
+                    warnings.with_ok(false)
                 }
             }
         }
@@ -217,11 +217,11 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             id: &str,
         ) -> Result<Token> {
             let mut warnings = WarningSet::empty();
-            match warnings.unpack(lexed_input.next_any()?) {
+            match lexed_input.next_any()?.unpack_into(&mut warnings) {
                 Some(token) => {
                     if token.name() == id {
                         let token = token.clone();
-                        Ok(warnings.with(token))
+                        warnings.with_ok(token)
                     } else {
                         let error = generate_error(
                             token.location().clone(),
@@ -246,30 +246,53 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Return the proxy element as `(key, value)`.
         fn read_proxy_element(
             lexed_input: &mut LexedStream<'_, '_>,
-        ) -> Result<(String, Value)> {
+        ) -> Result<(String, ValueTemplate)> {
             let mut warnings = WarningSet::empty();
-            let id = warnings.unpack(match_now(lexed_input, "ID")?);
-            warnings.unpack(match_now(lexed_input, "COLON")?);
-            if let Some(token) = warnings.unpack(lexed_input.next_any()?) {
-                Ok(warnings.with((
-                    id.content().to_string(),
+            let id = match_now(lexed_input, "ID")?.unpack_into(&mut warnings);
+            if read_token_walk(lexed_input, "COLON")?.unpack_into(&mut warnings)
+            {
+                let name = id.content().to_string();
+                if name == VARIANT_NAME {
+                    return Err(Error::GrammarVariantKey {
+                        location: Fragile::new(id.location().clone()),
+                    });
+                }
+                let token = if let Some(token) =
+                    lexed_input.next_any()?.unpack_into(&mut warnings)
+                {
+                    token
+                } else {
+                    return Err(generate_error(
+                        lexed_input.last_location().clone(),
+                        "INT, STRING, FLOAT, BOOL or ID",
+                        "EOF",
+                    ));
+                };
+                warnings.with_ok((
+                    name,
                     match token.name() {
-                        "INT" => {
-                            Value::Int(token.content().parse::<i32>().map_err(
-                                |_| Error::GrammarSyntaxError {
-                                    location: Fragile::new(token.location().clone()),
+                        "INT" => ValueTemplate::Int(
+                            token.content().parse::<i32>().map_err(|_| {
+                                Error::GrammarSyntaxError {
+                                    location: Fragile::new(
+                                        token.location().clone(),
+                                    ),
                                     message: format!(
                                         "cannot understand {} as an integer",
                                         token.content()
                                     ),
-                                },
-                            )?)
+                                }
+                            })?,
+                        ),
+                        "STRING" => {
+                            ValueTemplate::Str(Rc::from(token.content()))
                         }
-                        "STRING" => Value::Str(token.content().to_string()),
-                        "FLOAT" => Value::Float(
+                        "FLOAT" => ValueTemplate::Float(
                             token.content().parse::<f32>().map_err(|_| {
                                 Error::GrammarSyntaxError {
-                                    location: Fragile::new(token.location().clone()),
+                                    location: Fragile::new(
+                                        token.location().clone(),
+                                    ),
                                     message: format!(
                                         "cannot understand {} as a float",
                                         token.content()
@@ -297,12 +320,11 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                             ))
                         }
                     },
-                )))
+                ))
             } else {
-                Err(generate_error(
-                    lexed_input.last_location().clone(),
-                    "INT, STRING, FLOAT, BOOL or ID",
-                    "EOF",
+                warnings.with_ok((
+                    VARIANT_NAME.to_string(),
+                    ValueTemplate::Str(Rc::from(id.content())),
                 ))
             }
         }
@@ -313,17 +335,19 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         /// Return the proxy.
         fn read_proxy(lexed_input: &mut LexedStream<'_, '_>) -> Result<Proxy> {
             let mut warnings = WarningSet::empty();
-            match_now(lexed_input, "LPROXY");
+            match_now(lexed_input, "LPROXY")?;
             let mut proxy = HashMap::new();
-            while let Some(token) = warnings.unpack(lexed_input.next_any()?) {
+            while let Some(token) =
+                lexed_input.next_any()?.unpack_into(&mut warnings)
+            {
                 match token.name() {
                     "ID" => {
                         lexed_input.drop_last();
-                        let (key, value) =
-                            warnings.unpack(read_proxy_element(lexed_input)?);
+                        let (key, value) = read_proxy_element(lexed_input)?
+                            .unpack_into(&mut warnings);
                         proxy.insert(key, value);
                     }
-                    "RPROXY" => return Ok(warnings.with(proxy)),
+                    "RPROXY" => return warnings.with_ok(proxy),
                     x => {
                         let error = generate_error(
                             token.location().clone(),
@@ -350,15 +374,18 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             lexed_input: &mut LexedStream<'_, '_>,
         ) -> Result<Attribute> {
             let mut warnings = WarningSet::empty();
-            if warnings.unpack(read_token_walk(lexed_input, "DOT")?) {
-                if let Some(token) = warnings.unpack(lexed_input.next_any()?) {
+            if read_token_walk(lexed_input, "DOT")?.unpack_into(&mut warnings) {
+                if let Some(token) =
+                    lexed_input.next_any()?.unpack_into(&mut warnings)
+                {
                     match token.name() {
-                        "ID" => Ok(warnings.with(Attribute::Named(
-                            token.content().to_string(),
-                        ))),
-                        "INT" => Ok(warnings.with(Attribute::Indexed(
+                        "ID" => {
+                            let name = token.content().to_string();
+                            warnings.with_ok(Attribute::Named(name))
+                        }
+                        "INT" => warnings.with_ok(Attribute::Indexed(
                             token.content().parse().unwrap(),
-                        ))),
+                        )),
                         x => {
                             let error = generate_error(
                                 token.location().clone(),
@@ -378,7 +405,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                     ))
                 }
             } else {
-                Ok(warnings.with(Attribute::None))
+                warnings.with_ok(Attribute::None)
             }
         }
 
@@ -390,11 +417,12 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             lexed_input: &mut LexedStream<'_, '_>,
         ) -> Result<Option<String>> {
             let mut warnings = WarningSet::empty();
-            if warnings.unpack(read_token_walk(lexed_input, "AT")?) {
-                let token = warnings.unpack(match_now(lexed_input, "ID")?);
-                Ok(warnings.with(Some(token.content().to_string())))
+            if read_token_walk(lexed_input, "AT")?.unpack_into(&mut warnings) {
+                let token =
+                    match_now(lexed_input, "ID")?.unpack_into(&mut warnings);
+                warnings.with_ok(Some(token.content().to_string()))
             } else {
-                Ok(warnings.with(None))
+                warnings.with_ok(None)
             }
         }
 
@@ -409,12 +437,14 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             lexer: &Lexer,
         ) -> Result<RuleElement> {
             let mut warnings = WarningSet::empty();
-            let name_token = warnings.unpack(match_now(lexed_input, "ID")?);
-            let attribute =
-                warnings.unpack(read_rule_element_attribute(lexed_input)?);
-            let key = warnings.unpack(read_rule_element_key(lexed_input)?);
+            let name_token =
+                match_now(lexed_input, "ID")?.unpack_into(&mut warnings);
+            let attribute = read_rule_element_attribute(lexed_input)?
+                .unpack_into(&mut warnings);
+            let key =
+                read_rule_element_key(lexed_input)?.unpack_into(&mut warnings);
             let name = name_token.content();
-            Ok(warnings.with(RuleElement::new(
+            warnings.with_ok(RuleElement::new(
                 name,
                 attribute,
                 key,
@@ -441,26 +471,27 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             let mut warnings = WarningSet::empty();
             let expected = "ID";
             let mut rule_elements = Vec::new();
-            while let Some(token) = warnings.unpack(lexed_input.next_any()?) {
+            while let Some(token) =
+                lexed_input.next_any()?.unpack_into(&mut warnings)
+            {
                 #[allow(clippy::branches_sharing_code)]
                 // Extracting lexed_input.drop_last()
-                //                                         causes the compiler to complain.
+                // causes the compiler to complain.
                 if token.name() == "LPROXY" {
                     lexed_input.drop_last();
-                    let proxy = warnings.unpack(read_proxy(lexed_input)?);
-                    return Ok(warnings.with(PartialRule {
+                    let proxy =
+                        read_proxy(lexed_input)?.unpack_into(&mut warnings);
+                    return warnings.with_ok(PartialRule {
                         elements: rule_elements,
                         proxy,
-                    }));
+                    });
                 } else {
                     lexed_input.drop_last();
                 }
-                rule_elements.push(warnings.unpack(read_rule_element(
-                    lexed_input,
-                    id,
-                    name_map,
-                    lexer,
-                )?));
+                rule_elements.push(
+                    read_rule_element(lexed_input, id, name_map, lexer)?
+                        .unpack_into(&mut warnings),
+                );
             }
             Err(generate_error(
                 lexed_input.last_location().clone(),
@@ -513,13 +544,13 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                 );
                 rules.push(rule);
             }
-            Ok(warnings.with((axiom, name_string.to_string(), id, rules)))
+            warnings.with_ok((axiom, name_string.to_string(), id, rules))
         }
 
         let mut warnings = WarningSet::empty();
-        let mut stream = warnings.unpack(self.stream()?);
-        let temp_lexer = warnings
-            .unpack(LexerBuilder::from_file(self.grammar())?)
+        let mut stream = self.stream()?.unpack_into(&mut warnings);
+        let temp_lexer = LexerBuilder::from_file(self.grammar())?
+            .unpack_into(&mut warnings)
             .build();
         let mut lexed_input = temp_lexer.lex(&mut stream);
 
@@ -587,10 +618,10 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         //     }
         // }
 
-        let grammar =
-            warnings.unpack(Self::Grammar::new(rules, axioms, name_map)?);
+        let grammar = Self::Grammar::new(rules, axioms, name_map)?
+            .unpack_into(&mut warnings);
 
-        Ok(warnings.with(grammar))
+        warnings.with_ok(grammar)
     }
 }
 

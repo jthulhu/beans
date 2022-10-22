@@ -125,7 +125,34 @@ fn compile(compile_action: CompileAction) -> anyhow::Result<WithWarnings<()>> {
             output_fd.write_all(&serialize(&parser_grammar)?)?;
         }
     }
-    Ok(warnings.with(()))
+    warnings.with_ok(())
+}
+
+fn build_tree(tree: &mut TreeBuilder, ast: &AST) {
+    match ast {
+        AST::Node { attributes, .. } => {
+            for (key, value) in attributes.iter() {
+                tree.begin_child(key.to_string());
+                build_tree(tree, value);
+                tree.end_child();
+            }
+        }
+        AST::Literal(Value::Int(i)) => {
+            tree.add_empty_child(i.to_string());
+        }
+        AST::Literal(Value::Str(string)) => {
+            tree.add_empty_child(string.to_string());
+        }
+        AST::Literal(Value::Float(f)) => {
+            tree.add_empty_child(f.to_string());
+        }
+        AST::Literal(Value::Bool(b)) => {
+            tree.add_empty_child(b.to_string());
+        }
+        AST::Terminal(ter) => {
+            tree.add_empty_child(ter.name().to_string());
+        }
+    }
 }
 
 fn main() -> anyhow::Result<()> {

@@ -570,9 +570,10 @@ impl LexerBuilder {
     /// Since the stream may be an ill-defined grammar, this might fail.
     pub fn from_stream(stream: StringStream) -> Result<Self> {
         let mut warnings = WarningSet::empty();
-        let grammar =
-            warnings.unpack(LexerGrammarBuilder::from_stream(stream).build()?);
-        Ok(warnings.with(Self { grammar }))
+        let grammar = LexerGrammarBuilder::from_stream(stream)
+            .build()?
+            .unpack_into(&mut warnings);
+        warnings.with_ok(Self { grammar })
     }
 
     /// Instantiate a new `LexerBuilder`, giving the path to the grammar.
@@ -580,9 +581,10 @@ impl LexerBuilder {
     pub fn from_file(file: impl Into<Rc<Path>>) -> Result<Self> {
         let mut warnings = WarningSet::default();
         let file = file.into();
-        let builder = warnings.unpack(LexerGrammarBuilder::from_file(file)?);
-        let grammar = warnings.unpack(builder.build()?);
-        Ok(warnings.with(Self { grammar }))
+        let builder =
+            LexerGrammarBuilder::from_file(file)?.unpack_into(&mut warnings);
+        let grammar = builder.build()?.unpack_into(&mut warnings);
+        warnings.with_ok(Self { grammar })
     }
 
     /// Build the lexer, consuming the builder.
@@ -635,7 +637,7 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
         let warnings = WarningSet::empty();
         'lex: loop {
             if self.stream.pos() == self.stream.len() {
-                break 'lex Ok(warnings.with(false));
+                break 'lex warnings.with_ok(false);
             } else if let Some(result) = self
                 .lexer
                 .grammar()
@@ -660,10 +662,12 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
                 let token = Token::new(name, id, attributes, location.clone());
                 self.last_location = location;
                 self.tokens.push((start, token));
-                break 'lex Ok(warnings.with(true));
+                break 'lex warnings.with_ok(true);
             } else {
                 break 'lex Err(Error::LexingError {
-                    location: Fragile::new(self.stream.get_at(self.stream.pos()).unwrap().1),
+                    location: Fragile::new(
+                        self.stream.get_at(self.stream.pos()).unwrap().1,
+                    ),
                     message: String::from("cannot recognize a token here"),
                 });
             }
@@ -686,10 +690,10 @@ impl LexedStream<'_, '_> {
     pub fn next(&mut self, allowed: Allowed) -> Result<Option<&Token>> {
         let mut warnings = WarningSet::empty();
         self.pos += 1;
-        if warnings.unpack(self.lex_next(allowed)?) {
-            Ok(warnings.with(self.tokens.last().map(|(_, token)| token)))
+        if self.lex_next(allowed)?.unpack_into(&mut warnings) {
+            warnings.with_ok(self.tokens.last().map(|(_, token)| token))
         } else {
-            Ok(warnings.with(None))
+            warnings.with_ok(None)
         }
     }
 

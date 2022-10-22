@@ -1018,13 +1018,13 @@ impl Grammar<'_> for EarleyGrammar {
             }
         }
 
-        Ok(warnings.with(Self {
+        warnings.with_ok(Self {
             axioms,
             rules,
             nullables,
             name_map,
             rules_of,
-        }))
+        })
     }
 }
 
@@ -1386,7 +1386,7 @@ impl EarleyParser {
                     )
                 });
         }
-        Ok(warnings.with(forest))
+        warnings.with_ok(forest)
     }
 
     pub fn recognise<'input>(
@@ -1519,14 +1519,14 @@ impl EarleyParser {
                     };
                     return Err(error);
                 }
-            }) {
+            } {
                 for item in scans.entry(token.id()).or_default() {
                     next_state.add(*item);
                 }
                 raw_input.push(token.clone());
             }
             if next_state.is_empty() {
-                break 'outer Ok(warnings.with((sets, raw_input)));
+                break 'outer warnings.with_ok((sets, raw_input));
             }
             sets.push(next_state);
             pos += 1;
@@ -1558,9 +1558,13 @@ impl Parser<'_> for EarleyParser {
         input: &'input mut LexedStream<'input, 'input>,
     ) -> Result<ParseResult> {
         let mut warnings = WarningSet::default();
-        let (table, raw_input) = warnings.unpack(self.recognise(input)?);
-        let forest = warnings.unpack(self.to_forest(&table, &raw_input)?);
+        let (table, raw_input) =
+            self.recognise(input)?.unpack_into(&mut warnings);
+        let forest = self
+            .to_forest(&table, &raw_input)?
+            .unpack_into(&mut warnings);
+        // print_final_sets(&forest, self);
         let tree = self.select_ast(&forest, &raw_input);
-        Ok(warnings.with(ParseResult { tree }))
+        warnings.with_ok(ParseResult { tree })
     }
 }

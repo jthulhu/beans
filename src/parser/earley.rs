@@ -433,31 +433,6 @@ Factor ::= LPAR Sum@self RPAR <self: self>
         );
     }
 
-    #[allow(unused)]
-    fn print_sets(sets: &[StateSet], parser: &EarleyParser) {
-        for (i, set) in sets.iter().enumerate() {
-            println!("=== {} ===", i);
-            for item in set.slice() {
-                let mut line = String::new();
-                let rule = &parser.grammar().rules[item.rule];
-                line.push_str(&rule.name);
-                line.push_str(" -> ");
-                for i in 0..item.position {
-                    line.push_str(&rule.elements[i].name);
-                    line.push(' ');
-                }
-                line.push_str("• ");
-                for i in item.position..rule.elements.len() {
-                    line.push_str(&rule.elements[i].name);
-                    line.push(' ');
-                }
-                line.extend(format!("({})", item.origin).chars());
-                println!("{}", line);
-            }
-            println!();
-        }
-    }
-
     #[test]
     fn recognise_handle_empty_rules() {
         let lexer_input = r#""#;
@@ -837,6 +812,55 @@ B ::= A <>;"#;
             {
                 test_item.matches(item, parser, set, item_nb);
             }
+        }
+    }
+}
+
+#[allow(unused)]
+pub fn print_sets(sets: &[StateSet], parser: &EarleyParser) {
+    for (i, set) in sets.iter().enumerate() {
+        println!("=== {} ===", i);
+        for item in set.slice() {
+            let mut line = String::new();
+            let rule = &parser.grammar().rules[item.rule];
+            line.push_str(&rule.name);
+            line.push_str(" -> ");
+            for i in 0..item.position {
+                line.push_str(&rule.elements[i].name);
+                line.push(' ');
+            }
+            line.push_str("• ");
+            for i in item.position..rule.elements.len() {
+                line.push_str(&rule.elements[i].name);
+                line.push(' ');
+            }
+            line.extend(format!("({})", item.origin).chars());
+            println!("{}", line);
+        }
+        println!();
+    }
+}
+
+#[allow(unused)]
+fn print_final_sets(sets: &[FinalSet], parser: &EarleyParser) {
+    for (i, set) in sets.iter().enumerate() {
+        println!("=== {} ===", i);
+        for item in &set.set.0 {
+            let rule = &parser.grammar().rules[item.rule];
+            print!("{} -> ", rule.name);
+            for element in rule.elements.iter() {
+                print!("{}", element.name);
+                match &element.attribute {
+                    Attribute::Indexed(i) => print!(".{}", i),
+                    Attribute::Named(n) => print!(".{}", n),
+                    Attribute::None => {}
+                }
+                if let Some(key) = &element.key {
+                    print!("@{}", key);
+                }
+                print!(" ");
+            }
+            println!("({})", item.end);
         }
     }
 }

@@ -841,8 +841,7 @@ pub fn print_sets(sets: &[StateSet], parser: &EarleyParser) {
     }
 }
 
-#[allow(unused)]
-fn print_final_sets(sets: &[FinalSet], parser: &EarleyParser) {
+pub fn print_final_sets(sets: &[FinalSet], parser: &EarleyParser) {
     for (i, set) in sets.iter().enumerate() {
         println!("=== {} ===", i);
         for item in &set.set.0 {
@@ -862,6 +861,7 @@ fn print_final_sets(sets: &[FinalSet], parser: &EarleyParser) {
             }
             println!("({})", item.end);
         }
+        println!();
     }
 }
 
@@ -1065,7 +1065,7 @@ newty! {
 }
 
 #[derive(Default, Debug, Clone, Eq)]
-struct FinalSet {
+pub struct FinalSet {
     /// An index mapping a nonterminal to every item in the set derived from that nonterminal.
     index: FinalSetIndex,
     /// The set of items.
@@ -1357,7 +1357,7 @@ impl EarleyParser {
     }
 
     /// Select one AST, assuming there is one.
-    fn select_ast(&self, forest: &[FinalSet], raw_input: &[Token]) -> AST {
+    pub fn select_ast(&self, forest: &[FinalSet], raw_input: &[Token]) -> AST {
         forest[0]
             .iter()
             .filter(|item| {
@@ -1377,7 +1377,7 @@ impl EarleyParser {
             .unwrap()
     }
 
-    fn to_forest(
+    pub fn to_forest(
         &self,
         table: &[StateSet],
         raw_input: &[Token],

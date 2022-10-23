@@ -1,7 +1,7 @@
 use anyhow::Context;
 use beans::error::{Error, WarningSet, WithWarnings};
 use beans::lexer::{LexerBuilder, LexerGrammar, LexerGrammarBuilder};
-use beans::parser::earley::EarleyGrammarBuilder;
+use beans::parser::earley::{EarleyGrammarBuilder, print_sets, print_final_sets};
 use beans::parser::grammarparser::GrammarBuilder;
 use beans::parser::parser::{Parser, Value, AST};
 use beans::parser::EarleyParser;
@@ -32,10 +32,19 @@ enum Action {
         source: PathBuf,
     },
     Parse {
-        #[arg(short = 'l', long = "lexer")]
+	/// Show the intermediate table used by the Earley parser
+        #[arg(short, long)]
+        table: bool,
+	/// Show the final table used by the Earley parser
+        #[arg(short, long)]
+        final_table: bool,
+	/// Specify the lexer's grammar
+        #[arg(short, long = "lexer")]
         lexer_grammar: PathBuf,
-        #[arg(short = 'p', long = "parser")]
+	/// Specify the parser's grammar
+        #[arg(short, long = "parser")]
         parser_grammar: PathBuf,
+	/// The file to parse
         source: PathBuf,
     },
 }
@@ -187,6 +196,8 @@ fn main() -> anyhow::Result<()> {
             output_buffer.flush()?;
         }
         Action::Parse {
+            table: print_table,
+            final_table: print_final_table,
             lexer_grammar: lexer_grammar_path,
             parser_grammar: parser_grammar_path,
             source,
@@ -218,16 +229,25 @@ fn main() -> anyhow::Result<()> {
             //     )?
             //     .unpack_into(&mut warnings);
             // println!("{:#?}\n{}", table, raw_input.len());
-            let ast = parser
-                .parse(
-                    &mut lexer.lex(
-                        &mut StringStream::from_file(source)?
-                            .unpack_into(&mut warnings),
-                    ),
-                )?
+            let mut stream =
+                StringStream::from_file(source)?.unpack_into(&mut warnings);
+            let mut input = lexer.lex(&mut stream);
+            let (table, raw_input) =
+                parser.recognise(&mut input)?.unpack_into(&mut warnings);
+	    if print_table {
+		println!(" ### TABLE ###");
+		print_sets(&table, &parser);
+	    }
+            let forest = parser
+                .to_forest(&table, &raw_input)?
                 .unpack_into(&mut warnings);
+            if print_final_table {
+		println!(" ### FINAL TABLE ###");
+		print_final_sets(&forest, &parser);
+	    }
+            let ast = parser.select_ast(&forest, &raw_input);
             let mut tree = TreeBuilder::new(String::from("AST"));
-            build_tree(&mut tree, &ast.tree);
+            build_tree(&mut tree, &ast);
             let tree = tree.build();
             print_tree(&tree)?;
         }

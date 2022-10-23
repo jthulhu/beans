@@ -3,11 +3,11 @@ use crate::error::WithWarnings;
 #[macro_export]
 macro_rules! rules {
     (@rule proxy insert $proxy: ident $key: ident bool $value: literal) => {
-	$proxy.insert(stringify!($key).to_string(), $crate::parser::grammarparser::ValueTemplate::Bool($value));
+	$proxy.insert(stringify!($key).into(), $crate::parser::grammarparser::ValueTemplate::Bool($value));
     };
     (@rule proxy insert $proxy: ident $key: ident str $value: literal) => {
 	$proxy.insert(
-	    stringify!($key).to_string(),
+	    stringify!($key).into(),
 	    $crate::parser::grammarparser::ValueTemplate::Str(
 		Rc::from($value)
 	    )

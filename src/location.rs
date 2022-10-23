@@ -5,6 +5,8 @@
 
 use std::{path::Path, rc::Rc};
 
+use fragile::Fragile;
+
 /// # Summary
 ///
 /// Information about a position in a file,
@@ -265,6 +267,12 @@ impl Location {
     /// Returns the location of the end of the chunk of data in the file
     pub fn end(&self) -> CharLocation {
         self.end
+    }
+}
+
+impl From<&Location> for Fragile<Location> {
+    fn from(location: &Location) -> Fragile<Location> {
+	Fragile::new(location.clone())
     }
 }
 

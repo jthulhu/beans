@@ -24,7 +24,8 @@ const VARIANT_NAME: &'static str = "variant";
 pub type Key = String;
 /// # Summary
 ///
-/// `Attribute` identifies a child element of the node that will take the node's value.
+/// `Attribute` identifies a child element of the node that will take the node's
+/// value.
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Attribute {
     Named(String),
@@ -95,7 +96,7 @@ impl RuleElement {
     }
 }
 
-pub type Proxy = HashMap<String, ValueTemplate>;
+pub type Proxy = HashMap<Rc<str>, ValueTemplate>;
 
 #[derive(Debug, PartialEq)]
 struct PartialRule {
@@ -244,12 +245,12 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                 }
             }
         }
-
+	
         /// Generate an error of type [`GrammarSyntaxError`][beans::error::ErrorType::GrammarSyntaxError].
         fn generate_error(
             location: Location,
-            expected: &str,
-            found: &str,
+            expected: impl Display,
+            found: impl Display,
         ) -> Error {
             Error::GrammarSyntaxError {
                 location: Fragile::new(location),
@@ -632,7 +633,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
             if let Some(old_location) = done.get(&name) {
                 return Err(Error::GrammarDuplicateDefinition {
                     location: Fragile::new(location),
-                    old_location: Fragile::new(old_location.clone()),
+                    old_location: old_location.into(),
                     message: name,
                 });
             }

@@ -816,7 +816,6 @@ B ::= A <>;"#;
     }
 }
 
-#[allow(unused)]
 pub fn print_sets(sets: &[StateSet], parser: &EarleyParser) {
     for (i, set) in sets.iter().enumerate() {
         println!("=== {} ===", i);
@@ -1332,7 +1331,7 @@ impl EarleyParser {
                     .iter()
                     .map(|(key, wanted)| {
                         (
-                            key.as_str().into(),
+                            key.clone(),
                             wanted.evaluate(
                                 &all_attributes,
                                 &mut removed,
@@ -1388,7 +1387,7 @@ impl EarleyParser {
             forest[i].position = i;
             if set.is_empty() {
                 return Err(Error::SyntaxError {
-                    location: Fragile::new(raw_input[i].location().clone()),
+                    location: raw_input[i].location().into(),
                     message: format!("Syntax error at token {}", i),
                 });
             }
@@ -1536,9 +1535,7 @@ impl EarleyParser {
                             message: String::from(
                                 "Reached EOF but parsing isn't done.",
                             ),
-                            location: Fragile::new(
-                                input.last_location().clone(),
-                            ),
+                            location: input.last_location().into(),
                         }
                     };
                     return Err(error);

@@ -44,3 +44,14 @@ macro_rules! ask_case {
         }
     };
 }
+
+#[macro_export]
+macro_rules! unwrap_or_continue {
+    ($value:expr) => {
+	if let Some(content) = $value {
+	    content
+	} else {
+	    continue;
+	}
+    };
+}

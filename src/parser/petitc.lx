@@ -1,0 +1,52 @@
+ignore SPACE ::= \s+
+ignore NEWLINE ::= \n
+ignore COMMENT ::= //[^\n]*\n
+ignore MULTICOMMENT ::= /\*([^*]|\*[^/])*\*/
+INCLUDE ::= #include\s*<[^>]*>\s*
+
+LT ::= <
+GT ::= >
+LPAR ::= \(
+RPAR ::= \)
+LBRACE ::= {
+RBRACE ::= }
+LBRACKET ::= \[
+RBRACKET ::= ]
+
+keyword BOOL ::= bool
+keyword BREAK ::= break
+keyword CONTINUE ::= continue
+keyword ELSE ::= else
+keyword FALSE ::= false
+keyword TRUE ::= true
+keyword FOR ::= for
+keyword IF ::= if
+keyword INTTY ::= int
+keyword NULL ::= NULL
+keyword RETURN ::= return
+keyword SIZEOF ::= sizeof
+keyword VOID ::= void
+keyword WHILE ::= while
+
+INT ::= (0|[1-9][0-9]*)
+CHAR ::= '([ -&(-[\]-~]|\\\\|\\'|\\n|\\t)'
+IDENT ::= ([a-zA-Z_][a-zA-Z_0-9]*)
+COMMA ::= ,
+SEMICOLON ::= ;
+
+ASTERISK ::= \*
+PLUSPLUS ::= \+\+
+MINUSMINUS ::= --
+AMPERSAND ::= &
+EXCLAM ::= !
+PLUS ::= \+
+MINUS ::= -
+EQUAL ::= =
+EQ ::= ==
+NEQ ::= !=
+LEQ ::= <=
+GEQ ::= >=
+SLASH ::= /
+PERCENT ::= %
+AND ::= &&
+OR ::= \|\|

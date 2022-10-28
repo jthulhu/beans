@@ -1,8 +1,6 @@
-use crate::ask_case;
-use crate::case::Case;
 use crate::error::{Error, WarningSet};
-use crate::lexer::TerminalId;
 use crate::lexer::{LexedStream, Lexer, LexerBuilder, Token};
+use crate::lexer::{LexerGrammar, TerminalId};
 use crate::location::Location;
 use crate::parser::earley::GrammarRules;
 use crate::stream::StringStream;
@@ -11,32 +9,49 @@ use newty::newty;
 use super::parser::{NonTerminalId, Value, AST};
 use crate::error::Result;
 use fragile::Fragile;
+use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
 
-#[cfg(test)]
-mod tests {}
-
 const VARIANT_NAME: &'static str = "variant";
 
-pub type Key = String;
+pub type Key = Rc<str>;
+
+newty! {
+    #[derive(Serialize, Deserialize)]
+    pub vec NonTerminalName(FullName)[NonTerminalId]
+}
+
 /// # Summary
 ///
 /// `Attribute` identifies a child element of the node that will take the node's
 /// value.
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Attribute {
     Named(String),
     Indexed(usize),
     None,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ElementType {
     Terminal(TerminalId),
     NonTerminal(NonTerminalId),
+}
+
+impl ElementType {
+    fn name<'d>(
+        &self,
+        lexer_grammar: &LexerGrammar,
+        grammar: &impl Grammar<'d>,
+    ) -> Rc<str> {
+        match self {
+            Self::Terminal(id) => lexer_grammar.name(*id).into(),
+            Self::NonTerminal(id) => grammar.name_of(*id),
+        }
+    }
 }
 
 impl From<NonTerminalId> for ElementType {
@@ -57,7 +72,6 @@ newty! {
 
 #[derive(Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuleElement {
-    pub name: Rc<str>,
     pub attribute: Attribute,
     pub key: Option<Key>,
     pub element_type: ElementType,
@@ -67,14 +81,11 @@ impl RuleElement {
     #![allow(unused)]
 
     pub fn new(
-        name: impl Into<Rc<str>>,
         attribute: Attribute,
         key: Option<Key>,
         element_type: ElementType,
     ) -> Self {
-        let name = name.into();
         Self {
-            name,
             attribute,
             key,
             element_type,
@@ -82,31 +93,98 @@ impl RuleElement {
     }
 
     pub fn is_terminal(&self) -> bool {
-        match self.element_type {
-            ElementType::Terminal(..) => true,
-            ElementType::NonTerminal(..) => false,
-        }
+        matches!(self.element_type, ElementType::Terminal(..))
     }
 
     pub fn is_non_terminal(&self) -> bool {
-        match self.element_type {
-            ElementType::Terminal(..) => false,
-            ElementType::NonTerminal(..) => true,
-        }
+        matches!(self.element_type, ElementType::NonTerminal(..))
+    }
+
+    pub fn name<'d>(
+        &self,
+        lexer_grammar: &LexerGrammar,
+        grammar: &impl Grammar<'d>,
+    ) -> Rc<str> {
+        self.element_type.name(lexer_grammar, grammar)
     }
 }
 
 pub type Proxy = HashMap<Rc<str>, ValueTemplate>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
+enum PartialElementType {
+    Terminal(TerminalId),
+    MacroOrNonTerminal(MacroInvocation),
+}
+
+impl PartialElementType {
+    fn complete_to_element_type(
+        self,
+        rules: &mut GrammarRules,
+        context: &HashMap<Rc<str>, ElementType>,
+        reader: &mut GrammarReader<'_, '_>,
+    ) -> ElementType {
+        match self {
+            Self::Terminal(id) => ElementType::Terminal(id),
+            Self::MacroOrNonTerminal(mi) => mi.evaluate(rules, context, reader),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct PartialRuleElement {
+    attribute: Attribute,
+    key: Option<Key>,
+    element_type: PartialElementType,
+}
+
+impl PartialRuleElement {
+    fn complete_to_element(
+        self,
+        rules: &mut GrammarRules,
+        context: &HashMap<Name, ElementType>,
+        reader: &mut GrammarReader<'_, '_>,
+    ) -> RuleElement {
+        RuleElement {
+            attribute: self.attribute,
+            key: self.key,
+            element_type: self
+                .element_type
+                .complete_to_element_type(rules, context, reader),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 struct PartialRule {
-    elements: Vec<RuleElement>,
+    elements: Vec<PartialRuleElement>,
     proxy: Proxy,
+}
+
+impl PartialRule {
+    fn complete_to_rule(
+        self,
+        id: NonTerminalId,
+        rules: &mut GrammarRules,
+        reader: &mut GrammarReader<'_, '_>,
+        context: &HashMap<Name, ElementType>,
+    ) -> Rule {
+        Rule {
+            id,
+            elements: self
+                .elements
+                .into_iter()
+                .map(|partial_element| {
+                    partial_element.complete_to_element(rules, context, reader)
+                })
+                .collect(),
+            proxy: self.proxy,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct Rule {
-    pub name: Rc<str>,
     /// The identifier of the nonterminal on the LHS of the rule.
     pub id: NonTerminalId,
     pub elements: Vec<RuleElement>,
@@ -116,14 +194,11 @@ pub struct Rule {
 impl Rule {
     #[allow(unused)]
     pub fn new(
-        name: impl Into<Rc<str>>,
         id: NonTerminalId,
         elements: Vec<RuleElement>,
         proxy: Proxy,
     ) -> Self {
-        let name = name.into();
         Self {
-            name,
             id,
             elements,
             proxy,
@@ -143,18 +218,12 @@ impl Rule {
 /// [`Float`] is a floating point number (on 32 bits).
 /// [`Bool`] is a boolean.
 /// [`InlineRule`] is an inlined rule.
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ValueTemplate {
-    /// Signed integer
-    Int(i32),
     /// String
     Str(Rc<str>),
     /// Identifier
     Id(Rc<str>),
-    /// Float
-    Float(f32),
-    /// Boolean
-    Bool(bool),
     /// Inline node
     InlineRule {
         name: Rc<str>,
@@ -165,12 +234,12 @@ pub enum ValueTemplate {
 impl ValueTemplate {
     pub(crate) fn evaluate(
         &self,
+        current: NonTerminalId,
         all_attributes: &HashMap<Rc<str>, AST>,
         removed: &mut HashSet<Rc<str>>,
-        name_map: &HashMap<Rc<str>, NonTerminalId>,
+        id_of: &HashMap<Rc<str>, NonTerminalId>,
     ) -> AST {
         match self {
-            ValueTemplate::Int(int) => AST::Literal(Value::Int(int.clone())),
             ValueTemplate::Str(string) => {
                 AST::Literal(Value::Str(string.clone()))
             }
@@ -178,27 +247,520 @@ impl ValueTemplate {
                 removed.insert(name.clone());
                 all_attributes[name].clone()
             }
-            ValueTemplate::Float(number) => {
-                AST::Literal(Value::Float(number.clone()))
-            }
-            ValueTemplate::Bool(b) => AST::Literal(Value::Bool(b.clone())),
-            ValueTemplate::InlineRule { name, attributes } => AST::Node {
-                nonterminal: name_map[name].clone(),
+            ValueTemplate::InlineRule { name, attributes } => {
+		let nonterminal = if &**name == "Self" {
+		    current
+		} else {
+		    id_of[name].clone()
+		};
+		AST::Node {
+                nonterminal,
                 attributes: attributes
                     .iter()
                     .map(|(key, value_template)| {
                         (
                             key.clone(),
                             value_template.evaluate(
+				nonterminal,
                                 all_attributes,
                                 removed,
-                                name_map,
+                                id_of,
                             ),
                         )
                     })
                     .collect(),
-            },
+            }},
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct MacroInvocation {
+    name: Rc<str>,
+    args: Vec<MacroInvocation>,
+}
+
+impl MacroInvocation {
+    fn evaluate(
+        &self,
+        rules: &mut GrammarRules,
+        context: &HashMap<Name, ElementType>,
+        reader: &mut GrammarReader<'_, '_>,
+    ) -> ElementType {
+        if self.args.is_empty() {
+            if let Some(id) = reader.lexer.grammar().id(&self.name) {
+                ElementType::Terminal(id)
+            } else {
+                context.get(&self.name).cloned().unwrap_or_else(|| {
+                    ElementType::NonTerminal(reader.id_of[&self.name])
+                })
+            }
+        } else {
+            let MacroInvocation { name, args } = self;
+            let evaluated_args: Vec<ElementType> = args
+                .iter()
+                .map(|arg_mi| arg_mi.evaluate(rules, context, reader))
+                .collect();
+            let invoked = InvokedMacro {
+                name: name.clone(),
+                arguments: evaluated_args,
+            };
+            if !reader.invoked_macros.contains_key(&invoked) {
+                invoked.instanciate(rules, reader);
+            }
+            let invoked_name =
+                reader.name_of[reader.invoked_macros[&invoked]].clone();
+            ElementType::NonTerminal(reader.id_of[&invoked_name])
+        }
+    }
+}
+
+type Name = Rc<str>;
+type FullName = Rc<str>;
+
+#[derive(Debug, Clone, PartialEq)]
+struct MacroDeclaration {
+    args: Vec<Rc<str>>,
+    rules: Vec<PartialRule>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct InvokedMacro {
+    name: Name,
+    arguments: Vec<ElementType>,
+}
+
+impl InvokedMacro {
+    fn instanciate(
+        &self,
+        rules: &mut GrammarRules,
+        reader: &mut GrammarReader<'_, '_>,
+    ) {
+        let id = reader.name_of.len_as();
+        let full_name = self.full_name(reader);
+        reader.name_of.push(full_name.clone());
+        reader.invoked_macros.insert(self.clone(), id);
+        reader.id_of.insert(full_name, id);
+        let declaration = reader.macro_declarations[&self.name].clone();
+        let context: HashMap<_, _> = declaration
+            .args
+            .iter()
+            .cloned()
+            .zip(self.arguments.iter().cloned())
+            .collect();
+        let completed_rules = declaration
+            .rules
+            .into_iter()
+            .map(|rule| rule.complete_to_rule(id, rules, reader, &context))
+            .collect::<Vec<_>>();
+        rules.extend(completed_rules);
+    }
+
+    fn full_name(&self, reader: &GrammarReader<'_, '_>) -> Name {
+        if self.arguments.is_empty() {
+            self.name.clone()
+        } else {
+            format!(
+                "{}[{}]",
+                self.name,
+                self.arguments
+                    .iter()
+                    .map(|argument| match argument {
+                        ElementType::Terminal(id) =>
+                            reader.lexer.grammar().name(*id).to_string(),
+                        ElementType::NonTerminal(id) =>
+                            reader.name_of[*id].to_string(),
+                    })
+                    .intersperse(", ".to_string())
+                    .collect::<String>()
+            )
+            .as_str()
+            .into()
+        }
+    }
+}
+
+struct GrammarReader<'lexer, 'stream> {
+    lexer: &'lexer Lexer,
+    lexed_input: LexedStream<'lexer, 'stream>,
+    macro_declarations: HashMap<Name, MacroDeclaration>,
+    invoked_macros: HashMap<InvokedMacro, NonTerminalId>,
+    rules: Vec<(NonTerminalId, PartialRule)>,
+    id_of: HashMap<FullName, NonTerminalId>,
+    warnings: WarningSet,
+    axioms: Vec<NonTerminalId>,
+    found_declarations: HashMap<Name, Location>,
+    name_of: NonTerminalName,
+}
+
+impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
+    fn new(
+        lexer: &'lexer Lexer,
+        lexed_input: LexedStream<'lexer, 'stream>,
+    ) -> Self {
+        Self {
+            lexer,
+            lexed_input,
+            macro_declarations: HashMap::new(),
+            invoked_macros: HashMap::new(),
+            rules: Vec::new(),
+            id_of: HashMap::new(),
+            warnings: WarningSet::empty(),
+            axioms: Vec::new(),
+            found_declarations: HashMap::new(),
+            name_of: NonTerminalName::new(),
+        }
+    }
+
+    fn next_token(&mut self) -> std::result::Result<Option<Token>, Error> {
+        Ok(self
+            .lexed_input
+            .next_any()?
+            .unpack_into(&mut self.warnings)
+            .cloned())
+    }
+
+    fn peek_token(&mut self, name: &str) -> std::result::Result<bool, Error> {
+        match self.next_token()? {
+            Some(token) if token.name() == name => Ok(true),
+            Some(_) => {
+                self.lexed_input.drop_last();
+                Ok(false)
+            }
+            None => Ok(false),
+        }
+    }
+
+    fn generate_error<T>(
+        &self,
+        location: Location,
+        expected: &str,
+        found: &str,
+    ) -> std::result::Result<T, Error> {
+        Err(Error::GrammarSyntaxError {
+            message: format!("expected {expected}, found {found}"),
+            location: Fragile::new(location),
+        })
+    }
+
+    fn read_token(&mut self, name: &str) -> std::result::Result<Token, Error> {
+        match self.next_token()? {
+            Some(token) => {
+                if token.name() == name {
+                    Ok(token)
+                } else {
+                    return self.generate_error(
+                        token.location().clone(),
+                        name,
+                        token.name(),
+                    );
+                }
+            }
+            None => {
+                return self.generate_error(
+                    self.lexed_input.last_location().clone(),
+                    name,
+                    "EOF",
+                )
+            }
+        }
+    }
+
+    fn read_macro_arguments(
+        &mut self,
+    ) -> std::result::Result<Vec<Rc<str>>, Error> {
+        let mut args = Vec::new();
+        if self.peek_token("LBRACKET")? {
+            let mut cont = true;
+            while cont {
+                args.push(self.read_token("ID")?.content().into());
+                cont = self.peek_token("COMMA")?;
+            }
+            self.read_token("RBRACKET")?;
+        }
+        Ok(args)
+    }
+
+    fn read_proxy_value(
+        &mut self,
+    ) -> std::result::Result<ValueTemplate, Error> {
+        let token = if let Some(token) = self.next_token()? {
+            token
+        } else {
+            return self.generate_error(
+                self.lexed_input.last_location().clone(),
+                "STRING or ID",
+                "EOF",
+            );
+        };
+        let value = match token.name() {
+            "STRING" => ValueTemplate::Str(Rc::from(token.content())),
+            "ID" => {
+                let name = token.content().into();
+                if self.peek_token("LBRACE")? {
+                    ValueTemplate::InlineRule {
+                        name,
+                        attributes: self.read_proxy("RBRACE")?,
+                    }
+                } else {
+                    ValueTemplate::Id(name)
+                }
+            }
+            found_token => {
+                return self.generate_error(
+                    token.location().clone(),
+                    "STRING or ID",
+                    found_token,
+                )
+            }
+        };
+        Ok(value)
+    }
+
+    fn read_proxy_element(
+        &mut self,
+    ) -> std::result::Result<(Key, ValueTemplate), Error> {
+        let key_token = self.read_token("ID")?;
+        let key: Rc<str> = key_token.content().into();
+        if self.peek_token("COLON")? {
+            if &*key == VARIANT_NAME {
+                return Err(Error::GrammarVariantKey {
+                    location: key_token.location().into(),
+                });
+            }
+            let value = self.read_proxy_value()?;
+            Ok((key, value))
+        } else {
+            Ok((Rc::from(VARIANT_NAME), ValueTemplate::Str(key)))
+        }
+    }
+
+    fn read_proxy(&mut self, end: &str) -> std::result::Result<Proxy, Error> {
+        let mut proxy = HashMap::new();
+        while let Some(token) = self.next_token()? {
+            if token.name() == end {
+                return Ok(proxy);
+            }
+            self.lexed_input.drop_last();
+            let (key, value) = self.read_proxy_element()?;
+            proxy.insert(key, value);
+        }
+        return self.generate_error(
+            self.lexed_input.last_location().clone(),
+            format!("ID or {}", end).as_str(),
+            "EOF",
+        );
+    }
+
+    fn read_macro_invocation(
+        &mut self,
+        name: Rc<str>,
+    ) -> std::result::Result<(MacroInvocation, Location), Error> {
+        let mut args = Vec::new();
+        let mut location = self.lexed_input.last_location().clone();
+        if self.peek_token("LBRACKET")? {
+            let mut cont = true;
+            while cont {
+                let arg_name = self.read_token("ID")?.content().into();
+                let (arg, _) = self.read_macro_invocation(arg_name)?;
+                args.push(arg);
+                cont = self.peek_token("COMMA")?;
+            }
+            location = Location::extend(
+                location,
+                self.read_token("RBRACKET")?.location().clone(),
+            );
+        }
+        Ok((MacroInvocation { name, args }, location))
+    }
+
+    fn read_rule_element_attribute(
+        &mut self,
+    ) -> std::result::Result<Attribute, Error> {
+        if self.peek_token("DOT")? {
+            if let Some(token) = self.next_token()? {
+                match token.name() {
+                    "ID" => {
+                        let name = token.content().into();
+                        Ok(Attribute::Named(name))
+                    }
+                    "INT" => {
+                        Ok(Attribute::Indexed(token.content().parse().unwrap()))
+                    }
+                    found_token => self.generate_error(
+                        token.location().clone(),
+                        "ID or INT",
+                        found_token,
+                    ),
+                }
+            } else {
+                self.generate_error(
+                    self.lexed_input.last_location().clone(),
+                    "ID or INT",
+                    "EOF",
+                )
+            }
+        } else {
+            Ok(Attribute::None)
+        }
+    }
+
+    fn read_rule_element_key(
+        &mut self,
+    ) -> std::result::Result<Option<Key>, Error> {
+        if self.peek_token("AT")? {
+            Ok(Some(self.read_token("ID")?.content().into()))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn read_rule_element(
+        &mut self,
+        name: Rc<str>,
+    ) -> std::result::Result<PartialRuleElement, Error> {
+        let (invocation, span) = self.read_macro_invocation(name.clone())?;
+        let element_type = if let Some(id) = self.lexer.grammar().id(&*name) {
+            if !invocation.args.is_empty() {
+                return Err(Error::GrammarTerminalInvocation {
+                    terminal: name.to_string(),
+                    location: Fragile::new(span),
+                });
+            }
+            PartialElementType::Terminal(id)
+        } else {
+            PartialElementType::MacroOrNonTerminal(invocation)
+        };
+        let attribute = self.read_rule_element_attribute()?;
+        let key = self.read_rule_element_key()?;
+        Ok(PartialRuleElement {
+            key,
+            attribute,
+            element_type,
+        })
+    }
+
+    fn read_rule(&mut self) -> std::result::Result<PartialRule, Error> {
+        let mut rule_elements = Vec::new();
+        while let Some(token) = self.next_token()? {
+            match token.name() {
+                "LPROXY" => {
+                    let proxy = self.read_proxy("RPROXY")?;
+                    return Ok(PartialRule {
+                        elements: rule_elements,
+                        proxy,
+                    });
+                }
+                "ID" => {
+                    let element =
+                        self.read_rule_element(token.content().into())?;
+                    rule_elements.push(element);
+                }
+                found_token => {
+                    return self.generate_error(
+                        token.location().clone(),
+                        "LPROXY or ID",
+                        found_token,
+                    )
+                }
+            }
+        }
+        self.generate_error(
+            self.lexed_input.last_location().clone(),
+            "LPROXY or ID",
+            "EOF",
+        )
+    }
+
+    fn read_definition(&mut self) -> std::result::Result<bool, Error> {
+        let axiom = self.peek_token("AT")?;
+        let definition_name_token = match self
+            .lexed_input
+            .next_any()?
+            .unpack_into(&mut self.warnings)
+        {
+            Some(token) => {
+                if token.name() == "ID" {
+                    token
+                } else {
+                    let location = token.location().clone();
+                    let name = token.name().to_string();
+                    return self.generate_error(location, "ID", name.as_str());
+                }
+            }
+            None => {
+                if axiom {
+                    todo!()
+                } else {
+                    return Ok(false);
+                }
+            }
+        };
+        let definition_name: Rc<str> = definition_name_token.content().into();
+        if let Some(old_location) = self.found_declarations.insert(
+            definition_name.clone(),
+            definition_name_token.location().clone(),
+        ) {
+            todo!()
+        }
+        let arguments = self.read_macro_arguments()?;
+        self.read_token("ASSIGNMENT")?;
+        let mut rules: Vec<PartialRule> = Vec::new();
+        'read_rules: while let Some(token) = self.next_token()? {
+            if token.name() == "SEMICOLON" {
+                break 'read_rules;
+            }
+            self.lexed_input.drop_last();
+            let partial_rule = self.read_rule()?;
+            rules.push(partial_rule);
+        }
+
+        if arguments.is_empty() {
+            let nonterminal_id = self.name_of.len_as();
+            self.name_of.push(definition_name.clone());
+            self.id_of.insert(definition_name, nonterminal_id);
+            self.rules.extend(
+                rules
+                    .into_iter()
+                    .map(|partial_rule| (nonterminal_id, partial_rule))
+                    .rev(),
+            );
+            if axiom {
+                self.axioms.push(nonterminal_id);
+            }
+        } else {
+            self.macro_declarations.insert(
+                definition_name,
+                MacroDeclaration {
+                    args: arguments,
+                    rules,
+                },
+            );
+        }
+        Ok(true)
+    }
+
+    fn read(
+        mut self,
+    ) -> Result<(
+        GrammarRules,
+        HashMap<Rc<str>, NonTerminalId>,
+        Vec<NonTerminalId>,
+        NonTerminalName,
+    )> {
+        while self.read_definition()? {}
+        let mut rules = GrammarRules::new();
+        while let Some((id, partial_rule)) = self.rules.pop() {
+            let rule = partial_rule.complete_to_rule(
+                id,
+                &mut rules,
+                &mut self,
+                &HashMap::new(),
+            );
+            rules.push(rule);
+        }
+        self.warnings
+            .with_ok((rules, self.id_of, self.axioms, self.name_of))
     }
 }
 
@@ -227,452 +789,20 @@ pub trait GrammarBuilder<'deserializer>: Sized {
     fn grammar(&self) -> Rc<Path>;
     /// Build the grammar.
     fn build(mut self, lexer: &Lexer) -> Result<Self::Grammar> {
-        #![allow(unused)] // Bug that mark these functions as unused.
-
-        /// Read a token, match it against the provided `id`.
-        /// If it matches, consume the token.
-        /// Return whether the token matched.
-        fn read_token_walk(
-            lexed_input: &mut LexedStream<'_, '_>,
-            id: &str,
-        ) -> Result<bool> {
-            let mut warnings = WarningSet::empty();
-            match lexed_input.next_any()?.unpack_into(&mut warnings) {
-                Some(token) if token.name() == id => warnings.with_ok(true),
-                _ => {
-                    lexed_input.drop_last();
-                    warnings.with_ok(false)
-                }
-            }
-        }
-	
-        /// Generate an error of type [`GrammarSyntaxError`][beans::error::ErrorType::GrammarSyntaxError].
-        fn generate_error(
-            location: Location,
-            expected: impl Display,
-            found: impl Display,
-        ) -> Error {
-            Error::GrammarSyntaxError {
-                location: Fragile::new(location),
-                message: format!("expected {}, found {}", expected, found),
-            }
-        }
-
-        /// Read the token, match it against the provded `id`.
-        /// If it matches, consume the token, fail otherwise.
-        /// Return the token.
-        fn match_now<'li>(
-            lexed_input: &'li mut LexedStream<'_, '_>,
-            id: &str,
-        ) -> Result<Token> {
-            let mut warnings = WarningSet::empty();
-            match lexed_input.next_any()?.unpack_into(&mut warnings) {
-                Some(token) => {
-                    if token.name() == id {
-                        let token = token.clone();
-                        warnings.with_ok(token)
-                    } else {
-                        let error = generate_error(
-                            token.location().clone(),
-                            id,
-                            token.name(),
-                        );
-                        lexed_input.drop_last();
-                        Err(error)
-                    }
-                }
-                None => Err(generate_error(
-                    lexed_input.last_location().clone(),
-                    id,
-                    "EOF",
-                )),
-            }
-        }
-
-        /// Read a proxy element, of the form `key: value`.
-        /// Consume the tokens.
-        /// Fail if there is no proxy element.
-        /// Return the proxy element as `(key, value)`.
-        fn read_proxy_element(
-            lexed_input: &mut LexedStream<'_, '_>,
-        ) -> Result<(String, ValueTemplate)> {
-            let mut warnings = WarningSet::empty();
-            let id = match_now(lexed_input, "ID")?.unpack_into(&mut warnings);
-            if read_token_walk(lexed_input, "COLON")?.unpack_into(&mut warnings)
-            {
-                let name = id.content().to_string();
-                if name == VARIANT_NAME {
-                    return Err(Error::GrammarVariantKey {
-                        location: Fragile::new(id.location().clone()),
-                    });
-                }
-                let token = if let Some(token) =
-                    lexed_input.next_any()?.unpack_into(&mut warnings)
-                {
-                    token
-                } else {
-                    return Err(generate_error(
-                        lexed_input.last_location().clone(),
-                        "INT, STRING, FLOAT, BOOL or ID",
-                        "EOF",
-                    ));
-                };
-                warnings.with_ok((
-                    name,
-                    match token.name() {
-                        "INT" => ValueTemplate::Int(
-                            token.content().parse::<i32>().map_err(|_| {
-                                Error::GrammarSyntaxError {
-                                    location: Fragile::new(
-                                        token.location().clone(),
-                                    ),
-                                    message: format!(
-                                        "cannot understand {} as an integer",
-                                        token.content()
-                                    ),
-                                }
-                            })?,
-                        ),
-                        "STRING" => {
-                            ValueTemplate::Str(Rc::from(token.content()))
-                        }
-                        "FLOAT" => ValueTemplate::Float(
-                            token.content().parse::<f32>().map_err(|_| {
-                                Error::GrammarSyntaxError {
-                                    location: Fragile::new(
-                                        token.location().clone(),
-                                    ),
-                                    message: format!(
-                                        "cannot understand {} as a float",
-                                        token.content()
-                                    ),
-                                }
-                            })?,
-                        ),
-                        "BOOL" => ValueTemplate::Bool(
-                            token.content().parse::<bool>().map_err(|_| {
-                                Error::GrammarSyntaxError {
-                                    message: format!(
-                                        "cannot understand {} as a bool",
-                                        token.content()
-                                    ),
-                                    location: Fragile::new(
-                                        token.location().clone(),
-                                    ),
-                                }
-                            })?,
-                        ),
-                        "ID" => ValueTemplate::Id(Rc::from(token.content())),
-                        x => {
-                            return Err(generate_error(
-                                token.location().clone(),
-                                "INT, STRING, FLOAT, BOOL or ID",
-                                x,
-                            ))
-                        }
-                    },
-                ))
-            } else {
-                warnings.with_ok((
-                    VARIANT_NAME.to_string(),
-                    ValueTemplate::Str(Rc::from(id.content())),
-                ))
-            }
-        }
-
-        /// Read a proxy, of the form `<key: value ...>`.
-        /// Consume the tokens.
-        /// Fail if the proxy is malformed.
-        /// Return the proxy.
-        fn read_proxy(lexed_input: &mut LexedStream<'_, '_>) -> Result<Proxy> {
-            let mut warnings = WarningSet::empty();
-            match_now(lexed_input, "LPROXY")?;
-            let mut proxy = HashMap::new();
-            while let Some(token) =
-                lexed_input.next_any()?.unpack_into(&mut warnings)
-            {
-                match token.name() {
-                    "ID" => {
-                        lexed_input.drop_last();
-                        let (key, value) = read_proxy_element(lexed_input)?
-                            .unpack_into(&mut warnings);
-                        proxy.insert(key, value);
-                    }
-                    "RPROXY" => return warnings.with_ok(proxy),
-                    x => {
-                        let error = generate_error(
-                            token.location().clone(),
-                            "ID or RPROXY",
-                            x,
-                        );
-                        lexed_input.drop_last();
-                        return Err(error);
-                    }
-                }
-            }
-            Err(generate_error(
-                lexed_input.last_location().clone(),
-                "ID or RPROXY",
-                "EOF",
-            ))
-        }
-
-        /// Read an element attribute, of the form `.attribute`.
-        /// Consume the tokens.
-        /// Fail if there is a dot but no attribute.
-        /// Return the attribute.
-        fn read_rule_element_attribute(
-            lexed_input: &mut LexedStream<'_, '_>,
-        ) -> Result<Attribute> {
-            let mut warnings = WarningSet::empty();
-            if read_token_walk(lexed_input, "DOT")?.unpack_into(&mut warnings) {
-                if let Some(token) =
-                    lexed_input.next_any()?.unpack_into(&mut warnings)
-                {
-                    match token.name() {
-                        "ID" => {
-                            let name = token.content().to_string();
-                            warnings.with_ok(Attribute::Named(name))
-                        }
-                        "INT" => warnings.with_ok(Attribute::Indexed(
-                            token.content().parse().unwrap(),
-                        )),
-                        x => {
-                            let error = generate_error(
-                                token.location().clone(),
-                                "ID or INT",
-                                x,
-                            );
-                            lexed_input.drop_last();
-                            Err(error)
-                        }
-                    }
-                } else {
-                    lexed_input.drop_last();
-                    Err(generate_error(
-                        lexed_input.last_location().clone(),
-                        "ID or INT",
-                        "EOF",
-                    ))
-                }
-            } else {
-                warnings.with_ok(Attribute::None)
-            }
-        }
-
-        /// Read an element key, of the form `@key`.
-        /// Consume the tokens.
-        /// Fail if there is an at but no key.
-        /// Return the key.
-        fn read_rule_element_key(
-            lexed_input: &mut LexedStream<'_, '_>,
-        ) -> Result<Option<String>> {
-            let mut warnings = WarningSet::empty();
-            if read_token_walk(lexed_input, "AT")?.unpack_into(&mut warnings) {
-                let token =
-                    match_now(lexed_input, "ID")?.unpack_into(&mut warnings);
-                warnings.with_ok(Some(token.content().to_string()))
-            } else {
-                warnings.with_ok(None)
-            }
-        }
-
-        /// Read an element, of the form `Token(.attribute)?(@key)?`.
-        /// Consume the tokens.
-        /// Fail if the element is malformed.
-        /// Return the element.
-        fn read_rule_element(
-            lexed_input: &mut LexedStream<'_, '_>,
-            id: &mut NonTerminalId,
-            name_map: &mut HashMap<Rc<str>, NonTerminalId>,
-            lexer: &Lexer,
-        ) -> Result<RuleElement> {
-            let mut warnings = WarningSet::empty();
-            let name_token =
-                match_now(lexed_input, "ID")?.unpack_into(&mut warnings);
-            let attribute = read_rule_element_attribute(lexed_input)?
-                .unpack_into(&mut warnings);
-            let key =
-                read_rule_element_key(lexed_input)?.unpack_into(&mut warnings);
-            let name = name_token.content();
-            warnings.with_ok(RuleElement::new(
-                name,
-                attribute,
-                key,
-                if let Some(id) = lexer.grammar().id(name) {
-                    ElementType::from(id)
-                } else {
-                    ElementType::from(
-                        *name_map
-                            .entry(name.into())
-                            .or_insert_with(|| id.next()),
-                    )
-                },
-            ))
-        }
-
-        /// Read a rule, of the form `Token(.attribute)?(@key)? ... <key: value ...>`.
-        /// Consume the tokens.
-        /// Fails if the rule is malformed.
-        /// Return the rule.
-        fn read_rule(
-            lexed_input: &mut LexedStream<'_, '_>,
-            id: &mut NonTerminalId,
-            name_map: &mut HashMap<Rc<str>, NonTerminalId>,
-            lexer: &Lexer,
-        ) -> Result<PartialRule> {
-            let mut warnings = WarningSet::empty();
-            let expected = "ID";
-            let mut rule_elements = Vec::new();
-            while let Some(token) =
-                lexed_input.next_any()?.unpack_into(&mut warnings)
-            {
-                #[allow(clippy::branches_sharing_code)]
-                // Extracting lexed_input.drop_last()
-                // causes the compiler to complain.
-                if token.name() == "LPROXY" {
-                    lexed_input.drop_last();
-                    let proxy =
-                        read_proxy(lexed_input)?.unpack_into(&mut warnings);
-                    return warnings.with_ok(PartialRule {
-                        elements: rule_elements,
-                        proxy,
-                    });
-                } else {
-                    lexed_input.drop_last();
-                }
-                rule_elements.push(
-                    read_rule_element(lexed_input, id, name_map, lexer)?
-                        .unpack_into(&mut warnings),
-                );
-            }
-            Err(generate_error(
-                lexed_input.last_location().clone(),
-                expected,
-                "EOF",
-            ))
-        }
-
-        /// Read a definition, of the form `NonTerminal ::= Token(.attribute)?(@key)? ... <key: value ...> ...;`.
-        /// Take as argument the `id` of the defined `NonTerminal`.
-        /// Consume the tokens.
-        /// Fails is malformed.
-        /// Return the definition.
-        fn read_definition(
-            lexed_input: &mut LexedStream<'_, '_>,
-
-            next_id: &mut NonTerminalId,
-            name_map: &mut HashMap<Rc<str>, NonTerminalId>,
-            lexer: &Lexer,
-        ) -> Result<(bool, String, NonTerminalId, Vec<Rule>)> {
-            let mut warnings = WarningSet::empty();
-            let axiom =
-                read_token_walk(lexed_input, "AT")?.unpack_into(&mut warnings);
-            let name = match_now(lexed_input, "ID")?.unpack_into(&mut warnings);
-            match_now(lexed_input, "ASSIGNMENT")?.unpack_into(&mut warnings);
-            let name_string = name.content();
-            let id = *name_map
-                .entry(name_string.into())
-                .or_insert_with(|| next_id.next());
-            let mut rules = Vec::new();
-            'read_rules: while let Some(token) =
-                lexed_input.next_any()?.unpack_into(&mut warnings)
-            {
-                if token.name() == "SEMICOLON" {
-                    break 'read_rules;
-                }
-                lexed_input.drop_last();
-                let partial_rule =
-                    read_rule(lexed_input, next_id, name_map, lexer)?
-                        .unpack_into(&mut warnings);
-                let id = *name_map
-                    .entry(name_string.into())
-                    .or_insert_with(|| next_id.next());
-                let rule = Rule::new(
-                    name_string,
-                    id,
-                    partial_rule.elements,
-                    partial_rule.proxy,
-                );
-                rules.push(rule);
-            }
-            warnings.with_ok((axiom, name_string.to_string(), id, rules))
-        }
-
         let mut warnings = WarningSet::empty();
         let mut stream = self.stream()?.unpack_into(&mut warnings);
         let temp_lexer = LexerBuilder::from_file(self.grammar())?
             .unpack_into(&mut warnings)
             .build();
-        let mut lexed_input = temp_lexer.lex(&mut stream);
+        let lexed_input = temp_lexer.lex(&mut stream);
 
-        let mut rules = GrammarRules::default();
-
-        let mut axioms_vec = Vec::new();
-
-        let mut done: HashMap<_, Location> = HashMap::new();
-        let mut nonterminals = NonTerminalId::from(0);
-        let mut name_map = HashMap::new();
-
-        while let Some(token) =
-            lexed_input.next_any()?.unpack_into(&mut warnings)
-        {
-            let first_location = token.location().clone();
-            lexed_input.drop_last();
-            let (axiom, name, id, new_rules) = read_definition(
-                &mut lexed_input,
-                &mut nonterminals,
-                &mut name_map,
-                lexer,
-            )?
-            .unpack_into(&mut warnings);
-            let location = Location::extend(
-                first_location,
-                lexed_input.last_location().clone(),
-            );
-            if let Some(old_location) = done.get(&name) {
-                return Err(Error::GrammarDuplicateDefinition {
-                    location: Fragile::new(location),
-                    old_location: old_location.into(),
-                    message: name,
-                });
-            }
-            if lexer.grammar().contains(&name) {
-                return Err(Error::GrammarNonTerminalDuplicate {
-                    location: Fragile::new(location),
-                    message: name,
-                });
-            }
-            if axiom {
-                axioms_vec.push(id);
-            }
-            rules.extend(new_rules);
-            {
-                use Case::PascalCase;
-                ask_case!(&name, PascalCase, warnings);
-            }
-            done.insert(name, location);
-        }
-
-        let axioms = Axioms::from_vec(nonterminals, axioms_vec);
-
-        // for rule in rules.iter_mut() {
-        //     for element in rule.elements.iter_mut() {
-        //         if element.is_terminal() {
-        //             continue;
-        //         }
-        //         if let Some(&id) = name_map.get(&element.name) {
-        //             element.element_type = ElementType::NonTerminal(id)
-        //         } else {
-        //             warnings.add(Warning::new(WarningType::UndefinedNonTerminal(
-        //                 rule.name.clone(),
-        //                 element.name.clone(),
-        //             )))
-        //         }
-        //     }
-        // }
-
-        let grammar = Self::Grammar::new(rules, axioms, name_map)?
+        let (rules, id_of, axioms_vec, name_of) =
+            GrammarReader::new(lexer, lexed_input)
+                .read()?
+                .unpack_into(&mut warnings);
+        let number_of_nonterminals = name_of.len_as();
+        let axioms = Axioms::from_vec(number_of_nonterminals, axioms_vec);
+        let grammar = Self::Grammar::new(rules, axioms, id_of, name_of)?
             .unpack_into(&mut warnings);
 
         warnings.with_ok(grammar)
@@ -684,7 +814,8 @@ pub trait Grammar<'d>: Sized + Serialize + Deserialize<'d> {
     fn new(
         rules: GrammarRules,
         axioms: Axioms,
-        name_map: HashMap<Rc<str>, NonTerminalId>,
+        id_of: HashMap<Rc<str>, NonTerminalId>,
+        name_of: NonTerminalName,
     ) -> Result<Self>;
 
     fn from(bytes: &'d [u8]) -> Result<Self> {
@@ -692,6 +823,10 @@ pub trait Grammar<'d>: Sized + Serialize + Deserialize<'d> {
             bytes,
         )?))
     }
+
+    fn name_of(&self, id: NonTerminalId) -> Rc<str>;
+    fn id_of(&self, name: Rc<str>) -> NonTerminalId;
+
     fn serialize(&self) -> Result<Vec<u8>> {
         Ok(WarningSet::empty_with(bincode::serialize(self)?))
     }

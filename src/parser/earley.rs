@@ -1,13 +1,14 @@
 use super::grammarparser::{
-    Axioms, ElementType, Grammar, GrammarBuilder, Rule, RuleElement,
+    Axioms, ElementType, Grammar, GrammarBuilder, NonTerminalName, Rule,
+    RuleElement,
 };
 use super::list::List;
 use super::parser::{NonTerminalId, ParseResult, Parser, RuleId};
 use crate::error::Result;
 use crate::error::{Error, WarningSet};
-use crate::lexer::LexedStream;
 use crate::lexer::TerminalId;
 use crate::lexer::Token;
+use crate::lexer::{LexedStream, Lexer};
 use crate::parser::grammarparser::Attribute;
 use crate::parser::parser::{Value, AST};
 use crate::regex::Allowed;
@@ -23,814 +24,25 @@ use std::fmt;
 use std::path::Path;
 use std::rc::Rc;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::rules;
-
-    use crate::{
-        lexer::LexerBuilder,
-        parser::grammarparser::{
-            Attribute, ElementType, Key, Proxy, Rule, RuleElement,
-        },
-    };
-
-    const GRAMMAR_NUMBERS_LEXER: &str = r#"
-NUMBER ::= ([0-9])
-PM ::= [-+]
-TD ::= [*/]
-LPAR ::= \(
-RPAR ::= \)
-"#;
-
-    const GRAMMAR_NUMBERS: &str = r#"
-@Sum ::= Sum@left PM Product@right <>
- Product@self <>;
-
-Product ::= Product@left TD Factor@right <>
- Factor.self@self <>;
-
-Factor ::= LPAR Sum@self RPAR <>
- NUMBER.0@self <>;"#;
-
-    struct TestEarleyItem {
-        name: &'static str,
-        left_elements: Vec<&'static str>,
-        right_elements: Vec<&'static str>,
-        origin: usize,
-    }
-
-    impl TestEarleyItem {
-        fn matches(
-            &self,
-            other: &EarleyItem,
-            parser: &EarleyParser,
-            set_id: usize,
-            item_id: usize,
-        ) {
-            let error_message =
-                format!("Set #{}, item #{}: no match:", set_id, item_id);
-            let item = &parser.grammar().rules[other.rule];
-            assert_eq!(self.name, &*item.name, "{} name.", error_message);
-            assert_eq!(
-                self.left_elements.len() + self.right_elements.len(),
-                item.elements.len(),
-                "{} origin set.",
-                error_message
-            );
-            assert_eq!(
-                self.left_elements.len(),
-                other.position,
-                "{} fat dot position.",
-                error_message,
-            );
-            assert_eq!(
-                self.origin, other.origin,
-                "{} origin set.",
-                error_message
-            );
-            for i in 0..self.left_elements.len() {
-                assert_eq!(
-                    self.left_elements[i], &*item.elements[i].name,
-                    "{} element #{}.",
-                    error_message, i
-                );
-            }
-            for i in 0..self.right_elements.len() {
-                assert_eq!(
-                    self.right_elements[i],
-                    &*item.elements[i + other.position].name,
-                    "{} elements #{}.",
-                    error_message,
-                    i + other.position
-                );
-            }
-        }
-    }
-
-    /// `sets!` eases the creation of mock Earley Sets.
-    /// Useful for tests.
-    ///
-    /// The syntax is aimed to be simple and intuitive, matching the one
-    /// usually used in the literature.
-    macro_rules! sets {
-	(
-	    $(
-		== $(
-		    $name: ident -> $($left_element: ident)* . $($right_element: ident)* ($origin: literal)
-		)*
-	    )*
-	) => {
-	    {
-		#[allow(unused_mut)]
-		let mut sets = Vec::new();
-		$(
-		    #[allow(unused_mut)]
-		    let mut set = Vec::new();
-		    $(
-			set.push(earley_item!($name -> $($left_element)* . $($right_element)* ($origin)));
-		)*
-			sets.push(set);
-		)*
-		    sets
-	    }
-	};
-    }
-
-    /// `earley_item` creates mock Earley Items.
-    /// Useful for tests.
-    macro_rules! earley_item {
-	($name: ident -> $($left_element: ident)* . $($right_element: ident)* ($origin: literal)) => {
-	    {
-		#[allow(unused_mut)]
-		let mut left_elements = Vec::new();
-		#[allow(unused_mut)]
-		let mut right_elements = Vec::new();
-		$(
-		    left_elements.push(stringify!($left_element));
-		)*
-		    $(
-			right_elements.push(stringify!($right_element));
-		    )*
-		    TestEarleyItem {
-			name: stringify!($name),
-			left_elements,
-			right_elements,
-			origin: $origin
-		    }
-	    }
-	};
-    }
-
-    macro_rules! final_sets {
-	(
-	    ($grammar: expr)
-	    $(
-		== $(
-		    $name: ident -> $($element: ident)* ($end: literal)
-		)*
-	    )*
-	) => {{
-	    #[allow(unused_mut)]
-	    let mut sets = Vec::new();
-	    fn find_item(grammar: &EarleyGrammar, name: &str, elements: &[&str], end: usize) -> FinalItem {
-		for &rule_identifier in grammar
-		    .name_map
-		    .get(&Rc::from(name))
-		    .map(|&identifier| &grammar.rules_of[identifier])
-		    .expect(format!("The non-terminal {} does not exist.", name).as_str())
-		    .iter()
-		{
-		    if elements.len() == grammar
-			.rules[rule_identifier]
-			.elements.len()
-			&& elements
-			.iter()
-			.zip(grammar.rules[rule_identifier].elements.iter())
-			.all(|(&left, right)| left == &*right.name)
-		    {
-			return FinalItem {
-			    rule: rule_identifier,
-			    end
-			};
-		    }
-		}
-		panic!("The rule {} -> {} is not in the grammar.", name, elements.join(" "));
-	    }
-	    $(
-		#[allow(unused_mut)]
-		let mut set = FinalSet::default();
-		set.position = sets.len();
-		$(
-		    set.add(find_item($grammar, stringify!($name), &[$(stringify!($element)),*], $end), $grammar);
-		)*
-		sets.push(set);
-	    )*
-	    sets
-	}};
-    }
-
-    #[derive(Debug)]
-    enum TestElementType {
-        Terminal,
-        NonTerminal,
-    }
-
-    impl PartialEq<ElementType> for TestElementType {
-        fn eq(&self, other: &ElementType) -> bool {
-            match (self, other) {
-                (Self::Terminal, ElementType::Terminal(..))
-                | (Self::NonTerminal, ElementType::NonTerminal(..)) => true,
-                _ => false,
-            }
-        }
-    }
-
-    #[derive(Debug)]
-    struct TestElement {
-        name: String,
-        attribute: Attribute,
-        key: Option<Key>,
-        element_type: TestElementType,
-    }
-
-    impl PartialEq<RuleElement> for TestElement {
-        fn eq(&self, other: &RuleElement) -> bool {
-            self.name == *other.name
-                && self.key == other.key
-                && self.attribute == other.attribute
-                && self.element_type == other.element_type
-        }
-    }
-
-    #[derive(Debug)]
-    struct TestRule {
-        name: String,
-        elements: Vec<TestElement>,
-        proxy: Proxy,
-    }
-
-    impl TestRule {
-        fn new(name: String, elements: Vec<TestElement>, proxy: Proxy) -> Self {
-            Self {
-                name,
-                elements,
-                proxy,
-            }
-        }
-    }
-
-    impl PartialEq<Rule> for TestRule {
-        fn eq(&self, other: &Rule) -> bool {
-            self.name == *other.name
-                && self.proxy == other.proxy
-                && self.elements == other.elements
-        }
-    }
-
-    #[derive(Debug)]
-    struct TestToken {
-        name: &'static str,
-        attributes: Vec<(usize, &'static str)>,
-    }
-
-    impl PartialEq<Token> for TestToken {
-        fn eq(&self, other: &Token) -> bool {
-            other.name() == self.name
-                && other
-                    .attributes()
-                    .iter()
-                    .map(|(&key, value)| (key, value.as_str()))
-                    .collect::<Vec<_>>()
-                    == self.attributes
-        }
-    }
-
-    impl TestToken {
-        #![allow(unused)]
-        fn new(name: &'static str, attributes: Vec<&'static str>) -> Self {
-            Self {
-                name,
-                attributes: attributes.into_iter().enumerate().collect(),
-            }
-        }
-    }
-
-    struct MapVec(Vec<(&'static str, TestAST)>);
-
-    impl std::fmt::Debug for MapVec {
-        fn fmt(
-            &self,
-            formatter: &mut std::fmt::Formatter<'_>,
-        ) -> std::fmt::Result {
-            formatter
-                .debug_map()
-                .entries(self.0.iter().map(|&(ref k, ref v)| (k, v)))
-                .finish()
-        }
-    }
-
-    impl From<Vec<(&'static str, TestAST)>> for MapVec {
-        fn from(o: Vec<(&'static str, TestAST)>) -> Self {
-            Self(o)
-        }
-    }
-
-    #[derive(Debug)]
-    enum TestAST {
-        Node {
-            id: usize,
-            attributes: MapVec,
-        },
-        #[allow(unused)]
-        Terminal(TestToken),
-        Literal(crate::parser::parser::Value),
-    }
-
-    impl PartialEq<TestAST> for AST {
-        fn eq(&self, other: &TestAST) -> bool {
-            other == self
-        }
-    }
-
-    impl PartialEq<AST> for TestAST {
-        fn eq(&self, other: &AST) -> bool {
-            match (self, other) {
-                (
-                    TestAST::Node {
-                        id: tid,
-                        attributes: tattributes,
-                    },
-                    AST::Node {
-                        nonterminal: id,
-                        attributes,
-                        ..
-                    },
-                ) => {
-                    NonTerminalId::from(*tid) == *id && {
-                        let tattributes = tattributes
-                            .0
-                            .iter()
-                            .map(|(key, value)| (Rc::<str>::from(*key), value))
-                            .collect::<HashMap<_, _>>();
-                        tattributes.len() == attributes.len()
-                            && tattributes.iter().all(|(key, value)| {
-                                attributes
-                                    .get(key)
-                                    .map_or(false, |v| *value == v)
-                            })
-                    }
-                }
-                (TestAST::Terminal(ttoken), AST::Terminal(token)) => {
-                    ttoken == token
-                }
-                (TestAST::Literal(tvalue), AST::Literal(value)) => {
-                    tvalue == value
-                }
-                _ => false,
-            }
-        }
-    }
-
-    #[inline]
-    fn verify(rules1: GrammarRules, rules2: Vec<TestRule>) {
-        let length1 = rules1.0.len();
-        let length2 = rules2.len();
-        if length1 > length2 {
-            panic!("Grammar 1 is longer");
-        } else if length1 < length2 {
-            panic!("Grammar 2 is longer");
-        }
-        for (i, (r1, r2)) in rules1.0.iter().zip(rules2.iter()).enumerate() {
-            assert_eq!(r2, r1, "rules #{} differ", i);
-        }
-    }
-
-    #[test]
-    #[rustfmt::skip]
-    fn earley_grammar_builder() {
-	use crate::lexer::LexerBuilder;
-        let lexer = LexerBuilder::default().build();
-        let grammar = EarleyGrammarBuilder::default().build(&lexer).unwrap().unwrap();
-	verify(
-            grammar.rules,
-            rules!(
-                IfStatement ::=
-		    !t IF Expression@condition !t LBRACE StatementList@then !t RBRACE <haselse = bool false>
-		    !t IF Expression@condition !t LBRACE StatementList@then !t RBRACE !t ELSE !t LBRACE StatementList@else !t RBRACE <haselse = bool true>;
-		
-                WhileStatement ::=
-		    !t WHILE Expression@condition !t LBRACE StatementList@do !t RBRACE <>;
-                
-                Assignment ::=
-		    !t ID.idx 0@key !t EQUALS Expression@value <>;
-                
-                BuiltinType ::=
-		    !t INT.idx 0@value <type = str "int" op = str "builtin">
-		    !t STRING.idx 0@value <type = str "string" op = str "builtin">
-		    !t ID.idx 0@value <type = str "id" op = str "builtin">
-		    !t TRUE <type = str "true" op = str "builtin">
-		    !t FALSE <type = str "false" op = str "builtin">;
-                
-                Atom ::=
-		    BuiltinType@this <>
-		    !t LPAR Expression@this !t RPAR <>;
-                
-                Expression ::=
-		    Expression@left !t PLUS Expression@right <op = str "add">
-		    Expression@left !t ASTERISK Expression@right <op = str "mul">
-		    Atom@this <>;
-                
-                Statement ::=
-		    Assignment@this !t SEMICOLON <s = str "assign">
-		    IfStatement@this <s = str "if">
-		    WhileStatement@this <s = str "while">;
-                
-                StatementList ::=
-		    StatementList@left Statement@right <s = str "concatenate">
-		    Statement@this <>
-            ),
-        );
-    }
-
-    #[test]
-    fn recognise_handle_empty_rules() {
-        let lexer_input = r#""#;
-        let grammar_input = r#"
-@A ::= <>
- B <>;
-B ::= A <>;"#;
-        let input = r#""#;
-        let lexer = LexerBuilder::from_stream(StringStream::new(
-            Path::new("<lexer input>"),
-            lexer_input,
-        ))
-        .unwrap()
-        .unwrap()
-        .build();
-        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
-            .with_stream(StringStream::new(
-                Path::new("<grammar input>"),
-                grammar_input,
-            ))
-            .build(&lexer)
-            .unwrap()
-            .unwrap();
-        let parser = EarleyParser::new(grammar);
-        let sets = sets!(
-            ==
-            A -> . (0)
-            A -> . B (0)
-            B -> . A (0)
-            A -> B . (0)
-            B -> A . (0)
-        );
-        let (recognised, _) = parser
-            .recognise(
-                &mut lexer
-                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
-            )
-            .unwrap()
-            .unwrap();
-        verify_sets(sets, recognised, &parser);
-    }
-
-    #[test]
-    fn ast_builder() {
-        let input = r#"1+(2*3-4)"#;
-
-        let lexer = LexerBuilder::from_stream(StringStream::new(
-            Path::new("<lexer input>"),
-            GRAMMAR_NUMBERS_LEXER,
-        ))
-        .unwrap()
-        .unwrap()
-        .build();
-        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
-            .with_stream(StringStream::new(
-                Path::new("<grammar input>"),
-                GRAMMAR_NUMBERS,
-            ))
-            .build(&lexer)
-            .unwrap()
-            .unwrap();
-        let parser = EarleyParser::new(grammar);
-        let (table, raw_input) = parser
-            .recognise(
-                &mut lexer
-                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
-            )
-            .unwrap()
-            .unwrap();
-        let forest = parser.to_forest(&table, &raw_input).unwrap().unwrap();
-        let ast = parser.select_ast(&forest, &raw_input);
-
-        let test_ast = {
-            use crate::parser::parser::Value::*;
-            use TestAST::*;
-            Node {
-                id: 0,
-                attributes: vec![
-                    (
-                        "right",
-                        Node {
-                            id: 1,
-                            attributes: vec![(
-                                "self",
-                                Node {
-                                    id: 0,
-                                    attributes: vec![
-                                        (
-                                            "right",
-                                            Node {
-                                                id: 1,
-                                                attributes: vec![(
-                                                    "self",
-                                                    Literal(Str("4".into())),
-                                                )]
-                                                .into(),
-                                            },
-                                        ),
-                                        (
-                                            "left",
-                                            Node {
-                                                id: 0,
-                                                attributes: vec![(
-                                                    "self",
-                                                    Node {
-                                                        id: 1,
-                                                        attributes: vec![
-                                                            (
-                                                                "right",
-                                                                Node {
-                                                                    id: 2,
-                                                                    attributes: vec![(
-                                                                        "self",
-                                                                        Literal(Str(
-                                                                            "3".into()
-                                                                        )),
-                                                                    )]
-                                                                    .into(),
-                                                                },
-                                                            ),
-                                                            (
-                                                                "left",
-                                                                Node {
-                                                                    id: 1,
-                                                                    attributes: vec![(
-                                                                        "self",
-                                                                        Literal(Str(
-                                                                            "2".into()
-                                                                        )),
-                                                                    )]
-                                                                    .into(),
-                                                                },
-                                                            ),
-                                                        ]
-                                                        .into(),
-                                                    },
-                                                )]
-                                                .into(),
-                                            },
-                                        ),
-                                    ]
-                                    .into(),
-                                },
-                            )]
-                            .into(),
-                        },
-                    ),
-                    (
-                        "left",
-                        Node {
-                            id: 0,
-                            attributes: vec![(
-                                "self",
-                                Node {
-                                    id: 1,
-                                    attributes: vec![("self", Literal(Str("1".into())))]
-                                        .into(),
-                                },
-                            )]
-                            .into(),
-                        },
-                    ),
-                ]
-                .into(),
-            }
-        };
-
-        assert_eq!(ast, test_ast);
-    }
-
-    #[test]
-    fn forest_builder() {
-        let input = r#"1+(2*3-4)"#;
-
-        let lexer = LexerBuilder::from_stream(StringStream::new(
-            Path::new("<lexer input>"),
-            GRAMMAR_NUMBERS_LEXER,
-        ))
-        .unwrap()
-        .unwrap()
-        .build();
-        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
-            .with_stream(StringStream::new(
-                Path::new("<grammar input>"),
-                GRAMMAR_NUMBERS,
-            ))
-            .build(&lexer)
-            .unwrap()
-            .unwrap();
-
-        let parser = EarleyParser::new(grammar);
-        let sets = final_sets!(
-                (parser.grammar())
-            ==
-            Factor -> NUMBER (1)
-            Product -> Factor (1)
-            Sum -> Product (1)
-            Sum -> Sum PM Product (9)
-
-            ==
-
-            ==
-            Factor -> LPAR Sum RPAR (9)
-            Product -> Factor (9)
-
-            ==
-            Factor -> NUMBER (4)
-            Product -> Factor (4)
-            Sum -> Product (4)
-            Product -> Product TD Factor (6)
-            Sum -> Product (6)
-            Sum -> Sum PM Product (8)
-
-            ==
-
-            ==
-            Factor -> NUMBER (6)
-
-            ==
-
-        ==
-        Factor -> NUMBER (8)
-            Product -> Factor (8)
-
-            ==
-
-            ==
-            );
-
-        let (table, raw_input) = parser
-            .recognise(
-                &mut lexer
-                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
-            )
-            .unwrap()
-            .unwrap();
-        let forest = parser.to_forest(&table, &raw_input).unwrap().unwrap();
-        assert_eq!(
-            forest,
-            sets,
-            "Parsed forest:\n{}\nExpected forest:\n{}",
-            forest
-                .iter()
-                .map(|set| format!("{}", set))
-                .collect::<Vec<_>>()
-                .join("\n"),
-            sets.iter()
-                .map(|set| format!("{}", set))
-                .collect::<Vec<_>>()
-                .join("\n")
-        );
-    }
-
-    #[test]
-    fn recogniser() {
-        let input = r#"1+(2*3-4)"#;
-
-        let lexer = LexerBuilder::from_stream(StringStream::new(
-            Path::new("<lexer input>"),
-            GRAMMAR_NUMBERS_LEXER,
-        ))
-        .unwrap()
-        .unwrap()
-        .build();
-        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
-            .with_stream(StringStream::new(
-                Path::new("<grammar input>"),
-                GRAMMAR_NUMBERS,
-            ))
-            .build(&lexer)
-            .unwrap()
-            .unwrap();
-
-        let parser = EarleyParser::new(grammar);
-        let sets = sets!(
-            ==
-            Sum -> . Sum PM Product (0)
-            Sum -> . Product (0)
-            Product -> . Product TD Factor (0)
-            Product -> . Factor (0)
-            Factor -> . LPAR Sum RPAR (0)
-            Factor -> . NUMBER (0)
-
-            ==
-            Factor -> NUMBER . (0)
-            Product -> Factor . (0)
-            Sum -> Product . (0)
-            Product -> Product . TD Factor (0)
-            Sum -> Sum . PM Product (0)
-
-            ==
-            Sum -> Sum PM . Product (0)
-            Product -> . Product TD Factor (2)
-            Product -> . Factor (2)
-            Factor -> . LPAR Sum RPAR (2)
-            Factor -> . NUMBER (2)
-
-            ==
-            Factor -> LPAR . Sum RPAR (2)
-            Sum -> . Sum PM Product (3)
-            Sum -> . Product (3)
-            Product -> . Product TD Factor (3)
-            Product -> . Factor (3)
-            Factor -> . LPAR Sum RPAR (3)
-            Factor -> . NUMBER (3)
-
-            ==
-            Factor -> NUMBER . (3)
-            Product -> Factor . (3)
-            Sum -> Product . (3)
-            Product -> Product . TD Factor (3)
-            Factor -> LPAR Sum . RPAR (2)
-            Sum -> Sum . PM Product (3)
-
-            ==
-            Product -> Product TD . Factor (3)
-            Factor -> . LPAR Sum RPAR (5)
-            Factor -> . NUMBER (5)
-
-            ==
-            Factor -> NUMBER . (5)
-            Product -> Product TD Factor . (3)
-            Sum -> Product . (3)
-            Product -> Product . TD Factor (3)
-            Factor -> LPAR Sum . RPAR (2)
-            Sum -> Sum . PM Product (3)
-
-            ==
-            Sum -> Sum PM . Product (3)
-            Product -> . Product TD Factor (7)
-            Product -> . Factor (7)
-            Factor -> . LPAR Sum RPAR (7)
-            Factor -> . NUMBER (7)
-
-            ==
-            Factor -> NUMBER . (7)
-            Product -> Factor . (7)
-            Sum -> Sum PM Product . (3)
-            Product -> Product . TD Factor (7)
-            Factor -> LPAR Sum . RPAR (2)
-            Sum -> Sum . PM Product (3)
-
-            ==
-            Factor -> LPAR Sum RPAR . (2)
-            Product -> Factor . (2)
-            Sum -> Sum PM Product . (0)
-            Product -> Product . TD Factor (2)
-            Sum -> Sum . PM Product (0)
-        );
-        let (recognised, _) = parser
-            .recognise(
-                &mut lexer
-                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
-            )
-            .unwrap()
-            .unwrap();
-        verify_sets(sets, recognised, &parser);
-    }
-
-    fn verify_sets(
-        sets: Vec<Vec<TestEarleyItem>>,
-        recognised: Vec<StateSet>,
-        parser: &EarleyParser,
-    ) {
-        assert_eq!(recognised.len(), sets.len());
-        for (set, (expected, recognised)) in
-            sets.iter().zip(recognised.iter()).enumerate()
-        {
-            assert_eq!(
-                expected.len(),
-                recognised.set.len(),
-                "Set #{} length does not match.",
-                set
-            );
-            for (item_nb, (test_item, item)) in
-                expected.iter().zip(recognised.set.iter()).enumerate()
-            {
-                test_item.matches(item, parser, set, item_nb);
-            }
-        }
-    }
-}
-
-pub fn print_sets(sets: &[StateSet], parser: &EarleyParser) {
+pub fn print_sets(sets: &[StateSet], parser: &EarleyParser, lexer: &Lexer) {
     for (i, set) in sets.iter().enumerate() {
         println!("=== {} ===", i);
         for item in set.slice() {
             let mut line = String::new();
             let rule = &parser.grammar().rules[item.rule];
-            line.push_str(&rule.name);
+            line.push_str(&parser.grammar().name_of[rule.id]);
             line.push_str(" -> ");
             for i in 0..item.position {
-                line.push_str(&rule.elements[i].name);
+                line.push_str(
+                    &rule.elements[i].name(lexer.grammar(), parser.grammar()),
+                );
                 line.push(' ');
             }
             line.push_str("• ");
             for i in item.position..rule.elements.len() {
-                line.push_str(&rule.elements[i].name);
+                line.push_str(
+                    &rule.elements[i].name(lexer.grammar(), parser.grammar()),
+                );
                 line.push(' ');
             }
             line.extend(format!("({})", item.origin).chars());
@@ -840,14 +52,18 @@ pub fn print_sets(sets: &[StateSet], parser: &EarleyParser) {
     }
 }
 
-pub fn print_final_sets(sets: &[FinalSet], parser: &EarleyParser) {
+pub fn print_final_sets(
+    sets: &[FinalSet],
+    parser: &EarleyParser,
+    lexer: &Lexer,
+) {
     for (i, set) in sets.iter().enumerate() {
         println!("=== {} ===", i);
         for item in &set.set.0 {
             let rule = &parser.grammar().rules[item.rule];
-            print!("{} -> ", rule.name);
+            print!("{} -> ", parser.grammar().name_of[rule.id]);
             for element in rule.elements.iter() {
-                print!("{}", element.name);
+                print!("{}", element.name(lexer.grammar(), parser.grammar()));
                 match &element.attribute {
                     Attribute::Indexed(i) => print!(".{}", i),
                     Attribute::Named(n) => print!(".{}", n),
@@ -980,7 +196,9 @@ pub struct EarleyGrammar {
     /// The nullables, indexed by NonTerminalId.
     nullables: Nullables,
     /// Maps the name of a non-terminal to its identifier.
-    name_map: HashMap<Rc<str>, NonTerminalId>,
+    id_of: HashMap<Rc<str>, NonTerminalId>,
+    /// Maps the non-terminal to its name
+    name_of: NonTerminalName,
     /// Maps the identifier of a non-terminal to the identifiers of its rules.
     /// Its rules are the rules of which it is the LHS.
     rules_of: RulesMap,
@@ -996,7 +214,8 @@ impl Grammar<'_> for EarleyGrammar {
     fn new(
         rules: GrammarRules,
         axioms: Axioms,
-        name_map: HashMap<Rc<str>, NonTerminalId>,
+        id_of: HashMap<Rc<str>, NonTerminalId>,
+        name_of: NonTerminalName,
     ) -> Result<Self> {
         let warnings = WarningSet::empty();
         let nb_non_terminals = axioms.len_as(); // Number of non terminals
@@ -1045,9 +264,18 @@ impl Grammar<'_> for EarleyGrammar {
             axioms,
             rules,
             nullables,
-            name_map,
+            id_of,
+            name_of,
             rules_of,
         })
+    }
+
+    fn name_of(&self, id: NonTerminalId) -> Rc<str> {
+        self.name_of[id].clone()
+    }
+
+    fn id_of(&self, name: Rc<str>) -> NonTerminalId {
+        self.id_of[&name].clone()
     }
 }
 
@@ -1300,7 +528,7 @@ impl EarleyParser {
                                 Attribute::Named(attr) => {
                                     if let AST::Node { attributes, .. } = item {
                                         (
-                                            key.as_str().into(),
+                                            key.clone(),
                                             attributes[attr.as_str()].clone(),
                                         )
                                     } else {
@@ -1310,7 +538,7 @@ impl EarleyParser {
                                 Attribute::Indexed(idx) => {
                                     if let AST::Terminal(token) = item {
                                         (
-                                            key.as_str().into(),
+                                            key.clone(),
                                             AST::Literal(Value::Str(Rc::from(
                                                 token.attributes()[idx]
                                                     .as_str(),
@@ -1320,12 +548,13 @@ impl EarleyParser {
                                         unreachable!()
                                     }
                                 }
-                                Attribute::None => (key.as_str().into(), item),
+                                Attribute::None => (key.clone(), item),
                             }
                         })
                     })
                     .collect::<HashMap<Rc<str>, _>>();
                 let mut removed: HashSet<Rc<str>> = HashSet::new();
+		let nonterminal = self.grammar.rules[rule].id;
                 let mut attributes: HashMap<_, _> = self.grammar.rules[rule]
                     .proxy
                     .iter()
@@ -1333,9 +562,10 @@ impl EarleyParser {
                         (
                             key.clone(),
                             wanted.evaluate(
+				nonterminal,
                                 &all_attributes,
                                 &mut removed,
-                                &self.grammar().name_map,
+                                &self.grammar().id_of,
                             ),
                         )
                     })
@@ -1345,7 +575,6 @@ impl EarleyParser {
                         .into_iter()
                         .filter(|(key, _)| !removed.contains(key)),
                 );
-                let nonterminal = self.grammar.rules[rule].id;
                 AST::Node {
                     nonterminal,
                     attributes,
@@ -1587,5 +816,971 @@ impl Parser<'_> for EarleyParser {
         // print_final_sets(&forest, self);
         let tree = self.select_ast(&forest, &raw_input);
         warnings.with_ok(ParseResult { tree })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::LexerGrammar;
+    use crate::rules;
+
+    use crate::{
+        lexer::LexerBuilder,
+        parser::grammarparser::{
+            Attribute, ElementType, Key, Proxy, Rule, RuleElement,
+        },
+    };
+
+    const GRAMMAR_NUMBERS_LEXER: &str = r#"
+NUMBER ::= ([0-9])
+PM ::= [-+]
+TD ::= [*/]
+LPAR ::= \(
+RPAR ::= \)
+"#;
+
+    const GRAMMAR_NUMBERS: &str = r#"
+@Sum ::= Sum@left PM Product@right <>
+ Product@self <>;
+
+Product ::= Product@left TD Factor@right <>
+ Factor.self@self <>;
+
+Factor ::= LPAR Sum@self RPAR <>
+ NUMBER.0@self <>;"#;
+
+    const GRAMMAR_PROXY_LEXER: &str = r#"
+NUMBER ::= ([0-9]+)
+OP ::= \+
+LPAR ::= \(
+RPAR ::= \)
+"#;
+    const GRAMMAR_PROXY: &str = r#"
+@Expression ::=
+  NUMBER.0@value <Literal>
+  Expression@left OP Expression@right <Operation>
+  OP Expression@right <Operation left: Expression {Literal value: "0"}>
+  LPAR Expression@value RPAR <Parenthesized>;
+"#;
+    const GRAMMAR_PROXY_WRONG_1: &str = r#"
+@Expression ::=
+  NUMBER.0@value <variant: Literal>
+  Expression@left OP Expression@right <variant: Operation>
+  OP Expression@right <
+    variant: Operation
+    left: Expression {variant: Literal value: "0"}
+  >
+  LPAR Expression@value RPAR <variant: Parenthesized>;
+"#;
+    const GRAMMAR_PROXY_WRONG_2: &str = r#"
+@Expression ::=
+  NUMBER.0@value <Literal>
+  Expression@left OP Expression@right <Operation>
+  OP Expression@right <
+    Operation
+    left: Expression {variant: Literal value: "0"}
+  >
+  LPAR Expression@value RPAR <Parenthesized>;
+"#;
+    const GRAMMAR_PROXY_WRONG_3: &str = r#"
+@Expression ::=
+  NUMBER.0@value <Literal>
+  Expression@left OP Expression@right <Operation>
+  OP Expression@right <
+    Operation,
+    left: Expression {Literal value: "0"}
+  >
+  LPAR Expression@value RPAR <Parenthesized>;
+"#;
+
+    const GRAMMAR_C_LEXER: &str = include_str!("petitc.lx");
+    const GRAMMAR_C: &str = include_str!("petitc.gr");
+
+    struct TestEarleyItem {
+        name: &'static str,
+        left_elements: Vec<&'static str>,
+        right_elements: Vec<&'static str>,
+        origin: usize,
+    }
+
+    impl TestEarleyItem {
+        fn matches(
+            &self,
+            other: &EarleyItem,
+            parser: &EarleyParser,
+            lexer: &Lexer,
+            set_id: usize,
+            item_id: usize,
+        ) {
+            let error_message =
+                format!("Set #{}, item #{}: no match:", set_id, item_id);
+            let item = &parser.grammar().rules[other.rule];
+            assert_eq!(
+                self.name,
+                &*parser.grammar().name_of[item.id],
+                "{} name.",
+                error_message
+            );
+            assert_eq!(
+                self.left_elements.len() + self.right_elements.len(),
+                item.elements.len(),
+                "{} origin set.\nExpected: [{:?}, {:?}]\nGot: {:?}",
+                error_message,
+                self.left_elements,
+                self.right_elements,
+                item.elements,
+            );
+            assert_eq!(
+                self.left_elements.len(),
+                other.position,
+                "{} fat dot position.",
+                error_message,
+            );
+            assert_eq!(
+                self.origin, other.origin,
+                "{} origin set.",
+                error_message
+            );
+            for i in 0..self.left_elements.len() {
+                assert_eq!(
+                    self.left_elements[i],
+                    &*item.elements[i].name(lexer.grammar(), parser.grammar()),
+                    "{} element #{}.",
+                    error_message,
+                    i
+                );
+            }
+            for i in 0..self.right_elements.len() {
+                assert_eq!(
+                    self.right_elements[i],
+                    &*item.elements[i + other.position]
+                        .name(lexer.grammar(), parser.grammar()),
+                    "{} elements #{}.",
+                    error_message,
+                    i + other.position
+                );
+            }
+        }
+    }
+
+    /// `sets!` eases the creation of mock Earley Sets.
+    /// Useful for tests.
+    ///
+    /// The syntax is aimed to be simple and intuitive, matching the one
+    /// usually used in the literature.
+    macro_rules! sets {
+	(
+	    $(
+		== $(
+		    $name: ident -> $($left_element: ident)* . $($right_element: ident)* ($origin: literal)
+		)*
+	    )*
+	) => {
+	    {
+		#[allow(unused_mut)]
+		let mut sets = Vec::new();
+		$(
+		    #[allow(unused_mut)]
+		    let mut set = Vec::new();
+		    $(
+			set.push(earley_item!($name -> $($left_element)* . $($right_element)* ($origin)));
+		)*
+			sets.push(set);
+		)*
+		    sets
+	    }
+	};
+    }
+
+    /// `earley_item` creates mock Earley Items.
+    /// Useful for tests.
+    macro_rules! earley_item {
+	($name: ident -> $($left_element: ident)* . $($right_element: ident)* ($origin: literal)) => {
+	    {
+		#[allow(unused_mut)]
+		let mut left_elements = Vec::new();
+		#[allow(unused_mut)]
+		let mut right_elements = Vec::new();
+		$(
+		    left_elements.push(stringify!($left_element));
+		)*
+		    $(
+			right_elements.push(stringify!($right_element));
+		    )*
+		    TestEarleyItem {
+			name: stringify!($name),
+			left_elements,
+			right_elements,
+			origin: $origin
+		    }
+	    }
+	};
+    }
+
+    macro_rules! final_sets {
+	(
+	    ($grammar:expr)
+            ($lexer:expr)
+	    $(
+		== $(
+		    $name: ident -> $($element: ident)* ($end: literal)
+		)*
+	    )*
+	) => {{
+	    #[allow(unused_mut)]
+	    let mut sets = Vec::new();
+	    fn find_item(grammar: &EarleyGrammar, lexer_grammar: &$crate::lexer::LexerGrammar, name: &str, elements: &[&str], end: usize) -> FinalItem {
+		for &rule_identifier in grammar
+		    .id_of
+		    .get(&Rc::from(name))
+		    .map(|&identifier| &grammar.rules_of[identifier])
+		    .expect(format!("The non-terminal {} does not exist.", name).as_str())
+		    .iter()
+		{
+		    if elements.len() == grammar
+			.rules[rule_identifier]
+			.elements.len()
+			&& elements
+			.iter()
+			.zip(grammar.rules[rule_identifier].elements.iter())
+			.all(|(&left, right)| left == &*right.name(lexer_grammar, grammar))
+		    {
+			return FinalItem {
+			    rule: rule_identifier,
+			    end
+			};
+		    }
+		}
+		panic!("The rule {} -> {} is not in the grammar.", name, elements.join(" "));
+	    }
+	    $(
+		#[allow(unused_mut)]
+		let mut set = FinalSet::default();
+		set.position = sets.len();
+		$(
+		    set.add(find_item($grammar, $lexer, stringify!($name), &[$(stringify!($element)),*], $end), $grammar);
+		)*
+		sets.push(set);
+	    )*
+	    sets
+	}};
+    }
+
+    #[derive(Debug)]
+    enum TestElementType {
+        Terminal,
+        NonTerminal,
+    }
+
+    impl PartialEq<ElementType> for TestElementType {
+        fn eq(&self, other: &ElementType) -> bool {
+            match (self, other) {
+                (Self::Terminal, ElementType::Terminal(..))
+                | (Self::NonTerminal, ElementType::NonTerminal(..)) => true,
+                _ => false,
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    struct TestElement {
+        name: String,
+        attribute: Attribute,
+        key: Option<Key>,
+        element_type: TestElementType,
+    }
+
+    impl TestElement {
+        fn matches(
+            &self,
+            other: &RuleElement,
+            parser_grammar: &EarleyGrammar,
+            lexer_grammar: &LexerGrammar,
+        ) -> bool {
+            self.name.as_str() == &*other.name(lexer_grammar, parser_grammar)
+                && self.key == other.key
+                && self.attribute == other.attribute
+                && self.element_type == other.element_type
+        }
+    }
+
+    #[derive(Debug)]
+    struct TestRule {
+        id: NonTerminalId,
+        elements: Vec<TestElement>,
+        proxy: Proxy,
+    }
+
+    impl TestRule {
+        fn matches(
+            &self,
+            other: &Rule,
+            parser_grammar: &EarleyGrammar,
+            lexer_grammar: &LexerGrammar,
+        ) -> bool {
+            self.id == other.id
+                && self.proxy == other.proxy
+                && self.elements.len() == other.elements.len()
+                && self.elements.iter().zip(other.elements.iter()).all(
+                    |(left, right)| {
+                        left.matches(right, parser_grammar, lexer_grammar)
+                    },
+                )
+        }
+    }
+
+    impl TestRule {
+        fn new(
+            name: impl Into<Rc<str>>,
+            elements: Vec<TestElement>,
+            proxy: Proxy,
+            grammar: &EarleyGrammar,
+        ) -> Self {
+            Self {
+                id: grammar.id_of[&*name.into()],
+                elements,
+                proxy,
+            }
+        }
+    }
+
+    #[derive(Debug)]
+    struct TestToken {
+        name: &'static str,
+        attributes: Vec<(usize, &'static str)>,
+    }
+
+    impl PartialEq<Token> for TestToken {
+        fn eq(&self, other: &Token) -> bool {
+            other.name() == self.name
+                && other
+                    .attributes()
+                    .iter()
+                    .map(|(&key, value)| (key, value.as_str()))
+                    .collect::<Vec<_>>()
+                    == self.attributes
+        }
+    }
+
+    impl TestToken {
+        #![allow(unused)]
+        fn new(name: &'static str, attributes: Vec<&'static str>) -> Self {
+            Self {
+                name,
+                attributes: attributes.into_iter().enumerate().collect(),
+            }
+        }
+    }
+
+    struct MapVec(Vec<(&'static str, TestAST)>);
+
+    impl std::fmt::Debug for MapVec {
+        fn fmt(
+            &self,
+            formatter: &mut std::fmt::Formatter<'_>,
+        ) -> std::fmt::Result {
+            formatter
+                .debug_map()
+                .entries(self.0.iter().map(|&(ref k, ref v)| (k, v)))
+                .finish()
+        }
+    }
+
+    impl From<Vec<(&'static str, TestAST)>> for MapVec {
+        fn from(o: Vec<(&'static str, TestAST)>) -> Self {
+            Self(o)
+        }
+    }
+
+    #[derive(Debug)]
+    enum TestAST {
+        Node {
+            id: usize,
+            attributes: MapVec,
+        },
+        #[allow(unused)]
+        Terminal(TestToken),
+        Literal(crate::parser::parser::Value),
+    }
+
+    impl PartialEq<TestAST> for AST {
+        fn eq(&self, other: &TestAST) -> bool {
+            other == self
+        }
+    }
+
+    impl PartialEq<AST> for TestAST {
+        fn eq(&self, other: &AST) -> bool {
+            match (self, other) {
+                (
+                    TestAST::Node {
+                        id: tid,
+                        attributes: tattributes,
+                    },
+                    AST::Node {
+                        nonterminal: id,
+                        attributes,
+                        ..
+                    },
+                ) => {
+                    NonTerminalId::from(*tid) == *id && {
+                        let tattributes = tattributes
+                            .0
+                            .iter()
+                            .map(|(key, value)| (Rc::<str>::from(*key), value))
+                            .collect::<HashMap<_, _>>();
+                        tattributes.len() == attributes.len()
+                            && tattributes.iter().all(|(key, value)| {
+                                attributes
+                                    .get(key)
+                                    .map_or(false, |v| *value == v)
+                            })
+                    }
+                }
+                (TestAST::Terminal(ttoken), AST::Terminal(token)) => {
+                    ttoken == token
+                }
+                (TestAST::Literal(tvalue), AST::Literal(value)) => {
+                    tvalue == value
+                }
+                _ => false,
+            }
+        }
+    }
+
+    #[inline]
+    fn verify(
+        rules1: &GrammarRules,
+        rules2: &[TestRule],
+        parser_grammar: &EarleyGrammar,
+        lexer_grammar: &LexerGrammar,
+    ) {
+        let length1 = rules1.0.len();
+        let length2 = rules2.len();
+        if length1 > length2 {
+            panic!("Grammar 1 is longer");
+        } else if length1 < length2 {
+            panic!("Grammar 2 is longer");
+        }
+        for (i, (r1, r2)) in rules1.0.iter().zip(rules2.iter()).enumerate() {
+            assert!(
+                r2.matches(r1, parser_grammar, lexer_grammar),
+                "rules #{} differ.\nExpected: {:?}\nGot: {:?}",
+                i,
+		r2,
+		r1,
+            );
+        }
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn earley_grammar_builder() {
+	use crate::lexer::LexerBuilder;
+        let lexer = LexerBuilder::default().build();
+        let grammar = EarleyGrammarBuilder::default().build(&lexer).unwrap().unwrap();
+	let expected_rules = 
+            rules!(
+		(&grammar)
+                StatementList ::=
+		    StatementList@left Statement@right <variant = str "Concat">
+		    Statement@this <variant = str "Through">;
+
+		Statement ::=
+		    Assignment@this !t SEMICOLON <variant = str "Assign">
+		    IfStatement@this <variant = str "If">
+		    WhileStatement@this <variant = str "While">;
+                
+                Expression ::=
+		    Expression@left !t PLUS Expression@right <variant = str "Add">
+		    Expression@left !t ASTERISK Expression@right <variant = str "Mul">
+		    Atom@this <variant = str "Through">;
+		
+                Atom ::=
+		    BuiltinType@this <variant = str "Builtin">
+		    !t LPAR Expression@this !t RPAR <variant = str "Through">;
+                
+                BuiltinType ::=
+		    !t INT.idx 0@value <variant = str "Int">
+		    !t STRING.idx 0@value <variant = str "String">
+		    !t ID.idx 0@value <variant = str "Id">
+		    !t TRUE <variant = str "True">
+		    !t FALSE <variant = str "False">;
+                
+                Assignment ::=
+		    !t ID.idx 0@key !t EQUALS Expression@value <>;
+                
+                WhileStatement ::=
+		    !t WHILE Expression@condition !t LBRACE StatementList@do !t RBRACE <>;
+		    
+                IfStatement ::=
+		    !t IF Expression@condition !t LBRACE
+		      StatementList@then !t
+		    RBRACE <variant = str "NoElse">
+		    !t IF Expression@condition !t LBRACE
+		      StatementList@then !t
+		    RBRACE !t ELSE !t LBRACE
+		      StatementList@else !t
+		    RBRACE <variant = str "Else">
+            );
+	println!("======\n{:#?}\n\n", grammar.rules);
+        verify(&grammar.rules, &expected_rules, &grammar, lexer.grammar());
+    }
+
+    #[test]
+    fn complex_proxy() {
+        let lexer = LexerBuilder::from_stream(StringStream::new(
+            Path::new("<PROXY>"),
+            GRAMMAR_PROXY_LEXER,
+        ))
+        .unwrap()
+        .unwrap()
+        .build();
+        EarleyGrammarBuilder::default()
+            .with_stream(StringStream::new(Path::new("<PROXY>"), GRAMMAR_PROXY))
+            .build(&lexer)
+            .unwrap()
+            .unwrap();
+        assert!(EarleyGrammarBuilder::default()
+            .with_stream(StringStream::new(
+                Path::new("<PROXY>"),
+                GRAMMAR_PROXY_WRONG_1
+            ))
+            .build(&lexer)
+            .is_err());
+        assert!(EarleyGrammarBuilder::default()
+            .with_stream(StringStream::new(
+                Path::new("<PROXY>"),
+                GRAMMAR_PROXY_WRONG_2
+            ))
+            .build(&lexer)
+            .is_err());
+        assert!(EarleyGrammarBuilder::default()
+            .with_stream(StringStream::new(
+                Path::new("<PROXY>"),
+                GRAMMAR_PROXY_WRONG_3
+            ))
+            .build(&lexer)
+            .is_err());
+    }
+
+    #[test]
+    fn recognise_handle_empty_rules() {
+        let lexer_input = r#""#;
+        let grammar_input = r#"
+@A ::= <>
+ B <>;
+B ::= A <>;"#;
+        let input = r#""#;
+        let lexer = LexerBuilder::from_stream(StringStream::new(
+            Path::new("<lexer input>"),
+            lexer_input,
+        ))
+        .unwrap()
+        .unwrap()
+        .build();
+        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
+            .with_stream(StringStream::new(
+                Path::new("<grammar input>"),
+                grammar_input,
+            ))
+            .build(&lexer)
+            .unwrap()
+            .unwrap();
+        let parser = EarleyParser::new(grammar);
+        let sets = sets!(
+            ==
+            A -> . (0)
+            A -> . B (0)
+            B -> . A (0)
+            A -> B . (0)
+            B -> A . (0)
+        );
+        let (recognised, _) = parser
+            .recognise(
+                &mut lexer
+                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
+            )
+            .unwrap()
+            .unwrap();
+        print_sets(&recognised, &parser, &lexer);
+        verify_sets(sets, recognised, &parser, &lexer);
+    }
+
+    #[test]
+    fn grammar_c() {
+        let input = r#"
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
+
+int main() {
+  return sizeof(bool ****);
+}
+"#;
+        let lexer = LexerBuilder::from_stream(StringStream::new(
+            Path::new("petitc.lx"),
+            GRAMMAR_C_LEXER,
+        ))
+        .unwrap()
+        .unwrap()
+        .build();
+
+        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
+            .with_stream(StringStream::new(Path::new("petitc.gr"), GRAMMAR_C))
+            .build(&lexer)
+            .unwrap()
+            .unwrap();
+        let parser = EarleyParser::new(grammar);
+        let ast = parser
+            .parse(
+                &mut lexer
+                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
+            )
+            .unwrap()
+            .unwrap();
+    }
+
+    #[test]
+    fn ast_builder() {
+        let input = r#"1+(2*3-4)"#;
+
+        let lexer = LexerBuilder::from_stream(StringStream::new(
+            Path::new("<lexer input>"),
+            GRAMMAR_NUMBERS_LEXER,
+        ))
+        .unwrap()
+        .unwrap()
+        .build();
+        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
+            .with_stream(StringStream::new(
+                Path::new("<grammar input>"),
+                GRAMMAR_NUMBERS,
+            ))
+            .build(&lexer)
+            .unwrap()
+            .unwrap();
+        let parser = EarleyParser::new(grammar);
+        let (table, raw_input) = parser
+            .recognise(
+                &mut lexer
+                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
+            )
+            .unwrap()
+            .unwrap();
+        let forest = parser.to_forest(&table, &raw_input).unwrap().unwrap();
+        let ast = parser.select_ast(&forest, &raw_input);
+
+        let test_ast = {
+            use crate::parser::parser::Value::*;
+            use TestAST::*;
+            Node {
+                id: 0,
+                attributes: vec![
+                    (
+                        "right",
+                        Node {
+                            id: 1,
+                            attributes: vec![(
+                                "self",
+                                Node {
+                                    id: 0,
+                                    attributes: vec![
+                                        (
+                                            "right",
+                                            Node {
+                                                id: 1,
+                                                attributes: vec![(
+                                                    "self",
+                                                    Literal(Str("4".into())),
+                                                )]
+                                                .into(),
+                                            },
+                                        ),
+                                        (
+                                            "left",
+                                            Node {
+                                                id: 0,
+                                                attributes: vec![(
+                                                    "self",
+                                                    Node {
+                                                        id: 1,
+                                                        attributes: vec![
+                                                            (
+                                                                "right",
+                                                                Node {
+                                                                    id: 2,
+                                                                    attributes: vec![(
+                                                                        "self",
+                                                                        Literal(Str(
+                                                                            "3".into()
+                                                                        )),
+                                                                    )]
+                                                                    .into(),
+                                                                },
+                                                            ),
+                                                            (
+                                                                "left",
+                                                                Node {
+                                                                    id: 1,
+                                                                    attributes: vec![(
+                                                                        "self",
+                                                                        Literal(Str(
+                                                                            "2".into()
+                                                                        )),
+                                                                    )]
+                                                                    .into(),
+                                                                },
+                                                            ),
+                                                        ]
+                                                        .into(),
+                                                    },
+                                                )]
+                                                .into(),
+                                            },
+                                        ),
+                                    ]
+                                    .into(),
+                                },
+                            )]
+                            .into(),
+                        },
+                    ),
+                    (
+                        "left",
+                        Node {
+                            id: 0,
+                            attributes: vec![(
+                                "self",
+                                Node {
+                                    id: 1,
+                                    attributes: vec![("self", Literal(Str("1".into())))]
+                                        .into(),
+                                },
+                            )]
+                            .into(),
+                        },
+                    ),
+                ]
+                .into(),
+            }
+        };
+
+        assert_eq!(ast, test_ast);
+    }
+
+    #[test]
+    fn forest_builder() {
+        let input = r#"1+(2*3-4)"#;
+
+        let lexer = LexerBuilder::from_stream(StringStream::new(
+            Path::new("<lexer input>"),
+            GRAMMAR_NUMBERS_LEXER,
+        ))
+        .unwrap()
+        .unwrap()
+        .build();
+        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
+            .with_stream(StringStream::new(
+                Path::new("<grammar input>"),
+                GRAMMAR_NUMBERS,
+            ))
+            .build(&lexer)
+            .unwrap()
+            .unwrap();
+
+        let parser = EarleyParser::new(grammar);
+        let sets = final_sets!(
+            (parser.grammar())
+        (lexer.grammar())
+            ==
+            Factor -> NUMBER (1)
+            Product -> Factor (1)
+            Sum -> Product (1)
+            Sum -> Sum PM Product (9)
+
+            ==
+
+            ==
+            Factor -> LPAR Sum RPAR (9)
+            Product -> Factor (9)
+
+            ==
+            Factor -> NUMBER (4)
+            Product -> Factor (4)
+            Sum -> Product (4)
+            Product -> Product TD Factor (6)
+            Sum -> Product (6)
+            Sum -> Sum PM Product (8)
+
+            ==
+
+            ==
+            Factor -> NUMBER (6)
+
+            ==
+
+        ==
+        Factor -> NUMBER (8)
+            Product -> Factor (8)
+
+            ==
+
+            ==
+            );
+
+        let (table, raw_input) = parser
+            .recognise(
+                &mut lexer
+                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
+            )
+            .unwrap()
+            .unwrap();
+        let forest = parser.to_forest(&table, &raw_input).unwrap().unwrap();
+        assert_eq!(
+            forest,
+            sets,
+            "Parsed forest:\n{}\nExpected forest:\n{}",
+            forest
+                .iter()
+                .map(|set| format!("{}", set))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            sets.iter()
+                .map(|set| format!("{}", set))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    #[test]
+    fn recogniser() {
+        let input = r#"1+(2*3-4)"#;
+
+        let lexer = LexerBuilder::from_stream(StringStream::new(
+            Path::new("<lexer input>"),
+            GRAMMAR_NUMBERS_LEXER,
+        ))
+        .unwrap()
+        .unwrap()
+        .build();
+        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
+            .with_stream(StringStream::new(
+                Path::new("<grammar input>"),
+                GRAMMAR_NUMBERS,
+            ))
+            .build(&lexer)
+            .unwrap()
+            .unwrap();
+        println!("{:#?}", grammar);
+        let parser = EarleyParser::new(grammar);
+        let sets = sets!(
+            ==
+            Sum -> . Sum PM Product (0)
+            Sum -> . Product (0)
+            Product -> . Product TD Factor (0)
+            Product -> . Factor (0)
+            Factor -> . LPAR Sum RPAR (0)
+            Factor -> . NUMBER (0)
+
+            ==
+            Factor -> NUMBER . (0)
+            Product -> Factor . (0)
+            Sum -> Product . (0)
+            Product -> Product . TD Factor (0)
+            Sum -> Sum . PM Product (0)
+
+            ==
+            Sum -> Sum PM . Product (0)
+            Product -> . Product TD Factor (2)
+            Product -> . Factor (2)
+            Factor -> . LPAR Sum RPAR (2)
+            Factor -> . NUMBER (2)
+
+            ==
+            Factor -> LPAR . Sum RPAR (2)
+            Sum -> . Sum PM Product (3)
+            Sum -> . Product (3)
+            Product -> . Product TD Factor (3)
+            Product -> . Factor (3)
+            Factor -> . LPAR Sum RPAR (3)
+            Factor -> . NUMBER (3)
+
+            ==
+            Factor -> NUMBER . (3)
+            Product -> Factor . (3)
+            Sum -> Product . (3)
+            Product -> Product . TD Factor (3)
+            Factor -> LPAR Sum . RPAR (2)
+            Sum -> Sum . PM Product (3)
+
+            ==
+            Product -> Product TD . Factor (3)
+            Factor -> . LPAR Sum RPAR (5)
+            Factor -> . NUMBER (5)
+
+            ==
+            Factor -> NUMBER . (5)
+            Product -> Product TD Factor . (3)
+            Sum -> Product . (3)
+            Product -> Product . TD Factor (3)
+            Factor -> LPAR Sum . RPAR (2)
+            Sum -> Sum . PM Product (3)
+
+            ==
+            Sum -> Sum PM . Product (3)
+            Product -> . Product TD Factor (7)
+            Product -> . Factor (7)
+            Factor -> . LPAR Sum RPAR (7)
+            Factor -> . NUMBER (7)
+
+            ==
+            Factor -> NUMBER . (7)
+            Product -> Factor . (7)
+            Sum -> Sum PM Product . (3)
+            Product -> Product . TD Factor (7)
+            Factor -> LPAR Sum . RPAR (2)
+            Sum -> Sum . PM Product (3)
+
+            ==
+            Factor -> LPAR Sum RPAR . (2)
+            Product -> Factor . (2)
+            Sum -> Sum PM Product . (0)
+            Product -> Product . TD Factor (2)
+            Sum -> Sum . PM Product (0)
+        );
+        let (recognised, _) = parser
+            .recognise(
+                &mut lexer
+                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
+            )
+            .unwrap()
+            .unwrap();
+        verify_sets(sets, recognised, &parser, &lexer);
+    }
+
+    fn verify_sets(
+        sets: Vec<Vec<TestEarleyItem>>,
+        recognised: Vec<StateSet>,
+        parser: &EarleyParser,
+        lexer: &Lexer,
+    ) {
+        assert_eq!(recognised.len(), sets.len());
+        for (set, (expected, recognised)) in
+            sets.iter().zip(recognised.iter()).enumerate()
+        {
+            assert_eq!(
+                expected.len(),
+                recognised.set.len(),
+                "Set #{} length does not match.",
+                set
+            );
+            for (item_nb, (test_item, item)) in
+                expected.iter().zip(recognised.set.iter()).enumerate()
+            {
+                test_item.matches(item, parser, lexer, set, item_nb);
+            }
+        }
     }
 }

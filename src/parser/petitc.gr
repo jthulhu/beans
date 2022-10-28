@@ -1,0 +1,136 @@
+Option[content] ::=
+  <None>
+  content@value <Some>;
+
+List[content, separation] ::=
+  <Nil>
+  content@head Option[separation] <Cons tail: Self{Nil}>
+  content@head separation List[content, separation]@tail <Cons>;
+
+Empty ::=
+  <>;
+
+@File ::=
+  List[INCLUDE, Empty] List[FunctionDeclaration, Empty]@decls <>;
+
+FunctionDeclaration ::=
+  Type@rettype IDENT.0@name LPAR List[TypedParam, COMMA]@args RPAR Block@block <>;
+
+Type ::=
+  VOID <Void>
+  INTTY <Int>
+  BOOL <Bool>
+  Type@pointed ASTERISK <Pointer>;
+
+TypedParam ::=
+  Type@type IDENT@name <>;
+
+Int ::=
+  INT.0@value <Int>
+  CHAR.0@value <Char>;
+
+Bool ::=
+  TRUE <True>
+  FALSE <False>;
+
+Expr ::=
+  SIZEOF LPAR Type@type RPAR <Sizeof>
+  IDENT.0@name LPAR List[Expr, COMMA]@args RPAR <Call>
+  EqualExpr@this <Through>;
+
+EqualExpr ::=
+  OrExpr@key EQUAL EqualExpr@value <Assign>
+  OrExpr@this <Through>;
+
+OrExpr ::=
+  AndExpr@left OR OrExpr@right <Or>
+  AndExpr@this <Through>;
+
+AndExpr ::=
+  EqExpr@left AND AndExpr@right <Op>
+  EqExpr@this <Through>;
+
+EqExpr ::=
+  CmpExpr@left EQ EqExpr@right <Equal>
+  CmpExpr@left NEQ EqExpr@right <NotEqual>
+  CmpExpr@this <Through>;
+
+CmpExpr ::=
+  PmExpr@left LT CmpExpr@right <Lt>
+  PmExpr@left GT CmpExpr@right <Gt>
+  PmExpr@left GEQ CmpExpr@right <Geq>
+  PmExpr@left LEQ CmpExpr@right <Leq>
+  PmExpr@this <Through>;
+
+PmExpr ::=
+  MdmExpr@left PLUS PmExpr@right <Add>
+  MdmExpr@left MINUS PmExpr@right <Sub>
+  MdmExpr@this <Through>;
+
+MdmExpr ::=
+  UnaryExpr@left ASTERISK MdmExpr@right <Mul>
+  UnaryExpr@left SLASH MdmExpr@right <Div>
+  UnaryExpr@left PERCENT MdmExpr@right <Mod>
+  UnaryExpr@this <Through>;
+
+UnaryExpr ::=
+  EXCLAM UnaryExpr@value <Not>
+  PLUSPLUS UnaryExpr@value <Incrl>
+  UnaryExpr@value PLUSPLUS <Incrr>
+  MINUSMINUS UnaryExpr@value <Decrl>
+  UnaryExpr@value MINUSMINUS <Decrr>
+  AMPERSAND UnaryExpr@value <Borrow>
+  ASTERISK UnaryExpr@value <Deref>
+  PLUS UnaryExpr@value <Plus>
+  MINUS UnaryExpr@value <Minus>
+  IndexExpr@this <Through>;
+
+IndexExpr ::=
+  IndexExpr@array LBRACKET Expr@index RBRACKET <
+    Deref
+    value: PmExpr {
+      Add
+      left: array
+      right: index
+    }
+  >
+  LiteralExpr@this <Through>;
+
+LiteralExpr ::=
+  Int@value <Int>
+  Bool@value <Bool>
+  NULL <Null>
+  LPAR Expr@this RPAR <Through>;
+
+Statement ::=
+  SEMICOLON <None>
+  Expr@stmt SEMICOLON <Regular>
+  IF LPAR Expr@condition RPAR Statement@then Option[Else]@else <If>
+  WHILE LPAR Expr@condition RPAR Statement@stmts <While>
+  FOR
+    LPAR
+      Option[VariableDeclaration]@init SEMICOLON
+      Option[Expr]@test SEMICOLON
+      List[Expr, COMMA]@step
+    RPAR
+    Statement@block <For>
+  Block@stmts <Block>
+  RETURN Option[Expr]@value SEMICOLON <Return>
+  BREAK SEMICOLON <Break>
+  CONTINUE SEMICOLON <Continue>;
+
+Else ::=
+  ELSE Statement@else <>;
+
+Block ::=
+  LBRACE List[DeclStatement, Empty]@stmts RBRACE <>;
+
+DeclStatement ::=
+  VariableDeclaration@declaration <Declaration>
+  Statement@stmt <Statement>;
+
+VariableDeclaration ::=
+  Type@type IDENT.0@name Option[Definition] <>;
+
+Definition ::=
+  EQUAL Expr@value <>;

@@ -236,14 +236,14 @@ fn main() -> anyhow::Result<()> {
                 parser.recognise(&mut input)?.unpack_into(&mut warnings);
 	    if print_table {
 		println!(" ### TABLE ###");
-		print_sets(&table, &parser);
+		print_sets(&table, &parser, &lexer);
 	    }
             let forest = parser
                 .to_forest(&table, &raw_input)?
                 .unpack_into(&mut warnings);
             if print_final_table {
 		println!(" ### FINAL TABLE ###");
-		print_final_sets(&forest, &parser);
+		print_final_sets(&forest, &parser, &lexer);
 	    }
             let ast = parser.select_ast(&forest, &raw_input);
             let mut tree = TreeBuilder::new(String::from("AST"));

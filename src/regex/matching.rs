@@ -12,7 +12,7 @@ mod tests {
         // Test the regexp (a+)(b+)
         let (program, nb_groups) = compile("(a+)(b+)", TerminalId(0)).unwrap();
         let Match {
-            pos: end,
+            char_pos: end,
             id: idx,
             groups: results,
         } = find(&program, "aabbb", nb_groups, &Allowed::All).unwrap();
@@ -25,7 +25,7 @@ mod tests {
     fn chars() {
         let (program, nb_groups) = compile("ab", TerminalId(0)).unwrap();
         let Match {
-            pos: end,
+            char_pos: end,
             id: idx,
             groups: results,
         } = find(&program, "abb", nb_groups, &Allowed::All).unwrap();
@@ -41,9 +41,9 @@ mod tests {
         let text1 = "/* hello, world */#and other stuff";
         let text2 = "/* hello,\nworld */#and other stuff";
         let text3 = "/* unicode éèàç */#and other stuff";
-        let Match { pos: end, id, .. } = find(
+        let Match { char_pos: end, id, .. } = find(
             &program,
-            &text1.chars().collect::<Vec<_>>(),
+            text1,
             nb_groups,
             &Allowed::All,
         )
@@ -51,9 +51,9 @@ mod tests {
         assert_eq!(id, TerminalId(0));
         assert_eq!(end, 18);
         assert_eq!(text1.chars().nth(end).unwrap(), '#');
-        let Match { pos: end, id, .. } = find(
+        let Match { char_pos: end, id, .. } = find(
             &program,
-            &text2.chars().collect::<Vec<_>>(),
+            text2,
             nb_groups,
             &Allowed::All,
         )
@@ -61,9 +61,9 @@ mod tests {
         assert_eq!(id, TerminalId(0));
         assert_eq!(end, 18);
         assert_eq!(text2.chars().nth(end).unwrap(), '#');
-        let Match { pos: end, id, .. } = find(
+        let Match { char_pos: end, id, .. } = find(
             &program,
-            &text3.chars().collect::<Vec<_>>(),
+            text3,
             nb_groups,
             &Allowed::All,
         )
@@ -108,7 +108,7 @@ mod tests {
     fn greedy() {
         let (program, nb_groups) = compile("(a+)(a+)", TerminalId(0)).unwrap();
         let Match {
-            pos: end,
+            char_pos: end,
             id: idx,
             groups: results,
         } = find(&program, "aaaa", nb_groups, &Allowed::All).unwrap();
@@ -121,7 +121,7 @@ mod tests {
     fn partial() {
         let (program, nb_groups) = compile("a+", TerminalId(0)).unwrap();
         let Match {
-            pos: end,
+            char_pos: end,
             id: idx,
             groups: results,
         } = find(&program, "aaabcd", nb_groups, &Allowed::All).unwrap();
@@ -214,7 +214,7 @@ impl Allowed {
 /// `groups` is a vector of all the groups defined by the regex that led to the match. The groups `i` owns items `2*i`
 ///   and `2*i+1`, respectivly the start position (inclusive) and the end position (exclusive) of the match.
 pub struct Match {
-    pub pos: usize,
+    pub char_pos: usize,
     pub id: TerminalId,
     pub groups: Vec<Option<usize>>,
 }
@@ -343,8 +343,8 @@ impl Thread {
     }
 
     /// Set the *group* register `idx` value to `pos`.
-    fn save(&mut self, idx: usize, pos: usize) {
-        self.groups[idx] = Some(pos);
+    fn save(&mut self, idx: usize, bytes_pos: usize) {
+        self.groups[idx] = Some(bytes_pos);
     }
 }
 
@@ -352,7 +352,8 @@ impl Thread {
 #[allow(clippy::too_many_arguments)]
 fn match_next(
     chr: char,
-    pos: usize,
+    bytes_pos: usize,
+    chars_pos: usize,
     mut thread: Thread,
     current: &mut ThreadList,
     next: Option<&mut ThreadList>,
@@ -415,7 +416,7 @@ fn match_next(
             current.add(thread);
         }
         Instruction::Save(idx) => {
-            thread.save(*idx, pos);
+            thread.save(*idx, bytes_pos);
             advance(thread, Some(current));
         }
         Instruction::Switch(instructions) => {
@@ -438,19 +439,19 @@ fn match_next(
         }
         Instruction::Match(id) => {
             if let Some(Match {
-                pos: p, id: prior, ..
+                char_pos: p, id: prior, ..
             }) = best_match
             {
-                if pos > *p || *prior > *id {
+                if chars_pos > *p || *prior > *id {
                     *best_match = Some(Match {
-                        pos,
+                        char_pos: chars_pos,
                         id: *id,
                         groups: thread.groups,
                     });
                 }
             } else {
                 *best_match = Some(Match {
-                    pos,
+                    char_pos: chars_pos,
                     id: *id,
                     groups: thread.groups,
                 });
@@ -491,12 +492,14 @@ pub fn find(
     );
     let mut best_match = None;
     let mut last = None;
-    for (pos, chr) in input.chars().enumerate() {
+    let mut bytes_pos = 0;
+    for (chars_pos, chr) in input.chars().enumerate() {
         let mut next = ThreadList::new(prog.len());
         while let Some(thread) = current.get() {
             match_next(
                 chr,
-                pos,
+		bytes_pos,
+                chars_pos,
                 thread,
                 &mut current,
                 Some(&mut next),
@@ -508,12 +511,14 @@ pub fn find(
         }
         current = next;
         last = Some(chr);
+	bytes_pos += chr.len_utf8();
     }
-    let pos = input.len();
+    let chars_pos = input.len();
     while let Some(thread) = current.get() {
         match_next(
             '#',
-            pos,
+	    bytes_pos,
+            chars_pos,
             thread,
             &mut current,
             None,

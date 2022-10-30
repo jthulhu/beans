@@ -12,36 +12,38 @@ mod tests {
     fn string_stream() {
         let string = "What a nice content,\nall in a single stream!";
         let origin = Path::new("somewhere");
-        let stream = StringStream::new(origin, string);
-        assert_eq!(stream.borrow().as_str(), &*string);
-        for &i in [0, 3, 5, 17, string.len(), string.len() + 2].iter() {
-            let (chr, loc) = stream.get_at(i).unwrap();
-            if i < string.len() {
-                if let Char::Char(chr) = chr {
-                    assert_eq!(chr, string.chars().nth(i).unwrap());
-                } else {
-                    panic!(
-                        "There is a char at position {} of {}, and yet it was not in the stream",
-                        i, &string
-                    );
+        let mut stream = StringStream::new(origin, string);
+        assert_eq!(stream.peek(), &*string);
+        for chr in string.chars() {
+            let got_char = stream.get();
+            match got_char {
+                Char::Char(c) => assert_eq!(chr, c),
+                Char::EOF => {
+                    panic!("Found EOF in stream, while expecting {}", chr)
                 }
-                let location = Location::from_stream_pos(origin, string, i, i);
-                assert_eq!(location, loc);
-            } else {
-                if let Char::Char(_) = chr {
-                    panic!(
-                        "There is no char at position {} of {}, and yet there is one in the stream",
-                        i, &string
-                    );
-                }
-                let location = Location::from_stream_pos(
-                    origin,
-                    string,
-                    string.len(),
-                    string.len(),
-                );
-                assert_eq!(location, loc);
             }
+            stream.incr_pos();
+        }
+        assert!(matches!(stream.get(), Char::EOF));
+    }
+
+    #[test]
+    fn unicode() {
+        let string = "До́брый день.";
+        let origin = Path::new("Russia");
+        let mut stream = StringStream::new(origin, string);
+        assert_eq!(stream.peek(), &*string);
+        let mut curr_pos = 0;
+        for chr in string.chars() {
+            match stream.get() {
+                Char::Char(c) => assert_eq!(chr, c),
+                Char::EOF => {
+                    panic!("Found EOF in stream, while expecting {}", chr)
+                }
+            }
+            assert_eq!(&string[curr_pos..], stream.peek());
+            stream.incr_pos();
+            curr_pos += chr.len_utf8();
         }
     }
 }
@@ -49,7 +51,7 @@ mod tests {
 /// The type of data returned by the stream.
 /// Is a tuple of two elements, the element
 /// at a given index and its location.
-pub type StreamObject<T> = (T, Location);
+pub type StreamObject<T> = (T, Span);
 
 /// # Summary
 ///
@@ -86,7 +88,7 @@ pub trait Stream<'a> {
     }
 
     /// Get the location of the object at position `pos`.
-    fn get_loc_of(&'a self, pos: usize) -> Option<Location> {
+    fn get_loc_of(&'a self, pos: usize) -> Option<Span> {
         self.get_at(pos).map(|(_, location)| location)
     }
 
@@ -127,11 +129,13 @@ pub enum Char {
 /// `is_empty`: whether the stream is empty
 pub struct StringStream {
     origin: Rc<Path>,
-    stream: Vec<(char, Location)>,
-    pos: usize,
+    // Stores, for each character, its span and its size.
+    spans: Vec<((usize, usize), usize)>,
+    stream: Rc<str>,
+    bytes_pos: usize,
+    chars_pos: usize,
     length: usize,
-    end_pos: Location,
-    location_builder: LocationBuilder,
+    eof_span: Span,
 }
 
 impl StringStream {
@@ -144,10 +148,10 @@ impl StringStream {
         let string = string.into();
         let mut current_char = 0;
         let mut current_line = 0;
-        let mut stream = Vec::new();
+        let mut spans = Vec::new();
         for chr in string.chars() {
-            let pos = (current_line, current_char);
-            stream.push((chr, Location::new(origin.clone(), pos, pos)));
+            let start_pos = (current_line, current_char);
+            spans.push((start_pos, chr.len_utf8()));
             if chr == '\n' {
                 current_line += 1;
                 current_char = 0;
@@ -157,11 +161,12 @@ impl StringStream {
         }
         Self {
             origin: origin.clone(),
-            length: stream.len(),
-            stream,
-            pos: 0,
-            location_builder: LocationBuilder::new(origin.clone(), string),
-            end_pos: Location::new(
+            length: spans.len(),
+            stream: string,
+            spans,
+            bytes_pos: 0,
+            chars_pos: 0,
+            eof_span: Span::new(
                 origin,
                 (current_line, current_char),
                 (current_line, current_char),
@@ -181,29 +186,45 @@ impl StringStream {
         )))
     }
 
+    pub fn pos(&self) -> usize {
+        self.chars_pos
+    }
+
     /// Return a boolean corresponding to whether the substring of
     /// the `StringStream` that starts at the current position matches
-    /// the given string.
+    /// thecd given string.
     pub fn continues(&self, keyword: &str) -> bool {
-        let size = keyword.len();
-        if self.pos + size > self.length {
-            return false;
+        self.peek().starts_with(keyword)
+    }
+
+    pub fn shift(&mut self, length: usize) {
+        for _ in 0..length {
+            self.incr_pos();
         }
-        let mut result = true;
-        let mut chars = keyword.chars();
-        for i in 0..size {
-            if self.stream[self.pos + i].0 != chars.next().unwrap() {
-                result = false;
-                break;
-            }
-        }
-        result
+    }
+
+    pub fn incr_pos(&mut self) {
+        self.bytes_pos += self.spans[self.chars_pos].1;
+        self.chars_pos += 1;
+    }
+
+    pub fn decr_pos(&mut self) {
+        self.chars_pos -= 1;
+        self.bytes_pos -= self.spans[self.chars_pos].1;
     }
 
     /// Return a string slice corresponding to the
-    /// underlying string.
-    pub fn borrow(&self) -> String {
-        self.stream.iter().map(|(chr, _)| chr).collect()
+    /// underlying string, starting at the position of the stream.
+    pub fn peek(&self) -> &str {
+        &self.stream[self.bytes_pos..]
+    }
+
+    pub fn get(&self) -> Char {
+        self.peek()
+            .chars()
+            .next()
+            .map(Char::Char)
+            .unwrap_or(Char::EOF)
     }
 
     /// Return the origin file of the [`StringStream`].
@@ -213,38 +234,56 @@ impl StringStream {
 
     /// Return the length of the stream.
     pub fn len(&self) -> usize {
-        self.stream.len()
+        self.length
     }
 
     /// Return is the stream is empty.
     pub fn is_empty(&self) -> bool {
-        self.stream.is_empty()
+        self.chars_pos == self.length
     }
 
-    /// Return a [`Location`] struct that represents a span of text, specified by the beginning and ending character in the stream.
-    pub fn loc_at(&self, start: usize, end: usize) -> Location {
-        self.location_builder.from(start, end)
+    pub fn curr_span(&self) -> Span {
+        if self.chars_pos == self.spans.len() {
+            self.eof_span.clone()
+        } else {
+            let (line, column) = self.spans[self.chars_pos].0;
+            Span::new(self.origin.clone(), (line, column), (line, column + 1))
+        }
+    }
+
+    pub fn span_between(&self, start: usize, end: usize) -> Span {
+        let start_location = self
+            .spans
+            .get(start)
+            .map(|x| x.0)
+            .unwrap_or_else(|| self.eof_span.start());
+        let end_location = self
+            .spans
+            .get(end)
+            .map(|x| x.0)
+            .unwrap_or_else(|| self.eof_span.end());
+        Span::new(self.origin.clone(), start_location, end_location)
     }
 }
 
-impl Stream<'_> for StringStream {
-    type Output = Char;
-    fn get_at(&self, pos: usize) -> Option<StreamObject<Self::Output>> {
-        Some(match self.stream.get(pos) {
-            Some((chr, pos)) => (Char::Char(*chr), pos.clone()),
-            None => (Char::EOF, self.end_pos.clone()),
-        })
-    }
-    fn set_pos(&mut self, pos: usize) {
-        self.pos = pos;
-    }
-    fn pos(&self) -> usize {
-        self.pos
-    }
-}
+// impl Stream<'_> for StringStream {
+//     type Output = Char;
+//     fn get_at(&self, pos: usize) -> Option<StreamObject<Self::Output>> {
+//         Some(match self.stream.get(pos) {
+//             Some((chr, pos)) => (Char::Char(*chr), pos.clone()),
+//             None => (Char::EOF, self.end_pos.clone()),
+//         })
+//     }
+//     fn set_pos(&mut self, pos: usize) {
+//         self.pos = pos;
+//     }
+//     fn pos(&self) -> usize {
+//         self.pos
+//     }
+// }
 
 impl std::fmt::Debug for StringStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.borrow().fmt(f)
+        self.peek().fmt(f)
     }
 }

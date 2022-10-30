@@ -301,7 +301,7 @@ mod tests {
             test_token!(AT),
             id_token!(this),
             test_token!(LPROXY),
-	    id_token!(Builtin),
+            id_token!(Builtin),
             test_token!(RPROXY),
             id_token!(LPAR),
             id_token!(Expression),
@@ -309,7 +309,7 @@ mod tests {
             id_token!(this),
             id_token!(RPAR),
             test_token!(LPROXY),
-	    id_token!(Through),
+            id_token!(Through),
             test_token!(RPROXY),
             test_token!(SEMICOLON),
             // Expression
@@ -339,7 +339,7 @@ mod tests {
             test_token!(AT),
             id_token!(this),
             test_token!(LPROXY),
-	    id_token!(Through),
+            id_token!(Through),
             test_token!(RPROXY),
             test_token!(SEMICOLON),
             // Statement
@@ -382,7 +382,7 @@ mod tests {
             test_token!(AT),
             id_token!(this),
             test_token!(LPROXY),
-	    id_token!(Through),
+            id_token!(Through),
             test_token!(RPROXY),
             test_token!(SEMICOLON),
         ];
@@ -599,38 +599,39 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
     fn lex_next(&mut self, allowed: Allowed) -> Result<bool> {
         let warnings = WarningSet::empty();
         'lex: loop {
-            if self.stream.pos() == self.stream.len() {
+            if self.stream.is_empty() {
                 break 'lex warnings.with_ok(false);
             } else if let Some(result) = self
                 .lexer
                 .grammar()
                 .pattern()
-                .find(&self.stream.borrow()[self.stream.pos()..], &allowed)
+                .find(self.stream.peek(), &allowed)
             {
-                let start = self.stream.pos();
-                let end = start + result.length();
-                self.stream.set_pos(end);
-                if self.lexer.grammar().ignored(result.id()) {
-                    continue;
-                }
-                let location = self.stream.loc_at(start, end);
                 let name = result.name().to_string();
                 let mut attributes = HashMap::new();
                 for (i, attr) in result.groups().iter().enumerate() {
                     if let Some(a) = attr {
-                        attributes.insert(i, a.text().to_string());
+                        attributes
+                            .insert(i, a.text(self.stream.peek()).to_string());
                     }
                 }
+                let start = self.stream.pos();
+                self.stream.shift(result.chars_length());
+                let end = self.stream.pos();
+		println!("{} -> {}: {}", start, end, result.chars_length());
+                if self.lexer.grammar().ignored(result.id()) {
+                    continue;
+                }
+                let span = self.stream.span_between(start, end);
                 let id = self.lexer.grammar.id(&name).unwrap();
-                let token = Token::new(name, id, attributes, location.clone());
-                self.last_location = location;
+		println!("lexed {} {}", name, span);
+                let token = Token::new(name, id, attributes, span.clone());
+                self.last_location = span;
                 self.tokens.push((start, token));
                 break 'lex warnings.with_ok(true);
             } else {
                 break 'lex Err(Error::LexingError {
-                    location: Fragile::new(
-                        self.stream.get_at(self.stream.pos()).unwrap().1,
-                    ),
+                    location: Fragile::new(self.stream.curr_span()),
                     message: String::from("cannot recognize a token here"),
                 });
             }
@@ -638,7 +639,7 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
     }
 
     /// Get the last location lexed. Useful if you want to know where you failed to find a token.
-    pub fn last_location(&self) -> &Location {
+    pub fn last_location(&self) -> &Span {
         &self.last_location
     }
 }
@@ -669,7 +670,9 @@ impl LexedStream<'_, '_> {
     pub fn drop_last(&mut self) {
         if let Some((pos, _)) = self.tokens.pop() {
             self.pos -= 1;
-            self.stream.set_pos(pos);
+	    while self.stream.pos() > pos {
+		self.stream.decr_pos();
+	    }
         }
     }
 

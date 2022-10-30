@@ -87,32 +87,32 @@ mod tests {
             .with_named_regex("(b)(c)", String::from("BC"), false)
             .unwrap()
             .build();
-
-        let match1 = regex.find("aaacd", &Allowed::All).unwrap();
-        assert_eq!(match1.length, 3);
+	let text = "aaacd";
+        let match1 = regex.find(text, &Allowed::All).unwrap();
+        assert_eq!(match1.chars_length, 3);
         assert_eq!(match1.name, "As");
         assert_eq!(match1.groups.len(), 1);
         let handle = match1.groups[0].as_ref().unwrap();
-        assert_eq!(handle.start, 0);
-        assert_eq!(handle.end, 3);
-        assert_eq!(handle.text, "aaa");
-        assert_eq!(match1.text, "aaa");
+        assert_eq!(handle.bytes_start, 0);
+        assert_eq!(handle.bytes_end, 3);
+        assert_eq!(handle.text(text), "aaa");
 
-        let match2 = regex.find("bc", &Allowed::All).unwrap();
-        assert_eq!(match2.length, 2);
+	let text = "bc";
+        let match2 = regex.find(text, &Allowed::All).unwrap();
+        assert_eq!(match2.chars_length, 2);
         assert_eq!(match2.name, "BC");
         assert_eq!(match2.groups.len(), 2);
-        assert_eq!(match2.text, "bc");
         let handle = match2.groups[0].as_ref().unwrap();
-        assert_eq!(handle.start, 0);
-        assert_eq!(handle.end, 1);
-        assert_eq!(handle.text, "b");
+        assert_eq!(handle.bytes_start, 0);
+        assert_eq!(handle.bytes_end, 1);
+        assert_eq!(handle.text(text), "b");
         let handle = match2.groups[1].as_ref().unwrap();
-        assert_eq!(handle.start, 1);
-        assert_eq!(handle.end, 2);
-        assert_eq!(handle.text, "c");
+        assert_eq!(handle.bytes_start, 1);
+        assert_eq!(handle.bytes_end, 2);
+        assert_eq!(handle.text(text), "c");
 
-        let match3 = regex.find("cde", &Allowed::All);
+	let text = "cde";
+        let match3 = regex.find(text, &Allowed::All);
         assert!(match3.is_none());
     }
 
@@ -124,15 +124,15 @@ mod tests {
             .with_named_regex("\"(.*)\"", String::from("STRING"), false)
             .unwrap()
             .build();
-        let match1 = regex.find("'blabla'", &Allowed::All).unwrap();
-        assert_eq!(match1.length, 8);
+	let text = "'blabla'";
+        let match1 = regex.find(text, &Allowed::All).unwrap();
+        assert_eq!(match1.chars_length, 8);
         assert_eq!(match1.name, "STRING");
         assert_eq!(match1.groups.len(), 1);
-        assert_eq!(match1.text, "'blabla'");
         let handle = match1.groups[0].as_ref().unwrap();
-        assert_eq!(handle.start, 1);
-        assert_eq!(handle.end, 7);
-        assert_eq!(handle.text, "blabla");
+        assert_eq!(handle.bytes_start, 1);
+        assert_eq!(handle.bytes_end, 7);
+        assert_eq!(handle.text(text), "blabla");
     }
 
     #[test]
@@ -141,9 +141,9 @@ mod tests {
             .with_named_regex(".*", String::from("Default"), false)
             .unwrap()
             .build();
-        assert_eq!(regex.find("0123456", &Allowed::All).unwrap().length, 7);
-        assert_eq!(regex.find("012", &Allowed::All).unwrap().length, 3);
-        assert_eq!(regex.find("", &Allowed::All).unwrap().length, 0);
+        assert_eq!(regex.find("0123456", &Allowed::All).unwrap().chars_length, 7);
+        assert_eq!(regex.find("012", &Allowed::All).unwrap().chars_length, 3);
+        assert_eq!(regex.find("", &Allowed::All).unwrap().chars_length, 0);
     }
 }
 
@@ -196,35 +196,25 @@ impl Allowed {
 /// `text`: return the captured region as a slice of the input
 /// `length`: return the length of the captured region
 #[derive(Debug)]
-pub struct Handle<'text> {
-    start: usize,
-    end: usize,
-    text: &'text str,
+pub struct Handle {
+    bytes_start: usize,
+    bytes_end: usize,
 }
 
-impl<'text> Handle<'text> {
-    /// Create a new `Handle`
-    pub fn new(start: usize, end: usize, text: &'text str) -> Self {
-        Self { start, end, text }
-    }
+impl Handle {
     /// Return the start position of the region (inclusive).
-    pub fn start(&self) -> usize {
-        self.start
+    pub fn bytes_start(&self) -> usize {
+        self.bytes_start
     }
 
     /// Return the end position of the region (exclusive).
-    pub fn end(&self) -> usize {
-        self.end
+    pub fn bytes_end(&self) -> usize {
+        self.bytes_end
     }
 
     /// Return the captured region as a slice of the input.
-    pub fn text(&self) -> &str {
-        self.text
-    }
-
-    /// Return the length of the captured region.
-    pub fn length(&self) -> usize {
-        self.end - self.start
+    pub fn text<'a>(&self, origin_text: &'a str) -> &'a str {
+        &origin_text[self.bytes_start..self.bytes_end]
     }
 }
 
@@ -244,18 +234,17 @@ impl<'text> Handle<'text> {
 /// `groups`: return the groups of the regex
 /// `text`: return the substring of the input that corresponds to the match
 #[derive(Debug)]
-pub struct Match<'pattern, 'text> {
-    length: usize,
+pub struct Match<'pattern> {
+    chars_length: usize,
     name: &'pattern str,
     id: TerminalId,
-    groups: Vec<Option<Handle<'text>>>,
-    text: &'text str,
+    groups: Vec<Option<Handle>>,
 }
 
-impl Match<'_, '_> {
-    /// Return the length of the match.
-    pub fn length(&self) -> usize {
-        self.length
+impl Match<'_> {
+    /// Return the length of the match in characters.
+    pub fn chars_length(&self) -> usize {
+        self.chars_length
     }
 
     /// Return the identifier of the regex which led to the match.
@@ -271,13 +260,8 @@ impl Match<'_, '_> {
     /// Return the groups of the regex. The position of each group is
     /// enforced by its position in the regex. Each group may or may not
     /// have been caught.
-    pub fn groups(&self) -> &[Option<Handle<'_>>] {
-        &self.groups[..]
-    }
-
-    /// Return the substring of the input that corresponds to the match.
-    pub fn text(&self) -> &str {
-        self.text
+    pub fn groups(&self) -> &[Option<Handle>] {
+        &self.groups
     }
 }
 
@@ -318,13 +302,13 @@ impl CompiledRegex {
 
     /// Match against a given input. Will return only one match, if many were possibles,
     /// according to the priority rules.
-    pub fn find<'pattern, 'text>(
+    pub fn find<'pattern>(
         &'pattern self,
-        input: &'text str,
+        input: &str,
         allowed: &Allowed,
-    ) -> Option<Match<'pattern, 'text>> {
+    ) -> Option<Match<'pattern>> {
         if let Some(matching::Match {
-            pos: length,
+            char_pos: length,
             id,
             groups,
             ..
@@ -340,9 +324,8 @@ impl CompiledRegex {
                 if let Some(start) = groups[2 * i] {
                     let end = groups[2 * i + 1].unwrap();
                     let handle = Handle {
-                        start,
-                        end,
-                        text: &input[start..end],
+                        bytes_start: start,
+                        bytes_end: end,
                     };
                     grps.push(Some(handle));
                 } else {
@@ -350,11 +333,10 @@ impl CompiledRegex {
                 }
             }
             Some(Match {
-                length,
+                chars_length: length,
                 id,
                 name: &self.names[id],
                 groups: grps,
-                text: &input[..length],
             })
         } else {
             None

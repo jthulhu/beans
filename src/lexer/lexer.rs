@@ -1,9 +1,9 @@
 use super::grammarparser::{LexerGrammar, LexerGrammarBuilder};
 use crate::error::Result;
 use crate::error::{Error, WarningSet};
-use crate::location::Location;
+use crate::location::Span;
 use crate::regex::Allowed;
-use crate::stream::{Stream, StringStream};
+use crate::stream::StringStream;
 use fragile::Fragile;
 use newty::newty;
 use std::collections::HashMap;
@@ -59,7 +59,7 @@ mod tests {
             String::from("wow"),
             0.into(),
             HashMap::new(),
-            Location::new(Path::new("test_file"), (3, 0), (3, 3)),
+            Span::new(Path::new("test_file"), (3, 0), (3, 3)),
         );
 
         assert_eq!(token.name(), "wow");
@@ -430,7 +430,7 @@ pub struct Token {
     name: String,
     id: TerminalId,
     attributes: HashMap<usize, String>,
-    location: Location,
+    location: Span,
 }
 
 impl fmt::Display for Token {
@@ -453,7 +453,7 @@ impl Token {
         name: String,
         id: TerminalId,
         attributes: HashMap<usize, String>,
-        location: Location,
+        location: Span,
     ) -> Self {
         Self {
             name,
@@ -505,7 +505,7 @@ impl Token {
     }
 
     /// Return the `location` of the token.
-    pub fn location(&self) -> &Location {
+    pub fn location(&self) -> &Span {
         &self.location
     }
 }
@@ -574,11 +574,11 @@ impl Default for LexerBuilder {
 /// [`Lexer`].
 #[derive(Debug)]
 pub struct LexedStream<'lexer, 'stream> {
-    lexer: &'lexer Lexer,
+    pub(crate) lexer: &'lexer Lexer,
     stream: &'stream mut StringStream,
     pos: usize,
     tokens: Vec<(usize, Token)>,
-    last_location: Location,
+    last_location: Span,
 }
 
 impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
@@ -588,7 +588,7 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
         stream: &'stream mut StringStream,
     ) -> Self {
         Self {
-            last_location: Location::new(stream.origin(), (0, 0), (0, 0)),
+            last_location: Span::new(stream.origin(), (0, 0), (0, 0)),
             lexer,
             stream,
             pos: 0,

@@ -1,8 +1,8 @@
 use crate::error::{Error, Result, WarningSet};
 use crate::lexer::TerminalId;
-use crate::location::Location;
+use crate::location::Span;
 use crate::regex::{CompiledRegex, RegexBuilder, RegexError};
-use crate::stream::{Char, Stream, StringStream};
+use crate::stream::{Char, StringStream};
 use bincode::deserialize;
 use fragile::Fragile;
 use newty::newty;

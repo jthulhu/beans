@@ -35,6 +35,45 @@ mod tests {
     }
 
     #[test]
+    fn multiline_comments() {
+        let (program, nb_groups) =
+            compile(r"/\*([^*]|\*[^/])*\*/", TerminalId(0)).unwrap();
+        let text1 = "/* hello, world */#and other stuff";
+        let text2 = "/* hello,\nworld */#and other stuff";
+        let text3 = "/* unicode éèàç */#and other stuff";
+        let Match { pos: end, id, .. } = find(
+            &program,
+            &text1.chars().collect::<Vec<_>>(),
+            nb_groups,
+            &Allowed::All,
+        )
+        .unwrap();
+        assert_eq!(id, TerminalId(0));
+        assert_eq!(end, 18);
+        assert_eq!(text1.chars().nth(end).unwrap(), '#');
+        let Match { pos: end, id, .. } = find(
+            &program,
+            &text2.chars().collect::<Vec<_>>(),
+            nb_groups,
+            &Allowed::All,
+        )
+        .unwrap();
+        assert_eq!(id, TerminalId(0));
+        assert_eq!(end, 18);
+        assert_eq!(text2.chars().nth(end).unwrap(), '#');
+        let Match { pos: end, id, .. } = find(
+            &program,
+            &text3.chars().collect::<Vec<_>>(),
+            nb_groups,
+            &Allowed::All,
+        )
+        .unwrap();
+        assert_eq!(id, TerminalId(0));
+        assert_eq!(end, 18);
+        assert_eq!(text2.chars().nth(end).unwrap(), '#');
+    }
+
+    #[test]
     fn escaped() {
         let escaped = vec![
             (

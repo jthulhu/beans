@@ -6,7 +6,7 @@
 //! [`WarningSet`] is a set of warnings and [`Error`] is the Beans' error type.
 
 use crate::case::Case;
-use crate::location::Location;
+use crate::location::Span;
 use fragile::Fragile;
 use std::collections::{linked_list, LinkedList};
 use std::fmt;
@@ -51,13 +51,13 @@ pub enum Error {
         message: String,
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
-        location: Fragile<Location>,
+        location: Fragile<Span>,
     },
     /// `LexerGrammarDuplicateDefinition(token: String)`: duplicate terminal definition.
     #[error("Duplicate definition of the token {token}, at {location}.")]
     LexerGrammarDuplicateDefinition {
         token: String,
-        location: Fragile<Location>,
+        location: Fragile<Span>,
     },
     /// `LexingError(message: String)`: error while transforming a string stream into a token stream.
     #[error("Error while lexing: {message}, at {location}")]
@@ -66,7 +66,7 @@ pub enum Error {
         message: String,
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
-        location: Fragile<Location>,
+        location: Fragile<Span>,
     },
     /// `GrammarDuplicateDefinition(message: String, location: Location)`: duplicate definition at `location`.
     #[error("Found duplicate definition of terminal in grammar: {message}, at {location}.")]
@@ -75,16 +75,16 @@ pub enum Error {
         message: String,
         /// The `Location` where the second, offending, definition has been
         /// found.
-        location: Fragile<Location>,
+        location: Fragile<Span>,
         /// The `Location` where the first definition has been found.
-        old_location: Fragile<Location>,
+        old_location: Fragile<Span>,
     },
     #[error("Found two references to {macro_name}, with arities {first_arity} and {second_arity}, at {location}.")]
     GrammarArityMismatch {
         macro_name: String,
         first_arity: usize,
         second_arity: usize,
-        location: Fragile<Location>,
+        location: Fragile<Span>,
     },
     /// `GrammarNonTerminalDuplicate(message: String)`: duplicate non-terminal in the grammar.
     #[error("Found duplicate definition of nonterminal in grammar: {message}, at {location}.")]
@@ -93,12 +93,12 @@ pub enum Error {
         message: String,
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
-        location: Fragile<Location>,
+        location: Fragile<Span>,
     },
     #[error("Tried to invoke terminal {terminal} as if it was a macro, at {location}.")]
     GrammarTerminalInvocation {
 	terminal: String,
-	location: Fragile<Location>,
+	location: Fragile<Span>,
     },
     /// `GrammarSyntaxError(message: String)`: syntax error in the grammar.
     #[error("Syntax error in grammar: {message}, at {location}.")]
@@ -107,11 +107,11 @@ pub enum Error {
         message: String,
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
-        location: Fragile<Location>,
+        location: Fragile<Span>,
     },
     /// `GrammarVariantKey(message: String)`: have a variant key in proxy is bad.
     #[error("The `variant` key is reserved in proxies, at {location}.")]
-    GrammarVariantKey { location: Fragile<Location> },
+    GrammarVariantKey { location: Fragile<Span> },
     /// `SyntaxError`: syntax error in the input.
     #[error("Syntax error: {message}, at {location}.")]
     SyntaxError {
@@ -119,7 +119,7 @@ pub enum Error {
         message: String,
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
-        location: Fragile<Location>,
+        location: Fragile<Span>,
     },
     /// `IOError`: any io error.
     #[error("IO error: {0}")]
@@ -129,7 +129,7 @@ pub enum Error {
     RegexError {
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
-        location: Fragile<Location>,
+        location: Fragile<Span>,
         /// The message giving details about the error.
         message: String,
     },
@@ -165,7 +165,7 @@ pub enum WarningType {
 /// `Warning` is a non-fatal error.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Warning {
-    location: Option<Location>,
+    location: Option<Span>,
     warn_type: WarningType,
 }
 
@@ -178,7 +178,7 @@ impl Warning {
         }
     }
     /// Build a new warning of type `warn_type` with `location`.
-    pub fn with_location(warn_type: WarningType, location: Location) -> Self {
+    pub fn with_location(warn_type: WarningType, location: Span) -> Self {
         Self {
             warn_type,
             location: Some(location),
@@ -191,7 +191,7 @@ impl Warning {
     }
 
     /// Get the optional location of the warning.
-    pub fn location(&self) -> Option<&Location> {
+    pub fn location(&self) -> Option<&Span> {
         self.location.as_ref()
     }
 }

@@ -75,14 +75,3 @@ macro_rules! rules {
 	}
     };
 }
-
-pub(crate) fn is_value<E, V: PartialEq>(x: Result<V, E>, y: V) -> bool {
-    matches!(x, Ok(x_value) if x_value == y)
-}
-
-pub(crate) fn is_value_w<U, E, V: PartialEq>(
-    x: Result<WithWarnings<(V, U)>, E>,
-    y: V,
-) -> bool {
-    is_value(x.map(|x| x.unwrap().0), y)
-}

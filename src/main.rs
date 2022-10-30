@@ -214,10 +214,14 @@ fn main() -> anyhow::Result<()> {
                 fd.read_to_end(&mut buffer)?;
                 deserialize(&buffer)?
             } else {
-                EarleyGrammarBuilder::new(parser_grammar_path.as_path())
+		println!("hello world");
+                EarleyGrammarBuilder::default()
+                    .with_file(parser_grammar_path.as_path())?
+                    .unpack_into(&mut warnings)
                     .build(&lexer)?
                     .unpack_into(&mut warnings)
             };
+	    println!("goodbye world");
             let parser = EarleyParser::new(parser_grammar);
             // let (table, raw_input) =
             //     EarleyParser::recognise(

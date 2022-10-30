@@ -29,11 +29,11 @@ mod tests {
     #[test]
     fn location() {
         let location =
-            Location::new(Path::new("a cool filename"), (0, 3), (1, 6));
+            Span::new(Path::new("a cool filename"), (0, 3), (1, 6));
         assert_eq!(&*location.file(), Path::new("a cool filename"));
         assert_eq!(location.start(), (0, 3));
         assert_eq!(location.end(), (1, 6));
-        let location = Location::new(Path::new(""), (0, 0), (0, 0));
+        let location = Span::new(Path::new(""), (0, 0), (0, 0));
         assert_eq!(&*location.file(), Path::new(""));
         assert_eq!(location.start(), (0, 0));
         assert_eq!(location.end(), (0, 0));
@@ -46,55 +46,55 @@ mod tests {
             LocationBuilder::new(Path::new("<input>"), "if true and false {\n\tifeat(\"something\")\n}");
         assert_eq!(
             location_builder.from(0, 2),
-            Location::new(Path::new("<input>"), (0, 0), (0, 2))
+            Span::new(Path::new("<input>"), (0, 0), (0, 2))
         );
         assert_eq!(
             location_builder.from(3, 7),
-            Location::new(Path::new("<input>"), (0, 3), (0, 7))
+            Span::new(Path::new("<input>"), (0, 3), (0, 7))
         );
         assert_eq!(
             location_builder.from(8, 11),
-            Location::new(Path::new("<input>"), (0, 8), (0, 11))
+            Span::new(Path::new("<input>"), (0, 8), (0, 11))
         );
         assert_eq!(
             location_builder.from(12, 17),
-            Location::new(Path::new("<input>"), (0, 12), (0, 17))
+            Span::new(Path::new("<input>"), (0, 12), (0, 17))
         );
         assert_eq!(
             location_builder.from(18, 19),
-            Location::new(Path::new("<input>"), (0, 18), (0, 19))
+            Span::new(Path::new("<input>"), (0, 18), (0, 19))
         );
         assert_eq!(
             location_builder.from(21, 26),
-            Location::new(Path::new("<input>"), (1, 1), (1, 6))
+            Span::new(Path::new("<input>"), (1, 1), (1, 6))
         );
         assert_eq!(
             location_builder.from(26, 27),
-            Location::new(Path::new("<input>"), (1, 6), (1, 7))
+            Span::new(Path::new("<input>"), (1, 6), (1, 7))
         );
         assert_eq!(
             location_builder.from(27, 38),
-            Location::new(Path::new("<input>"), (1, 7), (1, 18))
+            Span::new(Path::new("<input>"), (1, 7), (1, 18))
         );
         assert_eq!(
             location_builder.from(38, 39),
-            Location::new(Path::new("<input>"), (1, 18), (1, 19))
+            Span::new(Path::new("<input>"), (1, 18), (1, 19))
         );
         assert_eq!(
             location_builder.from(40, 41),
-            Location::new(Path::new("<input>"), (2, 0), (2, 1))
+            Span::new(Path::new("<input>"), (2, 0), (2, 1))
         );
     }
 
     #[test]
     #[should_panic]
     fn wrong_location() {
-        Location::new(Path::new("some file"), (1, 0), (0, 0));
+        Span::new(Path::new("some file"), (1, 0), (0, 0));
     }
     #[test]
     #[should_panic]
     fn wrong_location2() {
-        Location::new(Path::new("some file"), (1, 5), (1, 3));
+        Span::new(Path::new("some file"), (1, 5), (1, 3));
     }
 }
 
@@ -111,9 +111,9 @@ mod tests {
 /// Example 1
 ///
 /// ```rust
-/// # use beans::location::Location;
+/// # use beans::location::Span;
 /// # use std::path::Path;
-/// let location = Location::new(Path::new("myfile"), (0, 0), (0, 1));
+/// let location = Span::new(Path::new("myfile"), (0, 0), (0, 1));
 /// ```
 ///
 /// Example 2 -- `afile`
@@ -126,9 +126,9 @@ mod tests {
 /// Here, the location of `c def/gh` is
 ///
 /// ```rust
-/// # use beans::location::Location;
+/// # use beans::location::Span;
 /// # use std::path::Path;
-/// Location::new(
+/// Span::new(
 ///   Path::new("afile"),
 ///   (0, 4),
 ///   (1, 2)
@@ -136,44 +136,46 @@ mod tests {
 /// # ;
 /// ```
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Location {
+pub struct Span {
     file: Rc<Path>,
     start: CharLocation,
     end: CharLocation,
 }
 
-impl std::fmt::Display for Location {
+impl std::fmt::Display for Span {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 	write!(f, "in file {}, ", self.file.display())?;
-	if self.start == self.end {
-	    write!(
-		f,
-		"at character {} of line {}",
-		self.start.1,
-		self.start.0+1,
-	    )
-	} else if self.start.0 == self.end.0 {
-	    write!(
-		f,
-		"at characters {}-{} of line {}",
-		self.start.1,
-		self.end.1,
-		self.start.0+1,
-	    )
+	if self.start.0 == self.end.0 {
+	    if self.start.1+1 == self.end.1 {
+		write!(
+		    f,
+		    "at character {} of line {}",
+		    self.start.1,
+		    self.start.0+1,
+		)
+	    } else {
+		write!(
+		    f,
+		    "at characters {}-{} of line {}",
+		    self.start.1,
+		    self.end.1.checked_sub(1).unwrap_or_default(),
+		    self.start.0+1,
+		)
+	    }
 	} else {
             write!(
 		f,
 		"from character {} of line {} to character {} of line {}",
 		self.start.1,
 		self.start.0+1,
-		self.end.1,
+		self.end.1.checked_sub(1).unwrap_or_default(),
 		self.end.0+1,
             )
 	}
     }
 }
 
-impl Location {
+impl Span {
     /// Create a new `Location` object.
     /// Require three arguments,
     ///  * file: the name of the file where the data is;
@@ -190,61 +192,7 @@ impl Location {
         let file = file.into();
         Self { file, start, end }
     }
-
-    /// Generate of new `Location` object.
-    /// Take the locations as index of the stream,
-    /// and convert them as actual locations in the file.
-    pub fn from_stream_pos(
-        file: impl Into<Rc<Path>>,
-        stream: impl AsRef<str>,
-        start_pos: usize,
-        end_pos: usize,
-    ) -> Self {
-        let mut current_char = 0;
-        let mut current_line = 0;
-        let mut current_pos = 0;
-        assert!(start_pos <= end_pos); // TODO: remove assert and add proper error handling.
-        let start;
-        let mut chrs = stream.as_ref().chars();
-        let mut chr = chrs.next();
-        loop {
-            if current_pos == start_pos || chr.is_none() {
-                start = (current_line, current_char);
-                break;
-            }
-            if chr == Some('\n') {
-                current_line += 1;
-                current_char = 0;
-            } else {
-                current_char += 1;
-            }
-            chr = chrs.next();
-            current_pos += 1;
-        }
-        let end;
-        loop {
-            if current_pos == end_pos || chr.is_none() {
-                end = (current_line, current_char);
-                break;
-            }
-
-            if chr == Some('\n') {
-                current_line += 1;
-                current_char = 0;
-            } else {
-                current_char += 1;
-            }
-            chr = chrs.next();
-            current_pos += 1;
-        }
-
-        Self {
-            file: file.into(),
-            start,
-            end,
-        }
-    }
-
+    
     /// Merge to contiguous locations, assuming left is before right.
     pub fn extend(left: Self, right: Self) -> Self {
         Self {
@@ -270,8 +218,8 @@ impl Location {
     }
 }
 
-impl From<&Location> for Fragile<Location> {
-    fn from(location: &Location) -> Fragile<Location> {
+impl From<&Span> for Fragile<Span> {
+    fn from(location: &Span) -> Fragile<Span> {
 	Fragile::new(location.clone())
     }
 }
@@ -300,7 +248,7 @@ impl LocationBuilder {
     }
 
     /// Create a new location from two indexes.
-    pub fn from(&self, start: usize, end: usize) -> Location {
+    pub fn from(&self, start: usize, end: usize) -> Span {
         fn pos_to_char_pos(pos: usize, newlines: &[usize]) -> CharLocation {
             let i = match newlines.binary_search(&pos) {
                 Ok(x) | Err(x) => x,
@@ -311,7 +259,7 @@ impl LocationBuilder {
                 (i, pos - newlines[i - 1] - 1)
             }
         }
-        Location::new(
+        Span::new(
             self.file.clone(),
             pos_to_char_pos(start, &self.newlines),
             pos_to_char_pos(end, &self.newlines),

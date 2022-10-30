@@ -28,6 +28,56 @@ pub mod tests {
     }
 
     #[test]
+    fn read_multiline_comment() {
+        use std::ops::Bound::Included;
+        use Regex::*;
+        let a = read(r"/\*([^*]|\*[^/])*\*/", 0).unwrap();
+        let mut first_class = IntervalTree::default();
+        first_class.insert((Included('*'), Included('*')));
+        let mut second_class = IntervalTree::default();
+        second_class.insert((Included('/'), Included('/')));
+        // let b = Concat(
+        //     Box::new(Char('/')),
+        //     Box::new(Concat(
+        //         Box::new(Char('*')),
+        //         Box::new(Concat(
+        //             Box::new(KleeneStar(Box::new(Group(
+        //                 Box::new(Option(
+        //                     Box::new(CharacterClass(first_class, true)),
+        //                     Box::new(Concat(
+        //                         Box::new(Char('*')),
+        //                         Box::new(CharacterClass(second_class, true)),
+        //                     )),
+        //                 )),
+        //                 0,
+        //             )))),
+        //             Box::new(Concat(Box::new(Char('*')), Box::new(Char('/')))),
+        //         )),
+        //     )),
+        // );
+        let b = Concat(
+            Box::new(Concat(
+                Box::new(Concat(
+                    Box::new(Concat(Box::new(Char('/')), Box::new(Char('*')))),
+                    Box::new(KleeneStar(Box::new(Group(
+                        Box::new(Option(
+                            Box::new(CharacterClass(first_class, true)),
+                            Box::new(Concat(
+                                Box::new(Char('*')),
+                                Box::new(CharacterClass(second_class, true)),
+                            )),
+                        )),
+                        0,
+                    )))),
+                )),
+                Box::new(Char('*')),
+            )),
+            Box::new(Char('/')),
+        );
+        assert_eq!(a, (b, 1));
+    }
+
+    #[test]
     fn read_word_boundary() {
         use Regex::*;
         assert_eq!(read(r"\b", 0).unwrap(), (WordBoundary, 0));

@@ -2,10 +2,12 @@ Option[content] ::=
   <None>
   content@value <Some>;
 
+NonEmptyList[content, separation] ::=
+  content@head <Nil>
+  content@head separation NonEmptyList[content, separation]@tail <Cons>;
+
 List[content, separation] ::=
-  <Nil>
-  content@head Option[separation] <Cons tail: Self{Nil}>
-  content@head separation List[content, separation]@tail <Cons>;
+  Option[NonEmptyList[content, separation]]@value <>;
 
 Empty ::=
   <>;
@@ -34,8 +36,6 @@ Bool ::=
   FALSE <False>;
 
 Expr ::=
-  SIZEOF LPAR Type@type RPAR <Sizeof>
-  IDENT.0@name LPAR List[Expr, COMMA]@args RPAR <Call>
   EqualExpr@this <Through>;
 
 EqualExpr ::=
@@ -83,10 +83,10 @@ UnaryExpr ::=
   ASTERISK UnaryExpr@value <Deref>
   PLUS UnaryExpr@value <Plus>
   MINUS UnaryExpr@value <Minus>
-  IndexExpr@this <Through>;
-
-IndexExpr ::=
-  IndexExpr@array LBRACKET Expr@index RBRACKET <
+  IDENT.0@value <Ident>
+  SIZEOF LPAR Type@type RPAR <Sizeof>
+  IDENT.0@name LPAR List[Expr, COMMA]@args RPAR <Call>
+  UnaryExpr@array LBRACKET Expr@index RBRACKET <
     Deref
     value: PmExpr {
       Add
@@ -126,7 +126,8 @@ Block ::=
   LBRACE List[DeclStatement, Empty]@stmts RBRACE <>;
 
 DeclStatement ::=
-  VariableDeclaration@declaration <Declaration>
+  FunctionDeclaration <Function>
+  VariableDeclaration@declaration SEMICOLON <Declaration>
   Statement@stmt <Statement>;
 
 VariableDeclaration ::=

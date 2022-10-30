@@ -1,7 +1,7 @@
 use crate::error::{Error, WarningSet};
 use crate::lexer::{LexedStream, Lexer, LexerBuilder, Token};
 use crate::lexer::{LexerGrammar, TerminalId};
-use crate::location::Location;
+use crate::location::Span;
 use crate::parser::earley::GrammarRules;
 use crate::stream::StringStream;
 use newty::newty;
@@ -389,7 +389,7 @@ struct GrammarReader<'lexer, 'stream> {
     id_of: HashMap<FullName, NonTerminalId>,
     warnings: WarningSet,
     axioms: Vec<NonTerminalId>,
-    found_declarations: HashMap<Name, Location>,
+    found_declarations: HashMap<Name, Span>,
     name_of: NonTerminalName,
 }
 
@@ -433,7 +433,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
 
     fn generate_error<T>(
         &self,
-        location: Location,
+        location: Span,
         expected: &str,
         found: &str,
     ) -> std::result::Result<T, Error> {
@@ -555,7 +555,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
     fn read_macro_invocation(
         &mut self,
         name: Rc<str>,
-    ) -> std::result::Result<(MacroInvocation, Location), Error> {
+    ) -> std::result::Result<(MacroInvocation, Span), Error> {
         let mut args = Vec::new();
         let mut location = self.lexed_input.last_location().clone();
         if self.peek_token("LBRACKET")? {
@@ -566,7 +566,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
                 args.push(arg);
                 cont = self.peek_token("COMMA")?;
             }
-            location = Location::extend(
+            location = Span::extend(
                 location,
                 self.read_token("RBRACKET")?.location().clone(),
             );

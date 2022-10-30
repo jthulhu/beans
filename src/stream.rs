@@ -1,5 +1,5 @@
 use crate::error::{Result, WarningSet};
-use crate::location::{Location, LocationBuilder};
+use crate::location::Span;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;

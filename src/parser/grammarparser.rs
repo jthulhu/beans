@@ -1,5 +1,5 @@
 use crate::error::{Error, WarningSet};
-use crate::lexer::{LexedStream, Lexer, LexerBuilder, Token};
+use crate::lexer::{LexedStream, Lexer, Token};
 use crate::lexer::{LexerGrammar, TerminalId};
 use crate::location::Span;
 use crate::parser::earley::GrammarRules;
@@ -248,28 +248,29 @@ impl ValueTemplate {
                 all_attributes[name].clone()
             }
             ValueTemplate::InlineRule { name, attributes } => {
-		let nonterminal = if &**name == "Self" {
-		    current
-		} else {
-		    id_of[name].clone()
-		};
-		AST::Node {
-                nonterminal,
-                attributes: attributes
-                    .iter()
-                    .map(|(key, value_template)| {
-                        (
-                            key.clone(),
-                            value_template.evaluate(
-				nonterminal,
-                                all_attributes,
-                                removed,
-                                id_of,
-                            ),
-                        )
-                    })
-                    .collect(),
-            }},
+                let nonterminal = if &**name == "Self" {
+                    current
+                } else {
+                    id_of[name].clone()
+                };
+                AST::Node {
+                    nonterminal,
+                    attributes: attributes
+                        .iter()
+                        .map(|(key, value_template)| {
+                            (
+                                key.clone(),
+                                value_template.evaluate(
+                                    nonterminal,
+                                    all_attributes,
+                                    removed,
+                                    id_of,
+                                ),
+                            )
+                        })
+                        .collect(),
+                }
+            }
         }
     }
 }
@@ -697,10 +698,11 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
             }
         };
         let definition_name: Rc<str> = definition_name_token.content().into();
-        if let Some(old_location) = self.found_declarations.insert(
+        if let Some(_old_location) = self.found_declarations.insert(
             definition_name.clone(),
             definition_name_token.location().clone(),
         ) {
+	    // Report error
             todo!()
         }
         let arguments = self.read_macro_arguments()?;
@@ -782,18 +784,17 @@ pub trait GrammarBuilder<'deserializer>: Sized {
     /// Build with the given stream.
     fn with_stream(self, stream: StringStream) -> Self;
     /// Build with the given grammar.
-    fn with_grammar(self, grammar: impl Into<Rc<Path>>) -> Self;
+    fn with_grammar_file(self, grammar: impl Into<Rc<Path>>) -> Result<Self>;
+    fn with_grammar_stream(self, grammar: StringStream) -> Result<Self>;
     /// Retrieve the stream from the builder.
     fn stream(&mut self) -> Result<StringStream>;
     /// Retrieve the grammar from the builder.
-    fn grammar(&self) -> Rc<Path>;
+    fn grammar_lexer(&mut self) -> Result<Lexer>;
     /// Build the grammar.
     fn build(mut self, lexer: &Lexer) -> Result<Self::Grammar> {
         let mut warnings = WarningSet::empty();
         let mut stream = self.stream()?.unpack_into(&mut warnings);
-        let temp_lexer = LexerBuilder::from_file(self.grammar())?
-            .unpack_into(&mut warnings)
-            .build();
+        let temp_lexer = self.grammar_lexer()?.unpack_into(&mut warnings);
         let lexed_input = temp_lexer.lex(&mut stream);
 
         let (rules, id_of, axioms_vec, name_of) =

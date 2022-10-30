@@ -391,7 +391,7 @@ pub struct WithWarnings<T> {
 impl<T> WithWarnings<T> {
     /// `unwrap` is a brutal way to get out of the monad.
     /// It means you can ensure there are no warnings.
-    /// Note that this will **not** panic if there are no warnings.
+    /// Note that this will **not** panic if there are warnings.
     #[inline]
     pub fn unwrap(self) -> T {
         self.content

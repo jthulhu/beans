@@ -16,8 +16,6 @@ use std::rc::Rc;
 
 #[cfg(test)]
 mod tests {
-    use crate::test_utilities::is_value_w;
-
     use super::*;
 
     #[test]
@@ -212,7 +210,7 @@ impl LexerGrammarBuilder {
             let pattern = Self::read_pattern(&mut stream);
             regex_builder = regex_builder
                 .with_named_regex(pattern.as_str(), name.clone(), keyword)
-                .map_err(|RegexError { message, position }| {
+                .map_err(|RegexError { message, position: _position }| {
                     Error::RegexError {
                         location: Fragile::new(start_span),
                         message,

@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn default_parser_grammar() {
-        let lexer = LexerBuilder::from_file(Path::new("gmrs/parser.lx"))
+        let lexer = LexerBuilder::from_file(Path::new("src/parser/earley.lx"))
             .unwrap()
             .unwrap()
             .build();
@@ -618,13 +618,11 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
                 let start = self.stream.pos();
                 self.stream.shift(result.chars_length());
                 let end = self.stream.pos();
-		println!("{} -> {}: {}", start, end, result.chars_length());
                 if self.lexer.grammar().ignored(result.id()) {
                     continue;
                 }
                 let span = self.stream.span_between(start, end);
                 let id = self.lexer.grammar.id(&name).unwrap();
-		println!("lexed {} {}", name, span);
                 let token = Token::new(name, id, attributes, span.clone());
                 self.last_location = span;
                 self.tokens.push((start, token));

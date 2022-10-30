@@ -6,9 +6,9 @@ use super::list::List;
 use super::parser::{NonTerminalId, ParseResult, Parser, RuleId};
 use crate::error::Result;
 use crate::error::{Error, WarningSet};
-use crate::lexer::TerminalId;
 use crate::lexer::Token;
 use crate::lexer::{LexedStream, Lexer};
+use crate::lexer::{LexerBuilder, TerminalId};
 use crate::parser::grammarparser::Attribute;
 use crate::parser::parser::{Value, AST};
 use crate::regex::Allowed;
@@ -96,16 +96,15 @@ newty! {
 #[derive(Debug)]
 pub struct EarleyGrammarBuilder {
     stream: Option<StringStream>,
-    grammar_source_file: Rc<Path>,
+    grammar_lexer: Option<Lexer>,
 }
 
 impl EarleyGrammarBuilder {
     /// Create a new builder. It takes an Rc of a string refearing to the grammar.
-    pub fn new(grammar: impl Into<Rc<Path>>) -> Self {
-        let grammar = grammar.into();
+    pub fn new() -> Self {
         Self {
             stream: None,
-            grammar_source_file: grammar,
+            grammar_lexer: None,
         }
     }
 }
@@ -118,9 +117,30 @@ impl GrammarBuilder<'_> for EarleyGrammarBuilder {
         self
     }
 
-    fn with_grammar(mut self, grammar: impl Into<Rc<Path>>) -> Self {
-        self.grammar_source_file = grammar.into();
-        self
+    fn with_grammar_file(
+        mut self,
+        grammar: impl Into<Rc<Path>>,
+    ) -> Result<Self> {
+        let mut warnings = WarningSet::empty();
+        self.grammar_lexer = Some(
+            LexerBuilder::from_file(grammar)?
+                .unpack_into(&mut warnings)
+                .build(),
+        );
+        warnings.with_ok(self)
+    }
+
+    fn with_grammar_stream(
+        mut self,
+        grammar_stream: StringStream,
+    ) -> Result<Self> {
+        let mut warnings = WarningSet::empty();
+        self.grammar_lexer = Some(
+            LexerBuilder::from_stream(grammar_stream)?
+                .unpack_into(&mut warnings)
+                .build(),
+        );
+        warnings.with_ok(self)
     }
 
     fn stream<'ws>(&mut self) -> Result<StringStream> {
@@ -128,15 +148,17 @@ impl GrammarBuilder<'_> for EarleyGrammarBuilder {
         Ok(WarningSet::empty_with(stream))
     }
 
-    fn grammar(&self) -> Rc<Path> {
-        self.grammar_source_file.clone()
+    fn grammar_lexer(&mut self) -> Result<Lexer> {
+        Ok(WarningSet::empty_with(retrieve!(self.grammar_lexer)))
     }
 }
 
 impl Default for EarleyGrammarBuilder {
     fn default() -> Self {
-        Self::new(Path::new("gmrs/parser.lx"))
-            .with_file(Path::new("gmrs/parser.gr"))
+        Self::new().with_grammar_stream(StringStream::new(
+            Path::new("earley.lx"),
+            include_str!("earley.lx"),
+        ))
             .unwrap()
             .unwrap()
     }
@@ -554,7 +576,7 @@ impl EarleyParser {
                     })
                     .collect::<HashMap<Rc<str>, _>>();
                 let mut removed: HashSet<Rc<str>> = HashSet::new();
-		let nonterminal = self.grammar.rules[rule].id;
+                let nonterminal = self.grammar.rules[rule].id;
                 let mut attributes: HashMap<_, _> = self.grammar.rules[rule]
                     .proxy
                     .iter()
@@ -562,7 +584,7 @@ impl EarleyParser {
                         (
                             key.clone(),
                             wanted.evaluate(
-				nonterminal,
+                                nonterminal,
                                 &all_attributes,
                                 &mut removed,
                                 &self.grammar().id_of,
@@ -1268,63 +1290,67 @@ RPAR ::= \)
                 r2.matches(r1, parser_grammar, lexer_grammar),
                 "rules #{} differ.\nExpected: {:?}\nGot: {:?}",
                 i,
-		r2,
-		r1,
+                r2,
+                r1,
             );
         }
     }
 
     #[test]
-    #[rustfmt::skip]
     fn earley_grammar_builder() {
-	use crate::lexer::LexerBuilder;
+        use crate::lexer::LexerBuilder;
         let lexer = LexerBuilder::default().build();
-        let grammar = EarleyGrammarBuilder::default().build(&lexer).unwrap().unwrap();
-	let expected_rules = 
-            rules!(
-		(&grammar)
+        let grammar = EarleyGrammarBuilder::default()
+            .with_file(Path::new("gmrs/parser.gr"))
+            .unwrap()
+            .unwrap()
+            .build(&lexer)
+            .unwrap()
+            .unwrap();
+        let expected_rules = rules!(
+        (&grammar)
                 StatementList ::=
-		    StatementList@left Statement@right <variant = str "Concat">
-		    Statement@this <variant = str "Through">;
+            StatementList@left Statement@right <variant = str "Concat">
+            Statement@this <variant = str "Through">;
 
-		Statement ::=
-		    Assignment@this !t SEMICOLON <variant = str "Assign">
-		    IfStatement@this <variant = str "If">
-		    WhileStatement@this <variant = str "While">;
-                
+        Statement ::=
+            Assignment@this !t SEMICOLON <variant = str "Assign">
+            IfStatement@this <variant = str "If">
+            WhileStatement@this <variant = str "While">;
+
                 Expression ::=
-		    Expression@left !t PLUS Expression@right <variant = str "Add">
-		    Expression@left !t ASTERISK Expression@right <variant = str "Mul">
-		    Atom@this <variant = str "Through">;
-		
+            Expression@left !t PLUS Expression@right <variant = str "Add">
+            Expression@left !t ASTERISK Expression@right <variant = str "Mul">
+            Atom@this <variant = str "Through">;
+
                 Atom ::=
-		    BuiltinType@this <variant = str "Builtin">
-		    !t LPAR Expression@this !t RPAR <variant = str "Through">;
-                
+            BuiltinType@this <variant = str "Builtin">
+            !t LPAR Expression@this !t RPAR <variant = str "Through">;
+
                 BuiltinType ::=
-		    !t INT.idx 0@value <variant = str "Int">
-		    !t STRING.idx 0@value <variant = str "String">
-		    !t ID.idx 0@value <variant = str "Id">
-		    !t TRUE <variant = str "True">
-		    !t FALSE <variant = str "False">;
-                
+            !t INT.idx 0@value <variant = str "Int">
+            !t STRING.idx 0@value <variant = str "String">
+            !t ID.idx 0@value <variant = str "Id">
+            !t TRUE <variant = str "True">
+            !t FALSE <variant = str "False">;
+
                 Assignment ::=
-		    !t ID.idx 0@key !t EQUALS Expression@value <>;
-                
+            !t ID.idx 0@key !t EQUALS Expression@value <>;
+
                 WhileStatement ::=
-		    !t WHILE Expression@condition !t LBRACE StatementList@do !t RBRACE <>;
-		    
+            !t WHILE Expression@condition !t LBRACE StatementList@do !t RBRACE <>;
+
                 IfStatement ::=
-		    !t IF Expression@condition !t LBRACE
-		      StatementList@then !t
-		    RBRACE <variant = str "NoElse">
-		    !t IF Expression@condition !t LBRACE
-		      StatementList@then !t
-		    RBRACE !t ELSE !t LBRACE
-		      StatementList@else !t
-		    RBRACE <variant = str "Else">
+            !t IF Expression@condition !t LBRACE
+              StatementList@then !t
+            RBRACE <variant = str "NoElse">
+            !t IF Expression@condition !t LBRACE
+              StatementList@then !t
+            RBRACE !t ELSE !t LBRACE
+              StatementList@else !t
+            RBRACE <variant = str "Else">
             );
-	println!("======\n{:#?}\n\n", grammar.rules);
+        println!("======\n{:#?}\n\n", grammar.rules);
         verify(&grammar.rules, &expected_rules, &grammar, lexer.grammar());
     }
 
@@ -1433,7 +1459,7 @@ int main() {
             .unwrap()
             .unwrap();
         let parser = EarleyParser::new(grammar);
-        let ast = parser
+        let _ast = parser
             .parse(
                 &mut lexer
                     .lex(&mut StringStream::new(Path::new("<input>"), input)),

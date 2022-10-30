@@ -1,4 +1,4 @@
-#![allow(clippy::upper_case_acronyms)]
+#![allow(clippy::upper_case_acronyms, unstable_name_collisions)]
 #![warn(rust_2018_idioms, missing_debug_implementations)]
 
 //! # Beans

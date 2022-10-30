@@ -38,33 +38,38 @@ mod tests {
 
     #[test]
     fn grammar_parser_read_id() {
-        let mut stream = StringStream::new(Path::new("whatever"), "to del");
+        let origin = Path::new("whatever");
+        let mut stream = StringStream::new(origin, "to del");
         assert_eq!(stream.pos(), 0);
-        assert!(is_value_w(
-            LexerGrammarBuilder::read_id(&mut stream),
-            String::from("to")
-        ));
+        assert_eq!(
+            (String::from("to"), Span::new(origin, (0, 0), (0, 2))),
+            LexerGrammarBuilder::read_id(&mut stream).unwrap().unwrap()
+        );
         assert_eq!(stream.pos(), 2);
         LexerGrammarBuilder::ignore_blank(&mut stream);
         assert_eq!(stream.pos(), 3);
-        assert!(is_value_w(
-            LexerGrammarBuilder::read_id(&mut stream),
-            String::from("del")
-        ));
+        assert_eq!(
+            (String::from("del"), Span::new(origin, (0, 3), (0, 6))),
+            LexerGrammarBuilder::read_id(&mut stream).unwrap().unwrap()
+        );
         assert_eq!(stream.pos(), 6);
-        assert!(if let Err(error) =
-            LexerGrammarBuilder::read_id(&mut stream).map(|x| x.unwrap())
+        let error = LexerGrammarBuilder::read_id(&mut stream)
+            .map(|x| x.unwrap())
+            .unwrap_err();
+        let (location, message) = if let Error::LexerGrammarSyntax {
+            message,
+            location,
+        } = error
         {
-            if let Error::LexerGrammarSyntax { location, message } = error {
-                location.into_inner()
-                    == Location::new(Path::new("whatever"), (0, 6), (0, 6))
-                    && message == String::from("expected id")
-            } else {
-                false
-            }
+            (location, message)
         } else {
-            false
-        },);
+            panic!("Expected a lexer grammar syntax error, got {:?}", error);
+        };
+        assert_eq!(
+            Span::new(Path::new("whatever"), (0, 6), (0, 6)),
+            location.into_inner()
+        );
+        assert_eq!(message, String::from("expected id"));
     }
     #[test]
     fn grammar_parser_regex() {
@@ -182,13 +187,12 @@ impl LexerGrammarBuilder {
     pub fn build(self) -> Result<LexerGrammar> {
         let mut warnings = WarningSet::empty();
         let mut stream = self.stream;
-        let size = stream.len();
         let mut ignores = HashSet::<String>::new();
         let mut names = vec![];
         let mut regex_builder = RegexBuilder::new();
         let mut found_identifiers = HashSet::new();
         Self::ignore_blank_lines(&mut stream);
-        while stream.pos() < size {
+        while !stream.is_empty() {
             let ignore = Self::read_keyword(&mut stream, "ignore");
             Self::ignore_blank(&mut stream);
             let keyword = Self::read_keyword(&mut stream, "keyword");
@@ -204,24 +208,13 @@ impl LexerGrammarBuilder {
             Self::ignore_blank(&mut stream);
             Self::ignore_assignment(&mut stream)?.unpack_into(&mut warnings);
             Self::ignore_blank(&mut stream);
-            let start = stream.pos();
-            let _location = Location::from_stream_pos(
-                stream.origin(),
-                &stream.borrow(),
-                start,
-                stream.pos(),
-            );
+            let start_span = stream.curr_span();
             let pattern = Self::read_pattern(&mut stream);
             regex_builder = regex_builder
                 .with_named_regex(pattern.as_str(), name.clone(), keyword)
                 .map_err(|RegexError { message, position }| {
                     Error::RegexError {
-                        location: Fragile::new(Location::from_stream_pos(
-                            stream.origin(),
-                            &stream.borrow(),
-                            start + position,
-                            start + position + 1,
-                        )),
+                        location: Fragile::new(start_span),
                         message,
                     }
                 })?;
@@ -244,12 +237,12 @@ impl LexerGrammarBuilder {
 
     fn read_pattern(stream: &mut StringStream) -> String {
         let mut result = String::new();
-        while let (Char::Char(chr), _) = stream.get().unwrap() {
+        while let Char::Char(chr) = stream.get() {
             if chr == '\n' {
                 break;
             }
             result.push(chr);
-            stream.pos_pp();
+            stream.incr_pos();
         }
         result
     }
@@ -258,7 +251,7 @@ impl LexerGrammarBuilder {
     fn read_keyword(stream: &mut StringStream, keyword: &str) -> bool {
         let size = keyword.chars().count();
         if stream.continues(keyword) {
-            stream.pos_inc(size);
+            stream.shift(size);
             true
         } else {
             false
@@ -274,9 +267,9 @@ impl LexerGrammarBuilder {
     }
 
     fn ignore_blank(stream: &mut StringStream) {
-        while let (Char::Char(chr), _) = stream.get().unwrap() {
+        while let Char::Char(chr) = stream.get() {
             if chr == ' ' || chr == '\t' {
-                stream.pos_pp();
+                stream.incr_pos();
             } else {
                 break;
             }
@@ -284,9 +277,9 @@ impl LexerGrammarBuilder {
     }
 
     fn ignore_blank_lines(stream: &mut StringStream) {
-        while let (Char::Char(chr), _) = stream.get().unwrap() {
+        while let Char::Char(chr) = stream.get() {
             if chr.is_whitespace() {
-                stream.pos_pp();
+                stream.incr_pos();
             } else {
                 break;
             }
@@ -295,29 +288,25 @@ impl LexerGrammarBuilder {
 
     fn generate_error(stream: &StringStream, err_message: &str) -> Error {
         Error::LexerGrammarSyntax {
-            location: Fragile::new(Location::from_stream_pos(
-                stream.origin(),
-                &stream.borrow(),
-                stream.pos(),
-                stream.pos() + 1,
-            )),
+            location: Fragile::new(stream.curr_span()),
             message: String::from(err_message),
         }
     }
 
-    fn read_id(stream: &mut StringStream) -> Result<(String, Location)> {
+    fn read_id(stream: &mut StringStream) -> Result<(String, Span)> {
         let mut result = String::new();
-        let mut span: Option<Location> = None;
-        while let (Char::Char(chr), loc) = stream.get().unwrap() {
+        let mut span: Option<Span> = None;
+        while let Char::Char(chr) = stream.get() {
             if !chr.is_ascii_alphabetic() {
                 break;
             }
+            let new_span = stream.curr_span();
             result.push(chr);
-            stream.pos_pp();
+            stream.incr_pos();
             span = Some(if let Some(span) = mem::take(&mut span) {
-                Location::extend(span, loc)
+                Span::extend(span, new_span)
             } else {
-                loc
+                new_span
             });
         }
         if let Some(span) = span {

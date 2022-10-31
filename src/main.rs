@@ -32,19 +32,19 @@ enum Action {
         source: PathBuf,
     },
     Parse {
-	/// Show the intermediate table used by the Earley parser
+        /// Show the intermediate table used by the Earley parser
         #[arg(short, long)]
         table: bool,
-	/// Show the final table used by the Earley parser
+        /// Show the final table used by the Earley parser
         #[arg(short, long)]
         final_table: bool,
-	/// Specify the lexer's grammar
+        /// Specify the lexer's grammar
         #[arg(short, long = "lexer")]
         lexer_grammar: PathBuf,
-	/// Specify the parser's grammar
+        /// Specify the parser's grammar
         #[arg(short, long = "parser")]
         parser_grammar: PathBuf,
-	/// The file to parse
+        /// The file to parse
         source: PathBuf,
     },
 }
@@ -214,14 +214,12 @@ fn main() -> anyhow::Result<()> {
                 fd.read_to_end(&mut buffer)?;
                 deserialize(&buffer)?
             } else {
-		println!("hello world");
                 EarleyGrammarBuilder::default()
                     .with_file(parser_grammar_path.as_path())?
                     .unpack_into(&mut warnings)
                     .build(&lexer)?
                     .unpack_into(&mut warnings)
             };
-	    println!("goodbye world");
             let parser = EarleyParser::new(parser_grammar);
             // let (table, raw_input) =
             //     EarleyParser::recognise(
@@ -238,17 +236,17 @@ fn main() -> anyhow::Result<()> {
             let mut input = lexer.lex(&mut stream);
             let (table, raw_input) =
                 parser.recognise(&mut input)?.unpack_into(&mut warnings);
-	    if print_table {
-		println!(" ### TABLE ###");
-		print_sets(&table, &parser, &lexer);
-	    }
+            if print_table {
+                println!(" ### TABLE ###");
+                print_sets(&table, &parser, &lexer);
+            }
             let forest = parser
                 .to_forest(&table, &raw_input)?
                 .unpack_into(&mut warnings);
             if print_final_table {
-		println!(" ### FINAL TABLE ###");
-		print_final_sets(&forest, &parser, &lexer);
-	    }
+                println!(" ### FINAL TABLE ###");
+                print_final_sets(&forest, &parser, &lexer);
+            }
             let ast = parser.select_ast(&forest, &raw_input);
             let mut tree = TreeBuilder::new(String::from("AST"));
             build_tree(&mut tree, &ast);

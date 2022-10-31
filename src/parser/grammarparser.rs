@@ -5,7 +5,6 @@ use crate::location::Span;
 use crate::parser::earley::GrammarRules;
 use crate::stream::StringStream;
 use newty::newty;
-// use crate::{rule, proxy, collect};
 use super::parser::{NonTerminalId, Value, AST};
 use crate::error::Result;
 use fragile::Fragile;

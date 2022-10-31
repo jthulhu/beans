@@ -10,7 +10,7 @@ use crate::lexer::Token;
 use crate::lexer::{LexedStream, Lexer};
 use crate::lexer::{LexerBuilder, TerminalId};
 use crate::parser::grammarparser::Attribute;
-use crate::parser::parser::{Value, AST};
+use super::parser::{Value, AST};
 use crate::regex::Allowed;
 use crate::retrieve;
 use crate::stream::StringStream;
@@ -1223,7 +1223,7 @@ RPAR ::= \)
         },
         #[allow(unused)]
         Terminal(TestToken),
-        Literal(crate::parser::parser::Value),
+        Literal(super::super::parser::Value),
     }
 
     impl PartialEq<TestAST> for AST {
@@ -1499,7 +1499,7 @@ int main() {
         let ast = parser.select_ast(&forest, &raw_input);
 
         let test_ast = {
-            use crate::parser::parser::Value::*;
+            use super::super::parser::Value::*;
             use TestAST::*;
             Node {
                 id: 0,

@@ -1,10 +1,12 @@
 use anyhow::Context;
 use beans::error::{Error, WarningSet, WithWarnings};
 use beans::lexer::{LexerBuilder, LexerGrammar, LexerGrammarBuilder};
-use beans::parser::earley::{EarleyGrammarBuilder, print_sets, print_final_sets};
-use beans::parser::grammarparser::GrammarBuilder;
-use beans::parser::parser::{Parser, Value, AST};
-use beans::parser::EarleyParser;
+use beans::parser::earley::{
+    print_final_sets, print_sets, EarleyGrammarBuilder,
+    EarleyParser,
+};
+use beans::parser::GrammarBuilder;
+use beans::parser::{Parser, Value, AST};
 use beans::regex::Allowed;
 use beans::stream::StringStream;
 use bincode::{deserialize, serialize};

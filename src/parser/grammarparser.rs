@@ -13,8 +13,31 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
+use const_format::formatcp;
 
-const VARIANT_NAME: &'static str = "variant";
+mod keyword {
+    pub const VARIANT_NAME: &str = "variant";
+    pub const SELF: &str = "Self";
+}
+
+mod token {
+    pub const IDENTIFIER: &str = "ID";
+    pub const STRING: &str = "STRING";
+    pub const PROXY_ASSIGN: &str = "COLON";
+    pub const INLINE_RULE_START: &str = "LBRACE";
+    pub const INLINE_RULE_END: &str = "RBRACE";
+    pub const EOF: &str = "EOF";
+    pub const MACRO_ARGS_SEPARATOR: &str = "COMMA";
+    pub const MACRO_ARGS_START: &str = "LBRACKET";
+    pub const MACRO_ARGS_END: &str = "RBRACKET";
+    pub const ATTRIBUTE_START: &str = "DOT";
+    pub const KEY_START: &str = "AT";
+    pub const INTEGER: &str = "INT";
+    pub const PROXY_START: &str = "LPROXY";
+    pub const PROXY_END: &str = "RPROXY";
+    pub const ASSIGNMENT: &str = "ASSIGNMENT";
+    pub const RULE_SEPARATOR: &str = "SEMICOLON";
+}
 
 pub type Key = Rc<str>;
 
@@ -247,7 +270,7 @@ impl ValueTemplate {
                 all_attributes[name].clone()
             }
             ValueTemplate::InlineRule { name, attributes } => {
-                let nonterminal = if &**name == "Self" {
+                let nonterminal = if &**name == keyword::SELF {
                     current
                 } else {
                     id_of[name].clone()
@@ -460,7 +483,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
                 return self.generate_error(
                     self.lexed_input.last_location().clone(),
                     name,
-                    "EOF",
+                    token::EOF,
                 )
             }
         }
@@ -470,13 +493,13 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         &mut self,
     ) -> std::result::Result<Vec<Rc<str>>, Error> {
         let mut args = Vec::new();
-        if self.peek_token("LBRACKET")? {
+        if self.peek_token(token::MACRO_ARGS_START)? {
             let mut cont = true;
             while cont {
-                args.push(self.read_token("ID")?.content().into());
-                cont = self.peek_token("COMMA")?;
+                args.push(self.read_token(token::IDENTIFIER)?.content().into());
+                cont = self.peek_token(token::MACRO_ARGS_SEPARATOR)?;
             }
-            self.read_token("RBRACKET")?;
+            self.read_token(token::MACRO_ARGS_END)?;
         }
         Ok(args)
     }
@@ -489,18 +512,18 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         } else {
             return self.generate_error(
                 self.lexed_input.last_location().clone(),
-                "STRING or ID",
-                "EOF",
+                formatcp!("{} or {}", token::STRING, token::IDENTIFIER),
+                token::EOF,
             );
         };
         let value = match token.name() {
-            "STRING" => ValueTemplate::Str(Rc::from(token.content())),
-            "ID" => {
+            token::STRING => ValueTemplate::Str(Rc::from(token.content())),
+            token::IDENTIFIER => {
                 let name = token.content().into();
-                if self.peek_token("LBRACE")? {
+                if self.peek_token(token::INLINE_RULE_START)? {
                     ValueTemplate::InlineRule {
                         name,
-                        attributes: self.read_proxy("RBRACE")?,
+                        attributes: self.read_proxy(token::INLINE_RULE_END)?,
                     }
                 } else {
                     ValueTemplate::Id(name)
@@ -509,7 +532,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
             found_token => {
                 return self.generate_error(
                     token.location().clone(),
-                    "STRING or ID",
+                    formatcp!("{} or {}", token::STRING, token::IDENTIFIER),
                     found_token,
                 )
             }
@@ -520,10 +543,10 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
     fn read_proxy_element(
         &mut self,
     ) -> std::result::Result<(Key, ValueTemplate), Error> {
-        let key_token = self.read_token("ID")?;
+        let key_token = self.read_token(token::IDENTIFIER)?;
         let key: Rc<str> = key_token.content().into();
-        if self.peek_token("COLON")? {
-            if &*key == VARIANT_NAME {
+        if self.peek_token(token::PROXY_ASSIGN)? {
+            if &*key == keyword::VARIANT_NAME {
                 return Err(Error::GrammarVariantKey {
                     location: key_token.location().into(),
                 });
@@ -531,7 +554,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
             let value = self.read_proxy_value()?;
             Ok((key, value))
         } else {
-            Ok((Rc::from(VARIANT_NAME), ValueTemplate::Str(key)))
+            Ok((Rc::from(keyword::VARIANT_NAME), ValueTemplate::Str(key)))
         }
     }
 
@@ -547,8 +570,8 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         }
         return self.generate_error(
             self.lexed_input.last_location().clone(),
-            format!("ID or {}", end).as_str(),
-            "EOF",
+            format!("{} or {}", token::IDENTIFIER, end).as_str(),
+            token::EOF,
         );
     }
 
@@ -557,47 +580,47 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         name: Rc<str>,
     ) -> std::result::Result<(MacroInvocation, Span), Error> {
         let mut args = Vec::new();
-        let mut location = self.lexed_input.last_location().clone();
-        if self.peek_token("LBRACKET")? {
+        let mut span = self.lexed_input.last_location().clone();
+        if self.peek_token(token::MACRO_ARGS_START)? {
             let mut cont = true;
             while cont {
-                let arg_name = self.read_token("ID")?.content().into();
+                let arg_name = self.read_token(token::IDENTIFIER)?.content().into();
                 let (arg, _) = self.read_macro_invocation(arg_name)?;
                 args.push(arg);
-                cont = self.peek_token("COMMA")?;
+                cont = self.peek_token(token::MACRO_ARGS_SEPARATOR)?;
             }
-            location = Span::extend(
-                location,
-                self.read_token("RBRACKET")?.location().clone(),
+            span = Span::extend(
+                span,
+                self.read_token(token::MACRO_ARGS_END)?.location().clone(),
             );
         }
-        Ok((MacroInvocation { name, args }, location))
+        Ok((MacroInvocation { name, args }, span))
     }
 
     fn read_rule_element_attribute(
         &mut self,
     ) -> std::result::Result<Attribute, Error> {
-        if self.peek_token("DOT")? {
+        if self.peek_token(token::ATTRIBUTE_START)? {
             if let Some(token) = self.next_token()? {
                 match token.name() {
-                    "ID" => {
+                    token::IDENTIFIER => {
                         let name = token.content().into();
                         Ok(Attribute::Named(name))
                     }
-                    "INT" => {
+                    token::INTEGER => {
                         Ok(Attribute::Indexed(token.content().parse().unwrap()))
                     }
                     found_token => self.generate_error(
                         token.location().clone(),
-                        "ID or INT",
+                        formatcp!("{} or {}", token::IDENTIFIER, token::INTEGER),
                         found_token,
                     ),
                 }
             } else {
                 self.generate_error(
                     self.lexed_input.last_location().clone(),
-                    "ID or INT",
-                    "EOF",
+                    formatcp!("{} or {}", token::IDENTIFIER, token::INTEGER),
+                    token::EOF,
                 )
             }
         } else {
@@ -608,8 +631,8 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
     fn read_rule_element_key(
         &mut self,
     ) -> std::result::Result<Option<Key>, Error> {
-        if self.peek_token("AT")? {
-            Ok(Some(self.read_token("ID")?.content().into()))
+        if self.peek_token(token::KEY_START)? {
+            Ok(Some(self.read_token(token::IDENTIFIER)?.content().into()))
         } else {
             Ok(None)
         }
@@ -644,14 +667,14 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         let mut rule_elements = Vec::new();
         while let Some(token) = self.next_token()? {
             match token.name() {
-                "LPROXY" => {
-                    let proxy = self.read_proxy("RPROXY")?;
+                token::PROXY_START => {
+                    let proxy = self.read_proxy(token::PROXY_END)?;
                     return Ok(PartialRule {
                         elements: rule_elements,
                         proxy,
                     });
                 }
-                "ID" => {
+                token::IDENTIFIER => {
                     let element =
                         self.read_rule_element(token.content().into())?;
                     rule_elements.push(element);
@@ -659,7 +682,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
                 found_token => {
                     return self.generate_error(
                         token.location().clone(),
-                        "LPROXY or ID",
+                        formatcp!("{} or {}", token::IDENTIFIER, token::PROXY_START),
                         found_token,
                     )
                 }
@@ -667,25 +690,25 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         }
         self.generate_error(
             self.lexed_input.last_location().clone(),
-            "LPROXY or ID",
-            "EOF",
+            formatcp!("{} or {}", token::IDENTIFIER, token::PROXY_START),
+            token::EOF,
         )
     }
 
     fn read_definition(&mut self) -> std::result::Result<bool, Error> {
-        let axiom = self.peek_token("AT")?;
+        let axiom = self.peek_token(token::KEY_START)?;
         let definition_name_token = match self
             .lexed_input
             .next_any()?
             .unpack_into(&mut self.warnings)
         {
             Some(token) => {
-                if token.name() == "ID" {
+                if token.name() == token::IDENTIFIER {
                     token
                 } else {
                     let location = token.location().clone();
                     let name = token.name().to_string();
-                    return self.generate_error(location, "ID", name.as_str());
+                    return self.generate_error(location, token::IDENTIFIER, name.as_str());
                 }
             }
             None => {
@@ -705,10 +728,10 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
             todo!()
         }
         let arguments = self.read_macro_arguments()?;
-        self.read_token("ASSIGNMENT")?;
+        self.read_token(token::ASSIGNMENT)?;
         let mut rules: Vec<PartialRule> = Vec::new();
         'read_rules: while let Some(token) = self.next_token()? {
-            if token.name() == "SEMICOLON" {
+            if token.name() == token::RULE_SEPARATOR {
                 break 'read_rules;
             }
             self.lexed_input.drop_last();
@@ -818,7 +841,7 @@ pub trait Grammar<'d>: Sized + Serialize + Deserialize<'d> {
         name_of: NonTerminalName,
     ) -> Result<Self>;
 
-    fn from(bytes: &'d [u8]) -> Result<Self> {
+    fn deserialize(bytes: &'d [u8]) -> Result<Self> {
         Ok(WarningSet::empty_with(bincode::deserialize::<'d, Self>(
             bytes,
         )?))

@@ -70,15 +70,15 @@ pub trait Parser<'deserializer> {
 /// Create a parser, shipping all the grammars into the binary.
 /// ```rust
 /// # use beans::parser::include_parser;
-/// let parser = include_parser!(
+/// let (lexer, parser) = include_parser!(
 ///     lexer => compiled "gmrs/dummy.clx",
 ///     parser => compiled "gmrs/dummy.cgr",
-///  ).unwrap();
+///  ).unwrap().unwrap();
 #[macro_export]
 macro_rules! include_parser {
     (lexer => compiled $path:literal, $($rest:tt)*) => {{
 	let driver_function =
-	    || -> $crate::error::Result<$crate::parser::earley::EarleyParser> {
+	    || -> $crate::error::Result<($crate::lexer::Lexer, $crate::parser::earley::EarleyParser)> {
 		let mut warnings = $crate::error::WarningSet::empty();
 		let lexer_grammar_source = include_bytes!($path);
 		let lexer_grammar =
@@ -87,13 +87,13 @@ macro_rules! include_parser {
 		let lexer =
 		    $crate::lexer::LexerBuilder::from_grammar(lexer_grammar).build();
 		let parser = include_parser!(@parser(&mut warnings, lexer) $($rest)*);
-		warnings.with_ok(parser)
+		warnings.with_ok((lexer, parser))
 	    };
 	driver_function()
     }};
     (lexer => $path:literal, $($rest:tt)*) => {{
 	let driver_function =
-	    || -> $crate::error::Result<$crate::parser::earley::EarleyParser> {
+	    || -> $crate::error::Result<($crate::lexer::Lexer, $crate::parser::earley::EarleyParser)> {
 		let mut warnings = $crate::error::WarningSet::empty();
 		let lexer_grammar_source = include_str!($path);
 		let lexer_grammar_stream = StringStream::new(
@@ -107,7 +107,7 @@ macro_rules! include_parser {
 		let lexer =
 		    $crate::lexer::LexerBuilder::from_grammar(lexer_grammar).build();
 		let parser = include_parser!(@parser(&mut warnings, lexer) $($rest)*);
-		warnings.with_ok(parser)
+		warnings.with_ok((lexer, parser))
 	    };
 	driver_function()
     }};

@@ -155,10 +155,11 @@ impl GrammarBuilder<'_> for EarleyGrammarBuilder {
 
 impl Default for EarleyGrammarBuilder {
     fn default() -> Self {
-        Self::new().with_grammar_stream(StringStream::new(
-            Path::new("earley.lx"),
-            include_str!("earley.lx"),
-        ))
+        Self::new()
+            .with_grammar_stream(StringStream::new(
+                Path::new("gmrs/earley.lx"),
+                include_str!("gmrs/earley.lx"),
+            ))
             .unwrap()
             .unwrap()
     }
@@ -916,8 +917,8 @@ RPAR ::= \)
   LPAR Expression@value RPAR <Parenthesized>;
 "#;
 
-    const GRAMMAR_C_LEXER: &str = include_str!("petitc.lx");
-    const GRAMMAR_C: &str = include_str!("petitc.gr");
+    const GRAMMAR_C_LEXER: &str = include_str!("gmrs/petitc.lx");
+    const GRAMMAR_C: &str = include_str!("gmrs/petitc.gr");
 
     struct TestEarleyItem {
         name: &'static str,
@@ -1299,9 +1300,17 @@ RPAR ::= \)
     #[test]
     fn earley_grammar_builder() {
         use crate::lexer::LexerBuilder;
-        let lexer = LexerBuilder::default().build();
+        let lexer_grammar = LexerGrammarBuilder::from_file(Path::new(
+            "src/parser/gmrs/dummy.lx",
+        ))
+        .unwrap()
+        .unwrap()
+        .build()
+        .unwrap()
+        .unwrap();
+        let lexer = LexerBuilder::from_grammar(lexer_grammar).build();
         let grammar = EarleyGrammarBuilder::default()
-            .with_file(Path::new("gmrs/parser.gr"))
+            .with_file(Path::new("src/parser/gmrs/dummy.gr"))
             .unwrap()
             .unwrap()
             .build(&lexer)

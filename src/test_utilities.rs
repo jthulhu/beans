@@ -1,5 +1,3 @@
-use crate::error::WithWarnings;
-
 #[macro_export]
 macro_rules! rules {
     (@rule($grammar:expr) proxy insert $proxy: ident $key: ident bool $value: literal) => {

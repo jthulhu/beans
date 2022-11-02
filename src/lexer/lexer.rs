@@ -670,6 +670,10 @@ impl LexedStream<'_, '_> {
     pub fn lexer(&self) -> &Lexer {
         self.lexer
     }
+
+    pub fn is_empty(&self) -> bool {
+	self.stream.is_empty()
+    }
 }
 /// # Summary
 ///

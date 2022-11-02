@@ -797,10 +797,19 @@ impl EarleyParser {
                     next_state.add(*item);
                 }
                 raw_input.push(token.clone());
-            }
-            if next_state.is_empty() {
+            } else if sets.last().unwrap().set.iter().any(|item| {
+                let rule = &self.grammar.rules[item.rule];
+                item.origin == 0
+                    && self.grammar.axioms.contains(rule.id)
+                    && rule.elements.len() == item.position
+            }) {
                 break 'outer warnings.with_ok((sets, raw_input));
-            }
+            } else {
+		return Err(Error::SyntaxError {
+		    message: String::from("Reached EOF but parsing isn't done."),
+		    location: input.last_location().into(),
+		});
+	    }
             sets.push(next_state);
             pos += 1;
         }
@@ -1475,6 +1484,33 @@ int main() {
             )
             .unwrap()
             .unwrap();
+    }
+
+    #[test]
+    fn valid_prefix() {
+        let input = r#"1+2+"#;
+        let lexer = LexerBuilder::from_stream(StringStream::new(
+            Path::new("<NUMBERS LEXER>"),
+            GRAMMAR_NUMBERS_LEXER,
+        ))
+        .unwrap()
+        .unwrap()
+        .build();
+        let grammar = EarleyGrammarBuilder::default()
+            .with_stream(StringStream::new(
+                Path::new("<NUMBERS>"),
+                GRAMMAR_NUMBERS,
+            ))
+            .build(&lexer)
+            .unwrap()
+            .unwrap();
+        let parser = EarleyParser::new(grammar);
+        assert!(parser
+            .parse(
+                &mut lexer
+                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
+            )
+            .is_err());
     }
 
     #[test]

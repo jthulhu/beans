@@ -2,8 +2,7 @@ use anyhow::Context;
 use beans::error::{Error, WarningSet, WithWarnings};
 use beans::lexer::{LexerBuilder, LexerGrammar, LexerGrammarBuilder};
 use beans::parser::earley::{
-    print_final_sets, print_sets, EarleyGrammarBuilder,
-    EarleyParser,
+    print_final_sets, print_sets, EarleyGrammarBuilder, EarleyParser,
 };
 use beans::parser::GrammarBuilder;
 use beans::parser::{Parser, Value, AST};

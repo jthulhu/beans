@@ -4,13 +4,13 @@ use super::grammarparser::{
 };
 use super::list::List;
 use super::parser::{NonTerminalId, ParseResult, Parser, RuleId};
+use super::parser::{Value, AST};
 use crate::error::Result;
 use crate::error::{Error, WarningSet};
 use crate::lexer::Token;
 use crate::lexer::{LexedStream, Lexer};
 use crate::lexer::{LexerBuilder, TerminalId};
 use crate::parser::grammarparser::Attribute;
-use super::parser::{Value, AST};
 use crate::regex::Allowed;
 use crate::retrieve;
 use crate::stream::StringStream;
@@ -845,7 +845,7 @@ impl Parser<'_> for EarleyParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::LexerGrammar;
+    use crate::lexer::{LexerGrammar, LexerGrammarBuilder};
     use crate::rules;
 
     use crate::{

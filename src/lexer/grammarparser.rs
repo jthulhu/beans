@@ -400,4 +400,8 @@ impl LexerGrammar {
             };
         warnings.with_ok(lexer_grammar)
     }
+
+    pub fn deserialize(bytes: &[u8]) -> Result<Self> {
+	Ok(WarningSet::empty_with(deserialize(bytes)?))
+    }
 }

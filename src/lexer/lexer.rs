@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn default_lex_grammar() {
-        let lexer = LexerBuilder::from_file(Path::new("gmrs/lexer.lx"))
+        let lexer = LexerBuilder::from_file(Path::new("src/parser/gmrs/dummy.lx"))
             .unwrap()
             .unwrap()
             .build();
@@ -184,11 +184,11 @@ mod tests {
 
     #[test]
     fn default_parser_grammar() {
-        let lexer = LexerBuilder::from_file(Path::new("src/parser/earley.lx"))
+        let lexer = LexerBuilder::from_file(Path::new("src/parser/gmrs/earley.lx"))
             .unwrap()
             .unwrap()
             .build();
-        let mut input = StringStream::from_file(Path::new("gmrs/parser.gr"))
+        let mut input = StringStream::from_file(Path::new("src/parser/gmrs/dummy.gr"))
             .unwrap()
             .unwrap();
         let mut lexed_input = lexer.lex(&mut input);
@@ -553,14 +553,6 @@ impl LexerBuilder {
     /// Build the lexer, consuming the builder.
     pub fn build(self) -> Lexer {
         Lexer::new(self.grammar)
-    }
-}
-
-impl Default for LexerBuilder {
-    fn default() -> Self {
-        Self::from_file(Path::new("gmrs/lexer.lx"))
-            .unwrap()
-            .unwrap()
     }
 }
 

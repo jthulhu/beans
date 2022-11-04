@@ -18,6 +18,7 @@ use fragile::Fragile;
 use itertools::Itertools;
 use newty::{newty, nvec};
 use serde::{Deserialize, Serialize};
+use std::cmp::{Ordering, Reverse};
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -464,7 +465,7 @@ impl EarleyParser {
                 let mut boundary = vec![(List::default(), element.start)];
                 for elem in self.grammar.rules[rule].elements.iter() {
                     let mut next_boundary = Vec::new();
-                    for (children, curpos) in boundary {
+                    for (children, curpos) in boundary.drain(..) {
                         match elem.element_type {
                             ElementType::NonTerminal(id) => {
                                 if let Some(rules) =
@@ -508,26 +509,51 @@ impl EarleyParser {
                             _ => {}
                         }
                     }
-                    boundary = next_boundary;
+                    boundary.extend(next_boundary.into_iter().rev());
                 }
-                boundary
+                let children = boundary
                     .into_iter()
-                    .find_map(|(children, pos)| {
+                    .filter_map(|(children, pos)| {
                         if pos == element.end {
-                            Some(
-                                children
-                                    .iter()
-                                    .cloned()
-                                    .collect::<Vec<_>>()
-                                    .into_iter()
-                                    .rev()
-                                    .collect(),
-                            )
+                            Some(children)
                         } else {
                             None
                         }
                     })
-                    .unwrap()
+                    .max_by(|left_children, right_children| {
+                        for (left, right) in left_children.iter().zip(right_children.iter()) {
+			    let SyntaxicItemKind::Rule(left_rule) = left.kind else {
+				continue;
+			    };
+			    let SyntaxicItemKind::Rule(right_rule) = right.kind else {
+				continue;
+			    };
+			    let assoc_ord = if self.grammar.rules[rule].left_associative {
+				left.start.cmp(&right.start)
+			    } else {
+				right.start.cmp(&left.start)
+			    };
+			    let ord = match assoc_ord {
+				Ordering::Equal => {
+				    left_rule.cmp(&right_rule)
+				}
+				other => other
+			    };
+			    match ord {
+				Ordering::Equal => continue,
+				other => return other,
+			    }
+			}
+			Ordering::Equal
+                    })
+                    .unwrap();
+                children
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .rev()
+                    .collect()
             }
             SyntaxicItemKind::Token(_) => Vec::new(),
         }
@@ -618,6 +644,7 @@ impl EarleyParser {
                         .axioms
                         .contains(self.grammar.rules[item.rule].id)
             })
+            .sorted_unstable_by_key(|item| Reverse(item.rule))
             .map(|item| SyntaxicItem {
                 start: 0,
                 end: raw_input.len(),
@@ -805,11 +832,13 @@ impl EarleyParser {
             }) {
                 break 'outer warnings.with_ok((sets, raw_input));
             } else {
-		return Err(Error::SyntaxError {
-		    message: String::from("Reached EOF but parsing isn't done."),
-		    location: input.last_location().into(),
-		});
-	    }
+                return Err(Error::SyntaxError {
+                    message: String::from(
+                        "Reached EOF but parsing isn't done.",
+                    ),
+                    location: input.last_location().into(),
+                });
+            }
             sets.push(next_state);
             pos += 1;
         }
@@ -855,6 +884,7 @@ impl Parser<'_> for EarleyParser {
 mod tests {
     use super::*;
     use crate::lexer::{LexerGrammar, LexerGrammarBuilder};
+    use crate::printer::print_ast;
     use crate::rules;
 
     use crate::{
@@ -888,6 +918,14 @@ OP ::= \+
 LPAR ::= \(
 RPAR ::= \)
 "#;
+    const GRAMMAR_NUMBERS_IMPROVED: &str = r#"
+@Expr ::=
+  NUMBER.0@value <Literal>
+  (left-assoc) Expr@left TD Expr@right <MulDiv>
+  (right-assoc) Expr@left PM Expr@right <AddSub>
+  LPAR Expr@value RPAR <Through>;
+"#;
+
     const GRAMMAR_PROXY: &str = r#"
 @Expression ::=
   NUMBER.0@value <Literal>
@@ -1177,7 +1215,7 @@ RPAR ::= \)
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     struct TestToken {
         name: &'static str,
         attributes: Vec<(usize, &'static str)>,
@@ -1205,6 +1243,7 @@ RPAR ::= \)
         }
     }
 
+    #[derive(Clone)]
     struct MapVec(Vec<(&'static str, TestAST)>);
 
     impl std::fmt::Debug for MapVec {
@@ -1225,7 +1264,7 @@ RPAR ::= \)
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     enum TestAST {
         Node {
             id: usize,
@@ -1368,7 +1407,6 @@ RPAR ::= \)
               StatementList@else !t
             RBRACE <variant = str "Else">
             );
-        println!("======\n{:#?}\n\n", grammar.rules);
         verify(&grammar.rules, &expected_rules, &grammar, lexer.grammar());
     }
 
@@ -1487,6 +1525,43 @@ int main() {
     }
 
     #[test]
+    fn grammar_c_prior_assoc() {
+        let input = r#"
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
+
+int main() {
+  int a;
+  int b;
+  a = b = 3+3*2;
+  a = a < b > a < b > a;
+}
+"#;
+        let lexer = LexerBuilder::from_stream(StringStream::new(
+            Path::new("petitc.lx"),
+            GRAMMAR_C_LEXER,
+        ))
+        .unwrap()
+        .unwrap()
+        .build();
+        let grammar = EarleyGrammarBuilder::default()
+            .with_stream(StringStream::new(Path::new("petitc.gr"), GRAMMAR_C))
+            .build(&lexer)
+            .unwrap()
+            .unwrap();
+        let parser = EarleyParser::new(grammar);
+        let _ast = parser
+            .parse(
+                &mut lexer
+                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
+            )
+            .unwrap()
+            .unwrap();
+	// print_ast(&_ast.tree).unwrap();
+    }
+
+    #[test]
     fn valid_prefix() {
         let input = r#"1+2+"#;
         let lexer = LexerBuilder::from_stream(StringStream::new(
@@ -1511,6 +1586,172 @@ int main() {
                     .lex(&mut StringStream::new(Path::new("<input>"), input)),
             )
             .is_err());
+    }
+
+    #[test]
+    fn priority_associativity() {
+        // Expected tree:
+        // 1+(2+(((3*4)*5)+(6+(7*8))))
+        //
+        let input = r"1+2+3*4*5+6+7*8";
+        let lexer = LexerBuilder::from_stream(StringStream::new(
+            Path::new("<NUMBERS LEXER>"),
+            GRAMMAR_NUMBERS_LEXER,
+        ))
+        .unwrap()
+        .unwrap()
+        .build();
+        let grammar = EarleyGrammarBuilder::default()
+            .with_stream(StringStream::new(
+                Path::new("<NUMBERS IMPROVED>"),
+                GRAMMAR_NUMBERS_IMPROVED,
+            ))
+            .build(&lexer)
+            .unwrap()
+            .unwrap();
+        let parser = EarleyParser::new(grammar);
+        let ast = parser
+            .parse(
+                &mut lexer
+                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
+            )
+            .unwrap()
+            .unwrap();
+        let test_ast =
+            {
+                use super::super::parser::Value::*;
+                use TestAST::*;
+                let add = Literal(Str("AddSub".into()));
+                let literal = Literal(Str("Literal".into()));
+                let mul = Literal(Str("MulDiv".into()));
+                Node {
+                    id: 0,
+                    attributes: vec![
+                        ("variant", add.clone()),
+                        (
+                            "left",
+                            Node {
+                                id: 0,
+                                attributes: vec![
+                                    ("variant", literal.clone()),
+                                    ("value", Literal(Str("1".into()))),
+                                ]
+                                .into(),
+                            },
+                        ),
+                        (
+                            "right",
+                            Node {
+                                id: 0,
+                                attributes: vec![
+                                    ("variant", add.clone()),
+                                    (
+                                        "left",
+                                        Node {
+                                            id: 0,
+                                            attributes: vec![
+                                                ("variant", literal.clone()),
+                                                (
+                                                    "value",
+                                                    Literal(Str("2".into())),
+                                                ),
+                                            ]
+                                            .into(),
+                                        },
+                                    ),
+                                    (
+                                        "right",
+                                        Node {
+                                            id: 0,
+                                            attributes: vec![
+                                                ("variant", add.clone()),
+                                                (
+                                                    "left",
+                                                    Node {
+                                                        id: 0,
+                                                        attributes: vec![
+							    ("variant", mul.clone()),
+							    ("left", Node {
+								id: 0,
+								attributes: vec![
+								    ("variant", mul.clone()),
+								    ("left", Node {
+									id: 0,
+									attributes: vec![
+									    ("variant", literal.clone()),
+									    ("value", Literal(Str("3".into()))),
+									].into(),
+								    }),
+								    ("right", Node {
+									id: 0,
+									attributes: vec![
+									    ("variant", literal.clone()),
+									    ("value", Literal(Str("4".into()))),
+									].into(),
+								    }),
+								].into(),
+							    }),
+							    ("right", Node {
+								id: 0,
+								attributes: vec![
+								    ("variant", literal.clone()),
+								    ("value", Literal(Str("5".into()))),
+								].into(),
+							    })
+							]
+                                                        .into(),
+                                                    },
+                                                ),
+                                                (
+                                                    "right",
+                                                    Node {
+                                                        id: 0,
+                                                        attributes: vec![
+							("variant", add.clone()),
+							("left", Node {
+							    id: 0,
+							    attributes: vec![
+								("variant", literal.clone()),
+								("value", Literal(Str("6".into()))),
+							    ].into()
+							}),
+							("right", Node {
+							    id: 0,
+							    attributes: vec![
+								("variant", mul.clone()),
+								("left", Node {
+								    id: 0,
+								    attributes: vec![
+									("variant", literal.clone()),
+									("value", Literal(Str("7".into()))),
+								    ].into(),
+								}),
+								("right", Node {
+								    id: 0,
+								    attributes: vec![
+									("variant", literal.clone()),
+									("value", Literal(Str("8".into()))),
+								    ].into(),
+								}),
+							    ].into(),
+							}),
+						    ]
+                                                        .into(),
+                                                    },
+                                                ),
+                                            ]
+                                            .into(),
+                                        },
+                                    ),
+                                ]
+                                .into(),
+                            },
+                        ),
+                    ]
+                    .into(),
+                }
+            };
+        assert_eq!(ast.tree, test_ast,);
     }
 
     #[test]
@@ -1638,7 +1879,11 @@ int main() {
             }
         };
 
-        assert_eq!(ast, test_ast);
+        assert_eq!(
+            ast, test_ast,
+            "Expected\n{:#?}\n\nGot\n{:?}",
+            test_ast, ast
+        );
     }
 
     #[test]
@@ -1744,7 +1989,6 @@ int main() {
             .build(&lexer)
             .unwrap()
             .unwrap();
-        println!("{:#?}", grammar);
         let parser = EarleyParser::new(grammar);
         let sets = sets!(
             ==

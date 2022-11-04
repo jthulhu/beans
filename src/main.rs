@@ -5,12 +5,12 @@ use beans::parser::earley::{
     print_final_sets, print_sets, EarleyGrammarBuilder, EarleyParser,
 };
 use beans::parser::GrammarBuilder;
-use beans::parser::{Parser, Value, AST};
+use beans::parser::Parser;
+use beans::printer::print_ast;
 use beans::regex::Allowed;
 use beans::stream::StringStream;
 use bincode::{deserialize, serialize};
 use clap::{Parser as CliParser, Subcommand};
-use ptree::{print_tree, TreeBuilder};
 use std::fs::File;
 use std::io::{prelude::*, stdout, BufWriter};
 use std::path::PathBuf;
@@ -139,33 +139,6 @@ fn compile(compile_action: CompileAction) -> anyhow::Result<WithWarnings<()>> {
     warnings.with_ok(())
 }
 
-fn build_tree(tree: &mut TreeBuilder, ast: &AST) {
-    match ast {
-        AST::Node { attributes, .. } => {
-            for (key, value) in attributes.iter() {
-                tree.begin_child(key.to_string());
-                build_tree(tree, value);
-                tree.end_child();
-            }
-        }
-        AST::Literal(Value::Int(i)) => {
-            tree.add_empty_child(i.to_string());
-        }
-        AST::Literal(Value::Str(string)) => {
-            tree.add_empty_child(string.to_string());
-        }
-        AST::Literal(Value::Float(f)) => {
-            tree.add_empty_child(f.to_string());
-        }
-        AST::Literal(Value::Bool(b)) => {
-            tree.add_empty_child(b.to_string());
-        }
-        AST::Terminal(ter) => {
-            tree.add_empty_child(ter.name().to_string());
-        }
-    }
-}
-
 fn main() -> anyhow::Result<()> {
     let Cli { action } = Cli::parse();
     let mut warnings = WarningSet::default();
@@ -249,10 +222,7 @@ fn main() -> anyhow::Result<()> {
                 print_final_sets(&forest, &parser, &lexer);
             }
             let ast = parser.select_ast(&forest, &raw_input);
-            let mut tree = TreeBuilder::new(String::from("AST"));
-            build_tree(&mut tree, &ast);
-            let tree = tree.build();
-            print_tree(&tree)?;
+            print_ast(&ast)?;
         }
     }
     for warning in warnings.iter() {

@@ -23,7 +23,7 @@
             rust-overlay.overlays.default
           ];
         };
-        rust = pkgs.rust-bin.stable.latest.default.override {
+        rust = pkgs.rust-bin.stable.stable.default.override {
           extensions = [ "rust-src" "clippy" ];
         };
         naersk-lib = naersk.lib.${system}.override {
@@ -41,9 +41,9 @@
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
             gdb
+            rust
             cargo
             cargo-edit
-            rustc
             rustfmt
             clippy
             rust-analyzer

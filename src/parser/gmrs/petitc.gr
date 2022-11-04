@@ -1,6 +1,6 @@
 Option[content] ::=
-  <None>
-  content@value <Some>;
+  content@value <Some>
+  <None>;
 
 NonEmptyList[content, separation] ::=
   content@head <Nil>
@@ -36,71 +36,63 @@ Bool ::=
   FALSE <False>;
 
 Expr ::=
-  EqualExpr@this <Through>;
-
-EqualExpr ::=
-  OrExpr@key EQUAL EqualExpr@value <Assign>
-  OrExpr@this <Through>;
-
-OrExpr ::=
-  AndExpr@left OR OrExpr@right <Or>
-  AndExpr@this <Through>;
-
-AndExpr ::=
-  EqExpr@left AND AndExpr@right <Op>
-  EqExpr@this <Through>;
-
-EqExpr ::=
-  CmpExpr@left EQ EqExpr@right <Equal>
-  CmpExpr@left NEQ EqExpr@right <NotEqual>
-  CmpExpr@this <Through>;
-
-CmpExpr ::=
-  PmExpr@left LT CmpExpr@right <Lt>
-  PmExpr@left GT CmpExpr@right <Gt>
-  PmExpr@left GEQ CmpExpr@right <Geq>
-  PmExpr@left LEQ CmpExpr@right <Leq>
-  PmExpr@this <Through>;
-
-PmExpr ::=
-  MdmExpr@left PLUS PmExpr@right <Add>
-  MdmExpr@left MINUS PmExpr@right <Sub>
-  MdmExpr@this <Through>;
-
-MdmExpr ::=
-  UnaryExpr@left ASTERISK MdmExpr@right <Mul>
-  UnaryExpr@left SLASH MdmExpr@right <Div>
-  UnaryExpr@left PERCENT MdmExpr@right <Mod>
-  UnaryExpr@this <Through>;
-
-UnaryExpr ::=
-  EXCLAM UnaryExpr@value <Not>
-  PLUSPLUS UnaryExpr@value <Incrl>
-  UnaryExpr@value PLUSPLUS <Incrr>
-  MINUSMINUS UnaryExpr@value <Decrl>
-  UnaryExpr@value MINUSMINUS <Decrr>
-  AMPERSAND UnaryExpr@value <Borrow>
-  ASTERISK UnaryExpr@value <Deref>
-  PLUS UnaryExpr@value <Plus>
-  MINUS UnaryExpr@value <Minus>
+  Int@value <Int>
+  Bool@value <Bool>
+  NULL <Null>
+  LPAR Expr@this RPAR <Through>
+  EXCLAM Expr@value <Not>
+  PLUSPLUS Expr@value <Incrl>
+  Expr@value PLUSPLUS <Incrr>
+  MINUSMINUS Expr@value <Decrl>
+  Expr@value MINUSMINUS <Decrr>
+  AMPERSAND Expr@value <Borrow>
+  ASTERISK Expr@value <Deref>
+  PLUS Expr@value <Plus>
+  MINUS Expr@value <Minus>
   IDENT.0@value <Ident>
   SIZEOF LPAR Type@type RPAR <Sizeof>
   IDENT.0@name LPAR List[Expr, COMMA]@args RPAR <Call>
-  UnaryExpr@array LBRACKET Expr@index RBRACKET <
+  Expr@array LBRACKET Expr@index RBRACKET <
     Deref
-    value: PmExpr {
-      Add
+    value: Expr {
+      BinOp
+      op: AddSubOp { Add }
       left: array
       right: index
     }
   >
-  LiteralExpr@this <Through>;
+  (left-assoc) Expr@left MulDivModOp@op Expr@right <BinOp>
+  (left-assoc) Expr@left AddSubOp@op Expr@right <BinOp>
+  (left-assoc) Expr@left CmpOp@op Expr@right <BinOp>
+  (left-assoc) Expr@left EqOp@op Expr@right <BinOp>
+  (left-assoc) Expr@left AndOp@op Expr@right <BinOp>
+  (left-assoc) Expr@left OrOp@op Expr@right <BinOp>
+  (right-assoc) Expr@key EQUAL Expr@value <Assign>;
 
-LiteralExpr ::=
-  Int@value <Int>
-  Bool@value <Bool>
-  NULL <Null>
-  LPAR Expr@this RPAR <Through>;
+MulDivModOp ::=
+  ASTERISK <Mul>
+  SLASH <Div>
+  PERCENT <Mod>;
+
+AddSubOp ::=
+  PLUS <Add>
+  MINUS <Sub>;
+
+CmpOp ::=
+  LT <Lt>
+  GT <Gt>
+  GEQ <Geq>
+  LEQ <Leq>;
+
+EqOp ::=
+  EQ <Equal>
+  NEQ <NotEqual>;
+
+AndOp ::=
+  AND <And>;
+
+OrOp ::=
+  OR <Or>;
 
 Statement ::=
   SEMICOLON <None>

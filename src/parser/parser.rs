@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 newty! {
+    #[derive(PartialOrd, Ord)]
     pub id RuleId
 }
 newty! {

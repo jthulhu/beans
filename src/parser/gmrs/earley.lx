@@ -5,7 +5,9 @@ ignore COMMENT ::= \(\*.*\*\)
 INT ::= ([+\-]?\d+)
 STRING ::= "(([^"\\]|(\\[^\\])|(\\\\))*)"
 FLOAT ::= ([+\-]?\d+\.\d+)
-BOOL ::= (true|false)\b
+keyword BOOL ::= (true|false)
+keyword LEFT ::= left-assoc
+keyword RIGHT ::= right-assoc
 ID ::= (\w+)
 
 LPROXY ::= <
@@ -14,6 +16,8 @@ LBRACKET ::= \[
 RBRACKET ::= ]
 LBRACE ::= {
 RBRACE ::= }
+LPAR ::= \(
+RPAR ::= \)
 
 ASSIGNMENT ::= ::=
 COLON ::= :

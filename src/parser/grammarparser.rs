@@ -1,19 +1,19 @@
+use super::parser::{NonTerminalId, Value, AST};
+use crate::error::Result;
 use crate::error::{Error, WarningSet};
 use crate::lexer::{LexedStream, Lexer, Token};
 use crate::lexer::{LexerGrammar, TerminalId};
 use crate::location::Span;
 use crate::parser::earley::GrammarRules;
 use crate::stream::StringStream;
-use newty::newty;
-use super::parser::{NonTerminalId, Value, AST};
-use crate::error::Result;
+use const_format::formatcp;
 use fragile::Fragile;
 use itertools::Itertools;
+use newty::newty;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
-use const_format::formatcp;
 
 mod keyword {
     pub const VARIANT_NAME: &str = "variant";
@@ -37,6 +37,10 @@ mod token {
     pub const PROXY_END: &str = "RPROXY";
     pub const ASSIGNMENT: &str = "ASSIGNMENT";
     pub const RULE_SEPARATOR: &str = "SEMICOLON";
+    pub const ASSOC_START: &str = "LPAR";
+    pub const ASSOC_END: &str = "RPAR";
+    pub const LEFT_ASSOC: &str = "LEFT";
+    pub const RIGHT_ASSOC: &str = "RIGHT";
 }
 
 pub type Key = Rc<str>;
@@ -181,6 +185,7 @@ impl PartialRuleElement {
 struct PartialRule {
     elements: Vec<PartialRuleElement>,
     proxy: Proxy,
+    left_associative: bool,
 }
 
 impl PartialRule {
@@ -201,6 +206,7 @@ impl PartialRule {
                 })
                 .collect(),
             proxy: self.proxy,
+            left_associative: self.left_associative,
         }
     }
 }
@@ -211,6 +217,7 @@ pub struct Rule {
     pub id: NonTerminalId,
     pub elements: Vec<RuleElement>,
     pub proxy: Proxy,
+    pub left_associative: bool,
 }
 
 impl Rule {
@@ -219,11 +226,13 @@ impl Rule {
         id: NonTerminalId,
         elements: Vec<RuleElement>,
         proxy: Proxy,
+        left_associative: bool,
     ) -> Self {
         Self {
             id,
             elements,
             proxy,
+            left_associative,
         }
     }
 }
@@ -584,7 +593,8 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         if self.peek_token(token::MACRO_ARGS_START)? {
             let mut cont = true;
             while cont {
-                let arg_name = self.read_token(token::IDENTIFIER)?.content().into();
+                let arg_name =
+                    self.read_token(token::IDENTIFIER)?.content().into();
                 let (arg, _) = self.read_macro_invocation(arg_name)?;
                 args.push(arg);
                 cont = self.peek_token(token::MACRO_ARGS_SEPARATOR)?;
@@ -612,7 +622,11 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
                     }
                     found_token => self.generate_error(
                         token.location().clone(),
-                        formatcp!("{} or {}", token::IDENTIFIER, token::INTEGER),
+                        formatcp!(
+                            "{} or {}",
+                            token::IDENTIFIER,
+                            token::INTEGER
+                        ),
                         found_token,
                     ),
                 }
@@ -665,6 +679,28 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
 
     fn read_rule(&mut self) -> std::result::Result<PartialRule, Error> {
         let mut rule_elements = Vec::new();
+        let left_associative = if self.peek_token(token::ASSOC_START)? {
+            let Some(token) = self.next_token()? else {
+		return self.generate_error(
+		    self.lexed_input.last_location().clone(),
+		    formatcp!("{} or {}", token::LEFT_ASSOC, token::RIGHT_ASSOC),
+		    token::EOF
+		);
+	    };
+	    let result = match token.name() {
+		token::LEFT_ASSOC => true,
+		token::RIGHT_ASSOC => false,
+		found => return self.generate_error(
+		    token.location().clone(),
+		    formatcp!("{} or {}", token::LEFT_ASSOC, token::RIGHT_ASSOC),
+		    found,
+		),
+	    };
+            self.read_token(token::ASSOC_END)?;
+	    result
+        } else {
+            true
+        };
         while let Some(token) = self.next_token()? {
             match token.name() {
                 token::PROXY_START => {
@@ -672,6 +708,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
                     return Ok(PartialRule {
                         elements: rule_elements,
                         proxy,
+                        left_associative,
                     });
                 }
                 token::IDENTIFIER => {
@@ -682,7 +719,11 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
                 found_token => {
                     return self.generate_error(
                         token.location().clone(),
-                        formatcp!("{} or {}", token::IDENTIFIER, token::PROXY_START),
+                        formatcp!(
+                            "{} or {}",
+                            token::IDENTIFIER,
+                            token::PROXY_START
+                        ),
                         found_token,
                     )
                 }
@@ -708,7 +749,11 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
                 } else {
                     let location = token.location().clone();
                     let name = token.name().to_string();
-                    return self.generate_error(location, token::IDENTIFIER, name.as_str());
+                    return self.generate_error(
+                        location,
+                        token::IDENTIFIER,
+                        name.as_str(),
+                    );
                 }
             }
             None => {
@@ -724,7 +769,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
             definition_name.clone(),
             definition_name_token.location().clone(),
         ) {
-	    // Report error
+            // Report error
             todo!()
         }
         let arguments = self.read_macro_arguments()?;

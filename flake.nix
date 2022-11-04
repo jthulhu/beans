@@ -23,7 +23,7 @@
             rust-overlay.overlays.default
           ];
         };
-        rust = pkgs.rust-bin.stable.stable.default.override {
+        rust = pkgs.rust-bin.stable.latest.default.override {
           extensions = [ "rust-src" "clippy" ];
         };
         naersk-lib = naersk.lib.${system}.override {

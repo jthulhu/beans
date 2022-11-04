@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{rc::Rc, fmt};
 
 #[cfg(test)]
 mod test {
@@ -25,6 +25,12 @@ mod test {
 
 pub struct List<T> {
     content: Link<T>,
+}
+
+impl<T: fmt::Debug> fmt::Debug for List<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+	f.debug_list().entries(self.iter()).finish()
+    }
 }
 
 impl<T> Default for List<T> {

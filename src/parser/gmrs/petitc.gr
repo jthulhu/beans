@@ -25,7 +25,7 @@ Type ::=
   Type@pointed ASTERISK <Pointer>;
 
 TypedParam ::=
-  Type@type IDENT@name <>;
+  Type@type IDENT.0@name <>;
 
 Int ::=
   INT.0@value <Int>
@@ -98,14 +98,14 @@ Statement ::=
   SEMICOLON <None>
   Expr@stmt SEMICOLON <Regular>
   IF LPAR Expr@condition RPAR Statement@then Option[Else]@else <If>
-  WHILE LPAR Expr@condition RPAR Statement@stmts <While>
+  WHILE LPAR Expr@condition RPAR Statement@body <While>
   FOR
     LPAR
       Option[VariableDeclaration]@init SEMICOLON
       Option[Expr]@test SEMICOLON
       List[Expr, COMMA]@step
     RPAR
-    Statement@block <For>
+    Statement@body <For>
   Block@stmts <Block>
   RETURN Option[Expr]@value SEMICOLON <Return>
   BREAK SEMICOLON <Break>
@@ -118,12 +118,12 @@ Block ::=
   LBRACE List[DeclStatement, Empty]@stmts RBRACE <>;
 
 DeclStatement ::=
-  FunctionDeclaration <Function>
+  FunctionDeclaration@declaration <Function>
   VariableDeclaration@declaration SEMICOLON <Declaration>
   Statement@stmt <Statement>;
 
 VariableDeclaration ::=
-  Type@type IDENT.0@name Option[Definition] <>;
+  Type@type IDENT.0@name Option[Definition]@value <>;
 
 Definition ::=
   EQUAL Expr@value <>;

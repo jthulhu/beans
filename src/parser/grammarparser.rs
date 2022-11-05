@@ -269,6 +269,7 @@ impl ValueTemplate {
         all_attributes: &HashMap<Rc<str>, AST>,
         removed: &mut HashSet<Rc<str>>,
         id_of: &HashMap<Rc<str>, NonTerminalId>,
+	span: &Span,
     ) -> AST {
         match self {
             ValueTemplate::Str(string) => {
@@ -296,10 +297,12 @@ impl ValueTemplate {
                                     all_attributes,
                                     removed,
                                     id_of,
+				    span,
                                 ),
                             )
                         })
                         .collect(),
+		    span: span.clone(),
                 }
             }
         }

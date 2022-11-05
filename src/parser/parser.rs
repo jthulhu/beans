@@ -1,6 +1,7 @@
 use super::grammarparser::{Grammar, GrammarBuilder};
 use crate::error::Result;
 use crate::lexer::{LexedStream, Token};
+use crate::location::Span;
 use newty::newty;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -32,6 +33,7 @@ pub enum AST {
     Node {
         nonterminal: NonTerminalId,
         attributes: HashMap<Rc<str>, AST>,
+	span: Span,
     },
     Terminal(Token),
     Literal(Value),

@@ -10,6 +10,7 @@ use crate::error::{Error, WarningSet};
 use crate::lexer::Token;
 use crate::lexer::{LexedStream, Lexer};
 use crate::lexer::{LexerBuilder, TerminalId};
+use crate::location::Span;
 use crate::parser::grammarparser::Attribute;
 use crate::regex::Allowed;
 use crate::retrieve;
@@ -566,6 +567,10 @@ impl EarleyParser {
     ) -> AST {
         match item.kind {
             SyntaxicItemKind::Rule(rule) => {
+                let span = Span::extend(
+                    raw_input[item.start].location().clone(),
+                    raw_input[item.end-1].location().clone(),
+                );
                 let all_attributes = self
                     .find_children(item, forest, raw_input)
                     .into_iter()
@@ -615,6 +620,7 @@ impl EarleyParser {
                                 &all_attributes,
                                 &mut removed,
                                 &self.grammar().id_of,
+				&span,
                             ),
                         )
                     })
@@ -627,6 +633,7 @@ impl EarleyParser {
                 AST::Node {
                     nonterminal,
                     attributes,
+                    span,
                 }
             }
             SyntaxicItemKind::Token(token) => AST::Terminal(token),
@@ -884,7 +891,7 @@ impl Parser<'_> for EarleyParser {
 mod tests {
     use super::*;
     use crate::lexer::{LexerGrammar, LexerGrammarBuilder};
-    use crate::printer::print_ast;
+    // use crate::printer::print_ast;
     use crate::rules;
 
     use crate::{
@@ -1558,7 +1565,7 @@ int main() {
             )
             .unwrap()
             .unwrap();
-	// print_ast(&_ast.tree).unwrap();
+        // print_ast(&_ast.tree).unwrap();
     }
 
     #[test]

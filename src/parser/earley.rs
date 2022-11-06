@@ -580,27 +580,24 @@ impl EarleyParser {
                         element.key.as_ref().map(|key| {
                             match &element.attribute {
                                 Attribute::Named(attr) => {
-                                    if let AST::Node { attributes, .. } = item {
-                                        (
-                                            key.clone(),
-                                            attributes[attr.as_str()].clone(),
-                                        )
-                                    } else {
-                                        unreachable!() // TODO: remove this possibility
-                                    }
+				    let AST::Node { attributes, .. } = item else {
+					unreachable!()
+				    };
+                                    (
+                                        key.clone(),
+                                        attributes[attr.as_str()].clone(),
+                                    )
                                 }
                                 Attribute::Indexed(idx) => {
-                                    if let AST::Terminal(token) = item {
-                                        (
-                                            key.clone(),
-                                            AST::Literal(Value::Str(Rc::from(
-                                                token.attributes()[idx]
-                                                    .as_str(),
-                                            ))),
-                                        )
-                                    } else {
-                                        unreachable!()
-                                    }
+				    let AST::Terminal(token) = item else {
+					unreachable!()
+				    };
+				    (key.clone(), AST::Literal {
+					value: Value::Str(Rc::from(
+					    token.attributes()[idx].as_str(),
+					)),
+					span: Some(token.location().clone()),
+				    })
                                 }
                                 Attribute::None => (key.clone(), item),
                             }
@@ -636,7 +633,7 @@ impl EarleyParser {
                     span,
                 }
             }
-            SyntaxicItemKind::Token(token) => AST::Terminal(token),
+	    SyntaxicItemKind::Token(token) => AST::Terminal(token),
         }
     }
 
@@ -1319,7 +1316,7 @@ RPAR ::= \)
                 (TestAST::Terminal(ttoken), AST::Terminal(token)) => {
                     ttoken == token
                 }
-                (TestAST::Literal(tvalue), AST::Literal(value)) => {
+                (TestAST::Literal(tvalue), AST::Literal { value, .. }) => {
                     tvalue == value
                 }
                 _ => false,

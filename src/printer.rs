@@ -10,16 +10,28 @@ fn build_tree(tree: &mut TreeBuilder, ast: &AST) {
                 tree.end_child();
             }
         }
-        AST::Literal(Value::Int(i)) => {
+        AST::Literal {
+	    value: Value::Int(i),
+	    ..
+	} => {
             tree.add_empty_child(i.to_string());
         }
-        AST::Literal(Value::Str(string)) => {
+        AST::Literal {
+	    value: Value::Str(string),
+	    ..
+	}=> {
             tree.add_empty_child(string.to_string());
         }
-        AST::Literal(Value::Float(f)) => {
+        AST::Literal {
+	    value: Value::Float(f),
+	    ..
+	} => {
             tree.add_empty_child(f.to_string());
         }
-        AST::Literal(Value::Bool(b)) => {
+        AST::Literal {
+	    value: Value::Bool(b),
+	    ..
+	} => {
             tree.add_empty_child(b.to_string());
         }
         AST::Terminal(ter) => {

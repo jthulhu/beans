@@ -273,7 +273,10 @@ impl ValueTemplate {
     ) -> AST {
         match self {
             ValueTemplate::Str(string) => {
-                AST::Literal(Value::Str(string.clone()))
+                AST::Literal {
+		    value: Value::Str(string.clone()),
+		    span: None,
+		}
             }
             ValueTemplate::Id(name) => {
                 removed.insert(name.clone());

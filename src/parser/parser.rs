@@ -35,8 +35,11 @@ pub enum AST {
         attributes: HashMap<Rc<str>, AST>,
 	span: Span,
     },
+    Literal {
+	value: Value,
+	span: Option<Span>,
+    },
     Terminal(Token),
-    Literal(Value),
 }
 
 /// Successful result of the parse of an input.

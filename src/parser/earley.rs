@@ -787,43 +787,41 @@ impl EarleyParser {
                 .chain(scans.keys().cloned())
                 .collect::<Vec<_>>();
             let allowed = Allowed::Some(possible_scans.clone());
-            if let Some(token) = match input.next(allowed) {
-                Ok(token) => token.unpack_into(&mut warnings),
-                Err(_) => {
-                    let error = if let Some(token) =
-                        input.next(Allowed::All)?.unpack_into(&mut warnings)
-                    {
-                        let name = token.name().to_string();
-                        let location = token.location().clone();
-                        // `intersperse` may be added to the standard
-                        // library someday. Let's hope sooner than later.
-                        #[allow(unstable_name_collisions)]
-                        let alternatives = format!(
-                            "You could try {} instead",
-                            scans
-                                .keys()
-                                .map(|tok| input.lexer().grammar().name(*tok))
-                                .intersperse(", ")
-                                .collect::<String>()
-                        );
-                        Error::SyntaxError {
-                            message: format!(
-                                "The token {} doesn't make sense here.\n{}",
-                                name, alternatives,
-                            ),
-                            location: Fragile::new(location),
-                        }
-                    } else {
-                        Error::SyntaxError {
-                            message: String::from(
-                                "Reached EOF but parsing isn't done.",
-                            ),
-                            location: input.last_location().into(),
-                        }
-                    };
-                    return Err(error);
-                }
-            } {
+	    let Ok(next_token) = input.next(allowed) else {
+		let error = if let Some(token) =
+                    input.next(Allowed::All)?.unpack_into(&mut warnings)
+                {
+                    let name = token.name().to_string();
+                    let location = token.location().clone();
+                    // `intersperse` may be added to the standard
+                    // library someday. Let's hope sooner than later.
+                    #[allow(unstable_name_collisions)]
+                    let alternatives = format!(
+                        "You could try {} instead",
+                        scans
+                            .keys()
+                            .map(|tok| input.lexer().grammar().name(*tok))
+                            .intersperse(", ")
+                            .collect::<String>()
+                    );
+                    Error::SyntaxError {
+                        message: format!(
+                            "The token {} doesn't make sense here.\n{}",
+                            name, alternatives,
+                        ),
+                        location: Fragile::new(location),
+                    }
+                } else {
+                    Error::SyntaxError {
+                        message: String::from(
+                            "Reached EOF but parsing isn't done.",
+                        ),
+                        location: input.last_location().into(),
+                    }
+                };
+                return Err(error);
+	    };
+            if let Some(token) = next_token.unpack_into(&mut warnings) {
                 for item in scans.entry(token.id()).or_default() {
                     next_state.add(*item);
                 }
@@ -836,13 +834,14 @@ impl EarleyParser {
             }) {
                 break 'outer warnings.with_ok((sets, raw_input));
             } else {
-                return Err(Error::SyntaxError {
+		return Err(Error::SyntaxError {
                     message: String::from(
                         "Reached EOF but parsing isn't done.",
                     ),
                     location: input.last_location().into(),
                 });
-            }
+	    };
+
             sets.push(next_state);
             pos += 1;
         }

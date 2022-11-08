@@ -10,7 +10,7 @@ mod case;
 pub mod printer;
 pub mod error;
 pub mod lexer;
-pub mod location;
+pub mod span;
 pub mod parser;
 pub mod regex;
 pub mod stream;

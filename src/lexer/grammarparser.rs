@@ -1,7 +1,7 @@
 use crate::error::{Error, Result, WarningSet};
 use crate::lexer::TerminalId;
-use crate::location::Span;
 use crate::regex::{CompiledRegex, RegexBuilder, RegexError};
+use crate::span::Span;
 use crate::stream::{Char, StringStream};
 use bincode::deserialize;
 use fragile::Fragile;
@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Read;
-use std::mem;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -40,31 +39,38 @@ mod tests {
         let mut stream = StringStream::new(origin, "to del");
         assert_eq!(stream.pos(), 0);
         assert_eq!(
-            (String::from("to"), Span::new(origin, (0, 0), (0, 2))),
+            (
+                String::from("to"),
+                Span::new(origin, (0, 0), (0, 1), 0, 1, stream.text())
+            ),
             LexerGrammarBuilder::read_id(&mut stream).unwrap().unwrap()
         );
         assert_eq!(stream.pos(), 2);
         LexerGrammarBuilder::ignore_blank(&mut stream);
         assert_eq!(stream.pos(), 3);
         assert_eq!(
-            (String::from("del"), Span::new(origin, (0, 3), (0, 6))),
+            (
+                String::from("del"),
+                Span::new(origin, (0, 3), (0, 5), 3, 5, stream.text())
+            ),
             LexerGrammarBuilder::read_id(&mut stream).unwrap().unwrap()
         );
         assert_eq!(stream.pos(), 6);
         let error = LexerGrammarBuilder::read_id(&mut stream)
             .map(|x| x.unwrap())
             .unwrap_err();
-        let (location, message) = if let Error::LexerGrammarSyntax {
-            message,
-            location,
-        } = error
-        {
-            (location, message)
-        } else {
+        let Error::LexerGrammarSyntax { location, message } = error else {
             panic!("Expected a lexer grammar syntax error, got {:?}", error);
         };
         assert_eq!(
-            Span::new(Path::new("whatever"), (0, 6), (0, 6)),
+            Span::new(
+                Path::new("whatever"),
+                (0, 6),
+                (0, 6),
+                6,
+                6,
+                stream.text()
+            ),
             location.into_inner()
         );
         assert_eq!(message, String::from("expected id"));
@@ -210,12 +216,17 @@ impl LexerGrammarBuilder {
             let pattern = Self::read_pattern(&mut stream);
             regex_builder = regex_builder
                 .with_named_regex(pattern.as_str(), name.clone(), keyword)
-                .map_err(|RegexError { message, position: _position }| {
-                    Error::RegexError {
-                        location: Fragile::new(start_span),
-                        message,
-                    }
-                })?;
+                .map_err(
+                    |RegexError {
+                         message,
+                         position: _position,
+                     }| {
+                        Error::RegexError {
+                            location: Fragile::new(start_span),
+                            message,
+                        }
+                    },
+                )?;
             names.push(name.clone());
             if ignore {
                 ignores.insert(name);
@@ -301,11 +312,7 @@ impl LexerGrammarBuilder {
             let new_span = stream.curr_span();
             result.push(chr);
             stream.incr_pos();
-            span = Some(if let Some(span) = mem::take(&mut span) {
-                Span::extend(span, new_span)
-            } else {
-                new_span
-            });
+            span = Some(span.map(|x| x.sup(&new_span)).unwrap_or(new_span));
         }
         if let Some(span) = span {
             Ok(WarningSet::empty_with((result, span)))
@@ -402,6 +409,6 @@ impl LexerGrammar {
     }
 
     pub fn deserialize(bytes: &[u8]) -> Result<Self> {
-	Ok(WarningSet::empty_with(deserialize(bytes)?))
+        Ok(WarningSet::empty_with(deserialize(bytes)?))
     }
 }

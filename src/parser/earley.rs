@@ -10,7 +10,6 @@ use crate::error::{Error, WarningSet};
 use crate::lexer::Token;
 use crate::lexer::{LexedStream, Lexer};
 use crate::lexer::{LexerBuilder, TerminalId};
-use crate::location::Span;
 use crate::parser::grammarparser::Attribute;
 use crate::regex::Allowed;
 use crate::retrieve;
@@ -567,10 +566,9 @@ impl EarleyParser {
     ) -> AST {
         match item.kind {
             SyntaxicItemKind::Rule(rule) => {
-                let span = Span::extend(
-                    raw_input[item.start].location().clone(),
-                    raw_input[item.end-1].location().clone(),
-                );
+                let span = raw_input[item.start]
+                    .location()
+                    .sup(raw_input[item.end - 1].location());
                 let all_attributes = self
                     .find_children(item, forest, raw_input)
                     .into_iter()
@@ -617,7 +615,7 @@ impl EarleyParser {
                                 &all_attributes,
                                 &mut removed,
                                 &self.grammar().id_of,
-				&span,
+                                &span,
                             ),
                         )
                     })
@@ -633,7 +631,7 @@ impl EarleyParser {
                     span,
                 }
             }
-	    SyntaxicItemKind::Token(token) => AST::Terminal(token),
+            SyntaxicItemKind::Token(token) => AST::Terminal(token),
         }
     }
 
@@ -787,7 +785,7 @@ impl EarleyParser {
                 .chain(scans.keys().cloned())
                 .collect::<Vec<_>>();
             let allowed = Allowed::Some(possible_scans.clone());
-	    let Ok(next_token) = input.next(allowed) else {
+            let Ok(next_token) = input.next(allowed) else {
 		let error = if let Some(token) =
                     input.next(Allowed::All)?.unpack_into(&mut warnings)
                 {
@@ -834,13 +832,13 @@ impl EarleyParser {
             }) {
                 break 'outer warnings.with_ok((sets, raw_input));
             } else {
-		return Err(Error::SyntaxError {
+                return Err(Error::SyntaxError {
                     message: String::from(
                         "Reached EOF but parsing isn't done.",
                     ),
                     location: input.last_location().into(),
                 });
-	    };
+            };
 
             sets.push(next_state);
             pos += 1;

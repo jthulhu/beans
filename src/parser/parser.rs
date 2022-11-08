@@ -1,7 +1,7 @@
 use super::grammarparser::{Grammar, GrammarBuilder};
 use crate::error::Result;
 use crate::lexer::{LexedStream, Token};
-use crate::location::Span;
+use crate::span::Span;
 use newty::newty;
 use std::collections::HashMap;
 use std::rc::Rc;

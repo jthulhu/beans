@@ -17,7 +17,7 @@ thiserror = "1.0"
 fixedbitset = "0.4"
 clap = { version = "4.0", features = ["derive"] }
 anyhow = "1.0"
-fragile = "1.2"
+fragile = "2"
 itertools = "0.10"
 ptree = "0.4"
 const_format = "0.2.30"

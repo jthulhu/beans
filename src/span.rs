@@ -217,6 +217,10 @@ impl Span {
     pub fn end_byte(&self) -> usize {
         self.end_byte
     }
+
+    pub fn test(&self) -> &str {
+	&*self.text
+    }
 }
 
 impl From<&Span> for Fragile<Span> {

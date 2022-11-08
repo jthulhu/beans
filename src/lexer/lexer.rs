@@ -1,8 +1,8 @@
 use super::grammarparser::{LexerGrammar, LexerGrammarBuilder};
 use crate::error::Result;
 use crate::error::{Error, WarningSet};
-use crate::location::Span;
 use crate::regex::Allowed;
+use crate::span::Span;
 use crate::stream::StringStream;
 use fragile::Fragile;
 use newty::newty;
@@ -15,7 +15,7 @@ use std::rc::Rc;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::location::CharLocation;
+    use crate::span::Location;
 
     macro_rules! test_token {
 	($name: ident $($key:literal = $value: tt), *) => {
@@ -59,14 +59,21 @@ mod tests {
             String::from("wow"),
             0.into(),
             HashMap::new(),
-            Span::new(Path::new("test_file"), (3, 0), (3, 3)),
+            Span::new(
+                Path::new("test_file"),
+                (3, 0),
+                (3, 2),
+                10,
+                12,
+                Rc::from(""),
+            ),
         );
 
         assert_eq!(token.name(), "wow");
         assert_eq!(token.id(), 0.into());
         assert_eq!(&*token.location().file(), Path::new("test_file"));
         assert_eq!(token.location().start(), (3, 0));
-        assert_eq!(token.location().end(), (3, 3));
+        assert_eq!(token.location().end(), (3, 2));
     }
 
     #[test]
@@ -101,13 +108,13 @@ mod tests {
 
         let token = lexed_input.next(Allowed::All).unwrap().unwrap().unwrap(); // nice...
         assert_eq!(token.location().start(), (0, 0));
-        assert_eq!(token.location().end(), (0, 3));
+        assert_eq!(token.location().end(), (0, 2));
         assert!(lexed_input.next(Allowed::All).unwrap().unwrap().is_none());
     }
 
     fn verify_input(
         mut lexed_input: LexedStream<'_, '_>,
-        result: &[(CharLocation, CharLocation, &str)],
+        result: &[(Location, Location, &str)],
     ) {
         let origin = &*lexed_input.stream.origin();
         let mut i = 0;
@@ -145,15 +152,16 @@ mod tests {
 
     #[test]
     fn default_lex_grammar() {
-        let lexer = LexerBuilder::from_file(Path::new("src/parser/gmrs/dummy.lx"))
-            .unwrap()
-            .unwrap()
-            .build();
+        let lexer =
+            LexerBuilder::from_file(Path::new("src/parser/gmrs/dummy.lx"))
+                .unwrap()
+                .unwrap()
+                .build();
 
         let result = [
-            ((0, 0), (0, 3), "ID"),
-            ((0, 4), (0, 5), "PLUS"),
-            ((0, 6), (0, 9), "ID"),
+            ((0, 0), (0, 2), "ID"),
+            ((0, 4), (0, 4), "PLUS"),
+            ((0, 6), (0, 8), "ID"),
         ];
         verify_input(
             lexer
@@ -162,16 +170,16 @@ mod tests {
         );
 
         let result = [
-            ((0, 0), (0, 2), "IF"),
-            ((0, 3), (0, 7), "TRUE"),
-            ((0, 8), (0, 11), "AND"),
-            ((0, 12), (0, 17), "FALSE"),
-            ((0, 18), (0, 19), "LBRACE"),
-            ((1, 1), (1, 6), "ID"),
-            ((1, 6), (1, 7), "LPAR"),
-            ((1, 7), (1, 18), "STRING"),
-            ((1, 18), (1, 19), "RPAR"),
-            ((2, 0), (2, 1), "RBRACE"),
+            ((0, 0), (0, 1), "IF"),
+            ((0, 3), (0, 6), "TRUE"),
+            ((0, 8), (0, 10), "AND"),
+            ((0, 12), (0, 16), "FALSE"),
+            ((0, 18), (0, 18), "LBRACE"),
+            ((1, 1), (1, 5), "ID"),
+            ((1, 6), (1, 6), "LPAR"),
+            ((1, 7), (1, 17), "STRING"),
+            ((1, 18), (1, 18), "RPAR"),
+            ((2, 0), (2, 0), "RBRACE"),
         ];
         verify_input(
             lexer.lex(&mut StringStream::new(
@@ -184,13 +192,15 @@ mod tests {
 
     #[test]
     fn default_parser_grammar() {
-        let lexer = LexerBuilder::from_file(Path::new("src/parser/gmrs/earley.lx"))
-            .unwrap()
-            .unwrap()
-            .build();
-        let mut input = StringStream::from_file(Path::new("src/parser/gmrs/dummy.gr"))
-            .unwrap()
-            .unwrap();
+        let lexer =
+            LexerBuilder::from_file(Path::new("src/parser/gmrs/earley.lx"))
+                .unwrap()
+                .unwrap()
+                .build();
+        let mut input =
+            StringStream::from_file(Path::new("src/parser/gmrs/dummy.gr"))
+                .unwrap()
+                .unwrap();
         let mut lexed_input = lexer.lex(&mut input);
 
         let result = [
@@ -580,7 +590,14 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
         stream: &'stream mut StringStream,
     ) -> Self {
         Self {
-            last_location: Span::new(stream.origin(), (0, 0), (0, 0)),
+            last_location: Span::new(
+                stream.origin(),
+                (0, 0),
+                (0, 0),
+                0,
+                0,
+                stream.text(),
+            ),
             lexer,
             stream,
             pos: 0,
@@ -613,7 +630,7 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
                 if self.lexer.grammar().ignored(result.id()) {
                     continue;
                 }
-                let span = self.stream.span_between(start, end);
+                let span = self.stream.span_between(start, end-1);
                 let id = self.lexer.grammar.id(&name).unwrap();
                 let token = Token::new(name, id, attributes, span.clone());
                 self.last_location = span;
@@ -660,9 +677,9 @@ impl LexedStream<'_, '_> {
     pub fn drop_last(&mut self) {
         if let Some((pos, _)) = self.tokens.pop() {
             self.pos -= 1;
-	    while self.stream.pos() > pos {
-		self.stream.decr_pos();
-	    }
+            while self.stream.pos() > pos {
+                self.stream.decr_pos();
+            }
         }
     }
 
@@ -672,7 +689,7 @@ impl LexedStream<'_, '_> {
     }
 
     pub fn is_empty(&self) -> bool {
-	self.stream.is_empty()
+        self.stream.is_empty()
     }
 }
 /// # Summary

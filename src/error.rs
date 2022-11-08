@@ -6,7 +6,7 @@
 //! [`WarningSet`] is a set of warnings and [`Error`] is the Beans' error type.
 
 use crate::case::Case;
-use crate::location::Span;
+use crate::span::Span;
 use fragile::Fragile;
 use std::collections::{linked_list, LinkedList};
 use std::fmt;

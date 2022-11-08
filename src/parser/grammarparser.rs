@@ -3,8 +3,8 @@ use crate::error::Result;
 use crate::error::{Error, WarningSet};
 use crate::lexer::{LexedStream, Lexer, Token};
 use crate::lexer::{LexerGrammar, TerminalId};
-use crate::location::Span;
 use crate::parser::earley::GrammarRules;
+use crate::span::Span;
 use crate::stream::StringStream;
 use const_format::formatcp;
 use fragile::Fragile;
@@ -269,15 +269,13 @@ impl ValueTemplate {
         all_attributes: &HashMap<Rc<str>, AST>,
         removed: &mut HashSet<Rc<str>>,
         id_of: &HashMap<Rc<str>, NonTerminalId>,
-	span: &Span,
+        span: &Span,
     ) -> AST {
         match self {
-            ValueTemplate::Str(string) => {
-                AST::Literal {
-		    value: Value::Str(string.clone()),
-		    span: None,
-		}
-            }
+            ValueTemplate::Str(string) => AST::Literal {
+                value: Value::Str(string.clone()),
+                span: None,
+            },
             ValueTemplate::Id(name) => {
                 removed.insert(name.clone());
                 all_attributes[name].clone()
@@ -300,12 +298,12 @@ impl ValueTemplate {
                                     all_attributes,
                                     removed,
                                     id_of,
-				    span,
+                                    span,
                                 ),
                             )
                         })
                         .collect(),
-		    span: span.clone(),
+                    span: span.clone(),
                 }
             }
         }
@@ -605,10 +603,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
                 args.push(arg);
                 cont = self.peek_token(token::MACRO_ARGS_SEPARATOR)?;
             }
-            span = Span::extend(
-                span,
-                self.read_token(token::MACRO_ARGS_END)?.location().clone(),
-            );
+            span = span.sup(self.read_token(token::MACRO_ARGS_END)?.location());
         }
         Ok((MacroInvocation { name, args }, span))
     }
@@ -693,17 +688,23 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
 		    token::EOF
 		);
 	    };
-	    let result = match token.name() {
-		token::LEFT_ASSOC => true,
-		token::RIGHT_ASSOC => false,
-		found => return self.generate_error(
-		    token.location().clone(),
-		    formatcp!("{} or {}", token::LEFT_ASSOC, token::RIGHT_ASSOC),
-		    found,
-		),
-	    };
+            let result = match token.name() {
+                token::LEFT_ASSOC => true,
+                token::RIGHT_ASSOC => false,
+                found => {
+                    return self.generate_error(
+                        token.location().clone(),
+                        formatcp!(
+                            "{} or {}",
+                            token::LEFT_ASSOC,
+                            token::RIGHT_ASSOC
+                        ),
+                        found,
+                    )
+                }
+            };
             self.read_token(token::ASSOC_END)?;
-	    result
+            result
         } else {
             true
         };

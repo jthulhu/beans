@@ -32,6 +32,10 @@ mod tests {
             "01234
 56789abcdef",
         );
+	let lines: Rc<[usize]> = vec![
+	    0,
+	    6
+	].into();
         let span = Span::new(
             Path::new("a cool filename"),
             (0, 3),
@@ -39,29 +43,42 @@ mod tests {
             3,
             11,
             input.clone(),
+	    lines.clone(),
         );
         assert_eq!(&*span.file(), Path::new("a cool filename"));
         assert_eq!(span.start(), (0, 3));
         assert_eq!(span.end(), (1, 6));
         assert_eq!(span.start_byte(), 3);
         assert_eq!(span.end_byte(), 11);
-        let span = Span::new(Path::new(""), (0, 0), (0, 0), 0, 0, input);
+	assert_eq!(span.text(), &*input);
+	assert_eq!(span.lines(), &*lines);
+        let span = Span::new(
+	    Path::new(""),
+	    (0, 0),
+	    (0, 0),
+	    0,
+	    0,
+	    input.clone(),
+	    lines.clone(),
+	);
         assert_eq!(&*span.file(), Path::new(""));
         assert_eq!(span.start(), (0, 0));
         assert_eq!(span.end(), (0, 0));
         assert_eq!(span.start_byte(), 0);
         assert_eq!(span.end_byte(), 0);
+	assert_eq!(span.text(), &*input);
+	assert_eq!(span.lines(), &*lines);
     }
 
     #[test]
     #[should_panic]
     fn wrong_location() {
-        Span::new(Path::new("some file"), (1, 0), (0, 0), 1, 0, Rc::from(""));
+        Span::new(Path::new("some file"), (1, 0), (0, 0), 1, 0, "", Vec::new());
     }
     #[test]
     #[should_panic]
     fn wrong_location2() {
-        Span::new(Path::new("some file"), (1, 5), (1, 3), 8, 6, Rc::from(""));
+        Span::new(Path::new("some file"), (1, 5), (1, 3), 8, 6, "", Vec::new());
     }
 }
 
@@ -86,7 +103,8 @@ mod tests {
 ///     (0, 0),
 ///     0,
 ///     0,
-///     "a"
+///     "a",
+///     vec![0],
 /// );
 /// ```
 ///
@@ -109,6 +127,7 @@ mod tests {
 ///   4,
 ///   8,
 ///   "abcde\nbel",
+///   vec![0, 6],
 /// )
 /// # ;
 /// ```
@@ -120,6 +139,7 @@ pub struct Span {
     start_byte: usize,
     end_byte: usize,
     text: Rc<str>,
+    lines: Rc<[usize]>,
 }
 
 impl std::fmt::Display for Span {
@@ -170,10 +190,12 @@ impl Span {
         start_byte: usize,
         end_byte: usize,
         text: impl Into<Rc<str>>,
+	lines: impl Into<Rc<[usize]>>,
     ) -> Self {
         assert!(start.0 < end.0 || (start.0 == end.0 && start.1 <= end.1)); // TODO: remove assert and add proper error handling.
         let file = file.into();
         let text = text.into();
+	let lines = lines.into();
         Self {
             file,
             start,
@@ -181,6 +203,7 @@ impl Span {
             start_byte,
             end_byte,
             text,
+	    lines,
         }
     }
 
@@ -192,6 +215,7 @@ impl Span {
             start: self.start.min(other.start),
             end: self.end.max(other.end),
             text: self.text.clone(),
+	    lines: self.lines.clone(),
         }
     }
 
@@ -218,8 +242,24 @@ impl Span {
         self.end_byte
     }
 
-    pub fn test(&self) -> &str {
+    /// Returns (start, end), where the line `line_number` is
+    /// `self.text()[start..end]`
+    pub fn line_bytes_of_line(&self, line_number: usize) -> (usize, usize) {
+	let start = self.lines[line_number];
+	let end = if line_number+1 == self.lines.len() {
+	    self.text.len()
+	} else {
+	    self.lines[line_number+1]
+	};
+	(start, end)
+    }
+    
+    pub fn text(&self) -> &str {
 	&*self.text
+    }
+
+    pub fn lines(&self) -> &[usize] {
+	&*self.lines
     }
 }
 

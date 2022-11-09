@@ -55,28 +55,31 @@ hij";
         let origin = Path::new("<SPANS>");
         let mut stream = StringStream::new(origin, string);
         let expected = [
-            ('Д', (0, 0), 0),
-            ('о', (0, 1), 2),
-            ('б', (0, 2), 4),
-            ('р', (0, 3), 6),
-            ('ы', (0, 4), 8),
-            ('й', (0, 5), 10),
-            (' ', (0, 6), 12),
-            ('д', (0, 7), 13),
-            ('е', (0, 8), 15),
-            ('н', (0, 9), 17),
-            ('ь', (0, 10), 19),
-            ('\n', (0, 11), 21),
-            ('d', (1, 0), 22),
-            ('e', (1, 1), 23),
-            ('f', (1, 2), 24),
-            ('g', (1, 3), 25),
-            ('\n', (1, 4), 26),
-            ('h', (2, 0), 27),
-            ('i', (2, 1), 28),
-            ('j', (2, 2), 29),
+            ('Д', (0, 0), 0, (0, 22)),
+            ('о', (0, 1), 2, (0, 22)),
+            ('б', (0, 2), 4, (0, 22)),
+            ('р', (0, 3), 6, (0, 22)),
+            ('ы', (0, 4), 8, (0, 22)),
+            ('й', (0, 5), 10, (0, 22)),
+            (' ', (0, 6), 12, (0, 22)),
+            ('д', (0, 7), 13, (0, 22)),
+            ('е', (0, 8), 15, (0, 22)),
+            ('н', (0, 9), 17, (0, 22)),
+            ('ь', (0, 10), 19, (0, 22)),
+            ('\n', (0, 11), 21, (0, 22)),
+            ('d', (1, 0), 22, (22, 27)),
+            ('e', (1, 1), 23, (22, 27)),
+            ('f', (1, 2), 24, (22, 27)),
+            ('g', (1, 3), 25, (22, 27)),
+            ('\n', (1, 4), 26, (22, 27)),
+            ('h', (2, 0), 27, (27, 30)),
+            ('i', (2, 1), 28, (27, 30)),
+            ('j', (2, 2), 29, (27, 30)),
         ];
-        for (expected_char, expected_location, byte) in expected {
+        assert_eq!(&string[0..22], "Добрый день\n");
+        assert_eq!(&string[22..27], "defg\n");
+        assert_eq!(&string[27..30], "hij");
+        for (expected_char, expected_location, byte, line_byte) in expected {
             let Char::Char(found_char) = stream.get() else {
 		panic!("Expected {expected_char:?}, found EOF")
 	    };
@@ -86,6 +89,10 @@ hij";
             assert_eq!(expected_location, curr_span.start());
             assert_eq!(curr_span.start_byte(), curr_span.end_byte());
             assert_eq!(byte, curr_span.start_byte());
+            assert_eq!(
+                line_byte,
+                curr_span.line_bytes_of_line(expected_location.0)
+            );
             stream.incr_pos();
         }
         assert!(stream.is_empty());
@@ -176,6 +183,7 @@ pub struct StringStream {
     // Stores, for each character, its span and its size.
     spans: Vec<CharSpan>,
     stream: Rc<str>,
+    lines: Rc<[usize]>,
     bytes_pos: usize,
     chars_pos: usize,
     length: usize,
@@ -200,6 +208,7 @@ impl StringStream {
         let mut current_line = 0;
         let mut spans = Vec::new();
         let mut current_byte = 0;
+        let mut lines = vec![0];
         for chr in string.chars() {
             let start_pos = (current_line, current_char);
             spans.push(CharSpan {
@@ -211,15 +220,18 @@ impl StringStream {
             if chr == '\n' {
                 current_line += 1;
                 current_char = 0;
+                lines.push(current_byte);
             } else {
                 current_char += 1;
             }
         }
+        let lines: Rc<[usize]> = Rc::from(lines);
         Self {
             origin: origin.clone(),
             length: spans.len(),
             stream: string.clone(),
             spans,
+            lines: lines.clone(),
             bytes_pos: 0,
             chars_pos: 0,
             eof_span: Span::new(
@@ -229,6 +241,7 @@ impl StringStream {
                 current_byte,
                 current_byte,
                 string,
+                lines,
             ),
         }
     }
@@ -282,6 +295,10 @@ impl StringStream {
         self.stream.clone()
     }
 
+    pub fn lines(&self) -> Rc<[usize]> {
+        self.lines.clone()
+    }
+
     pub fn get(&self) -> Char {
         self.peek()
             .chars()
@@ -321,6 +338,7 @@ impl StringStream {
                 byte,
                 byte,
                 self.stream.clone(),
+                self.lines.clone(),
             )
         }
     }
@@ -357,6 +375,7 @@ impl StringStream {
             start_byte,
             end_byte,
             self.stream.clone(),
+            self.lines.clone(),
         )
     }
 }

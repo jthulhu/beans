@@ -41,7 +41,7 @@ mod tests {
         assert_eq!(
             (
                 String::from("to"),
-                Span::new(origin, (0, 0), (0, 1), 0, 1, stream.text())
+                Span::new(origin, (0, 0), (0, 1), 0, 1, stream.text(), stream.lines())
             ),
             LexerGrammarBuilder::read_id(&mut stream).unwrap().unwrap()
         );
@@ -51,7 +51,7 @@ mod tests {
         assert_eq!(
             (
                 String::from("del"),
-                Span::new(origin, (0, 3), (0, 5), 3, 5, stream.text())
+                Span::new(origin, (0, 3), (0, 5), 3, 5, stream.text(), stream.lines())
             ),
             LexerGrammarBuilder::read_id(&mut stream).unwrap().unwrap()
         );
@@ -69,7 +69,8 @@ mod tests {
                 (0, 6),
                 6,
                 6,
-                stream.text()
+                stream.text(),
+		stream.lines(),
             ),
             location.into_inner()
         );

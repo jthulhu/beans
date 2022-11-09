@@ -65,7 +65,8 @@ mod tests {
                 (3, 2),
                 10,
                 12,
-                Rc::from(""),
+                "",
+		Vec::new(),
             ),
         );
 
@@ -597,6 +598,7 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
                 0,
                 0,
                 stream.text(),
+		stream.lines(),
             ),
             lexer,
             stream,

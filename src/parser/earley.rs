@@ -2,7 +2,6 @@ use super::grammarparser::{
     Axioms, ElementType, Grammar, GrammarBuilder, NonTerminalName, Rule,
     RuleElement,
 };
-use super::list::List;
 use super::parser::{NonTerminalId, ParseResult, Parser, RuleId};
 use super::parser::{Value, AST};
 use crate::error::Result;
@@ -10,6 +9,7 @@ use crate::error::{Error, WarningSet};
 use crate::lexer::Token;
 use crate::lexer::{LexedStream, Lexer};
 use crate::lexer::{LexerBuilder, TerminalId};
+use crate::list::List;
 use crate::parser::grammarparser::Attribute;
 use crate::regex::Allowed;
 use crate::retrieve;

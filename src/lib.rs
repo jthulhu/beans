@@ -7,6 +7,7 @@
 //! This library contains an API to parse grammars, compile them and compile source code.
 
 mod case;
+mod list;
 pub mod printer;
 pub mod error;
 pub mod lexer;

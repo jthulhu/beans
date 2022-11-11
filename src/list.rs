@@ -1,8 +1,9 @@
-use std::{rc::Rc, fmt};
+use std::{fmt, rc::Rc};
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::list;
 
     #[test]
     fn list() {
@@ -21,21 +22,42 @@ mod test {
         let list = list.tail();
         assert_eq!(list.head(), None);
     }
+
+    #[test]
+    fn list_macro() {
+        let list = list![1, 2, 3];
+        assert_eq!(vec![1, 2, 3], list.iter().copied().collect::<Vec<_>>());
+    }
+}
+
+#[macro_export]
+macro_rules! list {
+    ($($x:expr),*$(,)?) => {{
+        let mut list = $crate::list::List::default();
+	for x in [$($x),*].into_iter().rev() {
+	    list = list.cons(x);
+	}
+	list
+    }};
 }
 
 pub struct List<T> {
     content: Link<T>,
+    size: usize,
 }
 
 impl<T: fmt::Debug> fmt::Debug for List<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-	f.debug_list().entries(self.iter()).finish()
+        f.debug_list().entries(self.iter()).finish()
     }
 }
 
 impl<T> Default for List<T> {
     fn default() -> Self {
-        Self { content: None }
+        Self {
+            content: None,
+            size: 0,
+        }
     }
 }
 
@@ -53,6 +75,7 @@ impl<T> List<T> {
                 head,
                 tail: self.content.clone(),
             })),
+	    size: self.size+1,
         }
     }
 
@@ -60,6 +83,7 @@ impl<T> List<T> {
     pub fn tail(&self) -> Self {
         List {
             content: self.content.as_ref().and_then(|node| node.tail.clone()),
+	    size: self.size.saturating_sub(1),
         }
     }
 

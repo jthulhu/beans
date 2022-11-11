@@ -566,9 +566,13 @@ impl EarleyParser {
     ) -> AST {
         match item.kind {
             SyntaxicItemKind::Rule(rule) => {
-                let span = raw_input[item.start]
-                    .location()
-                    .sup(raw_input[item.end - 1].location());
+                let span = if item.end == item.start {
+		    raw_input[item.start].location().clone()
+		} else {
+		    raw_input[item.start]
+			.location()
+			.sup(raw_input[item.end - 1].location())
+		};
                 let all_attributes = self
                     .find_children(item, forest, raw_input)
                     .into_iter()

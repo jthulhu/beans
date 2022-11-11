@@ -350,7 +350,7 @@ impl std::fmt::Display for FinalSet {
     fn fmt(
         &self,
         f: &mut fmt::Formatter<'_>,
-    ) -> std::result::Result<(), std::fmt::Error> {
+    ) -> std::result::Result<(), fmt::Error> {
         write!(
             f,
             r"== ({}) ==
@@ -667,9 +667,12 @@ impl EarleyParser {
         for (i, set) in table.iter().enumerate() {
             forest[i].position = i;
             if set.is_empty() {
-                return Err(Error::SyntaxError {
-                    location: raw_input[i].location().into(),
-                    message: format!("Syntax error at token {}", i),
+                return Err(Error::InternalError {
+                    message: format!(
+			"While creating the forest, could not find any item in set {}, at {}",
+			i,
+			raw_input[i].location(),
+		    ),
                 });
             }
             set.iter()
@@ -791,29 +794,16 @@ impl EarleyParser {
                 {
                     let name = token.name().to_string();
                     let location = token.location().clone();
-                    // `intersperse` may be added to the standard
-                    // library someday. Let's hope sooner than later.
-                    #[allow(unstable_name_collisions)]
-                    let alternatives = format!(
-                        "You could try {} instead",
-                        scans
-                            .keys()
-                            .map(|tok| input.lexer().grammar().name(*tok))
-                            .intersperse(", ")
-                            .collect::<String>()
-                    );
                     Error::SyntaxError {
-                        message: format!(
-                            "The token {} doesn't make sense here.\n{}",
-                            name, alternatives,
-                        ),
+			name,
+			alternatives: scans
+                            .keys()
+                            .map(|tok| input.lexer().grammar().name(*tok).to_string())
+                            .collect::<Vec<_>>(),
                         location: Fragile::new(location),
                     }
                 } else {
-                    Error::SyntaxError {
-                        message: String::from(
-                            "Reached EOF but parsing isn't done.",
-                        ),
+                    Error::SyntaxErrorValidPrefix {
                         location: input.last_location().into(),
                     }
                 };
@@ -832,10 +822,7 @@ impl EarleyParser {
             }) {
                 break 'outer warnings.with_ok((sets, raw_input));
             } else {
-                return Err(Error::SyntaxError {
-                    message: String::from(
-                        "Reached EOF but parsing isn't done.",
-                    ),
+                return Err(Error::SyntaxErrorValidPrefix {
                     location: input.last_location().into(),
                 });
             };

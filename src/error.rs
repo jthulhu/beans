@@ -113,13 +113,17 @@ pub enum Error {
     #[error("The `variant` key is reserved in proxies, at {location}.")]
     GrammarVariantKey { location: Fragile<Span> },
     /// `SyntaxError`: syntax error in the input.
-    #[error("Syntax error: {message}, at {location}.")]
+    #[error("Syntax error: the token {name} doesn't make sense at {location}.")]
     SyntaxError {
-        /// The message giving details about the error.
-        message: String,
+	name: String,
+	alternatives: Vec<String>,
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
         location: Fragile<Span>,
+    },
+    #[error("Syntax error: EOF but parsing isn't done at {location}.")]
+    SyntaxErrorValidPrefix {
+	location: Fragile<Span>,
     },
     /// `IOError`: any io error.
     #[error("IO error: {0}")]

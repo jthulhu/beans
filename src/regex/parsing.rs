@@ -977,11 +977,15 @@ pub fn read(
 		position: pos,
 		message: String::from("Start-of-line /^/ is not supported. Matches are anchored anyways.")
 	    }),
+	    ']' => return Err(RegexError {
+		position: pos,
+		message: String::from("Closing bracket doesn't match any previsouly opened."),
+	    }),
             '.' => add(Regex::Any, &mut stack),
             '\\' => {
                 if let Some((pos, chr)) = chrs.next() {
                     match chr {
-			'\\' | '.' | '(' | ')' | '?' | '+' | '*' | '|' | '$' | '^' | '[' => add(Regex::Char(chr), &mut stack),
+			'\\' | '.' | '(' | ')' | '?' | '+' | '*' | '|' | '$' | '^' | '[' | ']' => add(Regex::Char(chr), &mut stack),
 			'A' => return Err(RegexError {
 			    position: pos,
 			    message: String::from("Start of the string anchor /\\A/ is not supported.")

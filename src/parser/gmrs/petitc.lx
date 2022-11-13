@@ -11,8 +11,7 @@ RPAR ::= \)
 LBRACE ::= {
 RBRACE ::= }
 LBRACKET ::= \[
-RBRACKET ::= ]
-
+RBRACKET ::= \]
 keyword BOOL ::= bool
 keyword BREAK ::= break
 keyword CONTINUE ::= continue

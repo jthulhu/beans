@@ -284,7 +284,7 @@ impl ValueTemplate {
                 let nonterminal = if &**name == keyword::SELF {
                     current
                 } else {
-                    id_of[name].clone()
+                    id_of[name]
                 };
                 AST::Node {
                     nonterminal,
@@ -658,7 +658,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         name: Rc<str>,
     ) -> std::result::Result<PartialRuleElement, Error> {
         let (invocation, span) = self.read_macro_invocation(name.clone())?;
-        let element_type = if let Some(id) = self.lexer.grammar().id(&*name) {
+        let element_type = if let Some(id) = self.lexer.grammar().id(&name) {
             if !invocation.args.is_empty() {
                 return Err(Error::GrammarTerminalInvocation {
                     terminal: name.to_string(),

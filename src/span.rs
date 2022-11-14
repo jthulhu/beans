@@ -255,11 +255,11 @@ impl Span {
     }
     
     pub fn text(&self) -> &str {
-	&*self.text
+	&self.text
     }
 
     pub fn lines(&self) -> &[usize] {
-	&*self.lines
+	&self.lines
     }
 }
 

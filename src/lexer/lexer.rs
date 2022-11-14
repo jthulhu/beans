@@ -48,7 +48,7 @@ mod tests {
         fn eq(&self, right: &Token) -> bool {
             self.name == right.name
                 && self.attributes.iter().all(|(key, value)| {
-                    right.attributes.get(&key).filter(|&v| v == value).is_some()
+                    right.attributes.get(key).filter(|&v| v == value).is_some()
                 })
         }
     }
@@ -66,7 +66,7 @@ mod tests {
                 10,
                 12,
                 "",
-		Vec::new(),
+                Vec::new(),
             ),
         );
 
@@ -399,11 +399,13 @@ mod tests {
         ];
 
         for (i, tok) in result.iter().enumerate() {
-            let token =
-                lexed_input.next(Allowed::All).unwrap().unwrap().expect(
-                    format!("Expected token named {}, found EOF", tok.name)
-                        .as_str(),
-                );
+            let token = lexed_input
+                .next(Allowed::All)
+                .unwrap()
+                .unwrap()
+                .unwrap_or_else(|| {
+                    panic!("Expected token named {}, found EOF", tok.name)
+                });
             assert_eq!(
                 tok,
                 token,
@@ -598,7 +600,7 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
                 0,
                 0,
                 stream.text(),
-		stream.lines(),
+                stream.lines(),
             ),
             lexer,
             stream,
@@ -632,7 +634,7 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
                 if self.lexer.grammar().ignored(result.id()) {
                     continue;
                 }
-                let span = self.stream.span_between(start, end-1);
+                let span = self.stream.span_between(start, end - 1);
                 let id = self.lexer.grammar.id(&name).unwrap();
                 let token = Token::new(name, id, attributes, span.clone());
                 self.last_location = span;

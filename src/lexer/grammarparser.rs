@@ -21,15 +21,9 @@ mod tests {
     fn grammar_parser_read_keyword() {
         let mut stream = StringStream::new(Path::new("whatever"), "ignore");
         assert_eq!(stream.pos(), 0);
-        assert_eq!(
-            LexerGrammarBuilder::read_keyword(&mut stream, "something"),
-            false
-        );
+        assert!(!LexerGrammarBuilder::read_keyword(&mut stream, "something"));
         assert_eq!(stream.pos(), 0);
-        assert_eq!(
-            LexerGrammarBuilder::read_keyword(&mut stream, "ignore"),
-            true
-        );
+        assert!(LexerGrammarBuilder::read_keyword(&mut stream, "ignore"));
         assert_eq!(stream.pos(), 6);
     }
 
@@ -41,7 +35,15 @@ mod tests {
         assert_eq!(
             (
                 String::from("to"),
-                Span::new(origin, (0, 0), (0, 1), 0, 1, stream.text(), stream.lines())
+                Span::new(
+                    origin,
+                    (0, 0),
+                    (0, 1),
+                    0,
+                    1,
+                    stream.text(),
+                    stream.lines()
+                )
             ),
             LexerGrammarBuilder::read_id(&mut stream).unwrap().unwrap()
         );
@@ -51,7 +53,15 @@ mod tests {
         assert_eq!(
             (
                 String::from("del"),
-                Span::new(origin, (0, 3), (0, 5), 3, 5, stream.text(), stream.lines())
+                Span::new(
+                    origin,
+                    (0, 3),
+                    (0, 5),
+                    3,
+                    5,
+                    stream.text(),
+                    stream.lines()
+                )
             ),
             LexerGrammarBuilder::read_id(&mut stream).unwrap().unwrap()
         );
@@ -70,7 +80,7 @@ mod tests {
                 6,
                 6,
                 stream.text(),
-		stream.lines(),
+                stream.lines(),
             ),
             location.into_inner()
         );

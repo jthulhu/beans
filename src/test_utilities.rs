@@ -61,11 +61,14 @@ macro_rules! rules {
 	    $({
 		let name = stringify!($name);
 		$(
-		    let mut elements = Vec::new();
-		    $(
-			elements.push(rules!(@rule($grammar) element $(! $terminality)? $element $(. $attribute_type $attribute)? $(@ $key)?));
-		    )*
-			let proxy = rules!(@rule($grammar) proxy $($proxy_key = $proxy_type $proxy_value)*);
+		    let elements = vec![$(
+			rules!(
+			    @rule($grammar)
+				element $(! $terminality)? $element
+				$(. $attribute_type $attribute)? $(@ $key)?
+			)
+		    ),*];
+		    let proxy = rules!(@rule($grammar) proxy $($proxy_key = $proxy_type $proxy_value)*);
 		    result.push(TestRule::new(name, elements, proxy, $grammar));
 		)*
 	    })*

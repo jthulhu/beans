@@ -299,7 +299,7 @@ impl Grammar<'_> for EarleyGrammar {
     }
 
     fn id_of(&self, name: Rc<str>) -> NonTerminalId {
-        self.id_of[&name].clone()
+        self.id_of[&name]
     }
 }
 
@@ -567,12 +567,12 @@ impl EarleyParser {
         match item.kind {
             SyntaxicItemKind::Rule(rule) => {
                 let span = if item.end == item.start {
-		    raw_input[item.start].location().clone()
-		} else {
-		    raw_input[item.start]
-			.location()
-			.sup(raw_input[item.end - 1].location())
-		};
+                    raw_input[item.start].location().clone()
+                } else {
+                    raw_input[item.start]
+                        .location()
+                        .sup(raw_input[item.end - 1].location())
+                };
                 let all_attributes = self
                     .find_children(item, forest, raw_input)
                     .into_iter()
@@ -747,14 +747,13 @@ impl EarleyParser {
                             }
                         }
                         // Scan
-                        ElementType::Terminal(id) => scans
-                            .entry(id)
-                            .or_insert(Vec::new())
-                            .push(EarleyItem {
+                        ElementType::Terminal(id) => {
+                            scans.entry(id).or_default().push(EarleyItem {
                                 rule: item.rule,
                                 origin: item.origin,
                                 position: item.position + 1,
-                            }),
+                            })
+                        }
                     },
                     // Completion
                     None => {
@@ -1060,10 +1059,10 @@ RPAR ::= \)
     macro_rules! earley_item {
 	($name: ident -> $($left_element: ident)* . $($right_element: ident)* ($origin: literal)) => {
 	    {
-		#[allow(unused_mut)]
-		let mut left_elements = Vec::new();
-		#[allow(unused_mut)]
-		let mut right_elements = Vec::new();
+		let left_elements = vec![$(
+		    stringify!($left_element)
+		),*];
+		let right_elements = Vec::new();
 		$(
 		    left_elements.push(stringify!($left_element));
 		)*
@@ -1137,11 +1136,11 @@ RPAR ::= \)
 
     impl PartialEq<ElementType> for TestElementType {
         fn eq(&self, other: &ElementType) -> bool {
-            match (self, other) {
+            matches!(
+                (self, other),
                 (Self::Terminal, ElementType::Terminal(..))
-                | (Self::NonTerminal, ElementType::NonTerminal(..)) => true,
-                _ => false,
-            }
+                    | (Self::NonTerminal, ElementType::NonTerminal(..))
+            )
         }
     }
 
@@ -1321,11 +1320,11 @@ RPAR ::= \)
     ) {
         let length1 = rules1.0.len();
         let length2 = rules2.len();
-        if length1 > length2 {
-            panic!("Grammar 1 is longer");
-        } else if length1 < length2 {
-            panic!("Grammar 2 is longer");
-        }
+	match length1.cmp(&length2) {
+	    std::cmp::Ordering::Greater => panic!("Grammar 1 is longer"),
+	    std::cmp::Ordering::Less => panic!("Grammar 2 is longer"),
+	    std::cmp::Ordering::Equal => {}
+	}
         for (i, (r1, r2)) in rules1.0.iter().zip(rules2.iter()).enumerate() {
             assert!(
                 r2.matches(r1, parser_grammar, lexer_grammar),

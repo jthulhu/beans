@@ -721,7 +721,7 @@ impl EarleyParser {
         let mut pos = 0;
         'outer: loop {
             let mut next_state = StateSet::default();
-            let mut scans: HashMap<TerminalId, _> = HashMap::new();
+            let mut scans: HashMap<TerminalId, Vec<_>> = HashMap::new();
             '_inner: while let Some(&item) = sets.last_mut().unwrap().next() {
                 let mut to_be_added = Vec::new();
                 match self.grammar().rules[item.rule]
@@ -1062,19 +1062,15 @@ RPAR ::= \)
 		let left_elements = vec![$(
 		    stringify!($left_element)
 		),*];
-		let right_elements = Vec::new();
-		$(
-		    left_elements.push(stringify!($left_element));
-		)*
-		    $(
-			right_elements.push(stringify!($right_element));
-		    )*
-		    TestEarleyItem {
-			name: stringify!($name),
-			left_elements,
-			right_elements,
-			origin: $origin
-		    }
+		let right_elements = vec![$(
+		    stringify!($right_element)
+		),*];
+		TestEarleyItem {
+		    name: stringify!($name),
+		    left_elements,
+		    right_elements,
+		    origin: $origin
+		}
 	    }
 	};
     }

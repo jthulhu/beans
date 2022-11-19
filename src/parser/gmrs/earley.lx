@@ -3,7 +3,7 @@ ignore EOL ::= \n
 ignore COMMENT ::= \(\*.*\*\)
 
 INT ::= ([+\-]?\d+)
-STRING ::= "(([^"\\]|(\\[^\\])|(\\\\))*)"
+STRING ::= "(([^"\\]|\\[^\\]|\\\\)*)"
 FLOAT ::= ([+\-]?\d+\.\d+)
 keyword BOOL ::= (true|false)
 keyword LEFT ::= left-assoc
@@ -13,7 +13,7 @@ ID ::= (\w+)
 LPROXY ::= <
 RPROXY ::= >
 LBRACKET ::= \[
-RBRACKET ::= ]
+RBRACKET ::= \]
 LBRACE ::= {
 RBRACE ::= }
 LPAR ::= \(

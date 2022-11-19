@@ -20,11 +20,11 @@ RPAR ::= \)
 LBRACE ::= {
 RBRACE ::= }
 LBRACKET ::= \[
-RBRACKET ::= ]
+RBRACKET ::= \]
 LBRACEU ::= {\|
 RBRACEU ::= \|}
 LBRACKETU ::= \[\|
-RBRACKETU ::= \|]
+RBRACKETU ::= \|\]
 
 keyword AND ::= and
 keyword OR ::= or

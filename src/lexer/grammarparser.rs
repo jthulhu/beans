@@ -160,9 +160,22 @@ mod tests {
         assert_eq!(grammar.name(TerminalId(2)), "C");
         assert!(!grammar.ignored(2.into()));
     }
+
     #[test]
-    fn grammar_default_grammar() {
-        //	let grammar = GrammarParser::new();
+    fn grammar_report() {
+        let grammar = LexerGrammarBuilder::from_stream(StringStream::new(
+            Path::new("<grammar report>"),
+            r#"ignore COMMENT ::= /\*([^*]|\*[^/])\*/
+(unclosed comment) ECOMMENT ::= /\*([^*]|\*[^/])"#,
+        ))
+        .build()
+        .unwrap()
+        .unwrap();
+        assert_eq!(1, grammar.errors.len());
+        assert_eq!(
+            &String::from("unclosed comment"),
+            grammar.errors.get(&TerminalId(1)).unwrap()
+        );
     }
 }
 
@@ -172,6 +185,11 @@ newty! {
 
 newty! {
     pub set Ignores [TerminalId]
+}
+
+newty! {
+    #[derive(Serialize, Deserialize)]
+    pub map Errors(String) [TerminalId]
 }
 
 /// # Summary
@@ -202,7 +220,8 @@ impl LexerGrammarBuilder {
     pub fn build(self) -> Result<LexerGrammar> {
         let mut warnings = WarningSet::empty();
         let mut stream = self.stream;
-        let mut ignores = HashSet::<String>::new();
+        let mut ignores = HashSet::new();
+        let mut errors = Errors::new();
         let mut names = vec![];
         let mut regex_builder = RegexBuilder::new();
         let mut found_identifiers = HashSet::new();
@@ -210,6 +229,30 @@ impl LexerGrammarBuilder {
         while !stream.is_empty() {
             let ignore = Self::read_keyword(&mut stream, "ignore");
             Self::ignore_blank(&mut stream);
+            let error = Self::read_keyword(&mut stream, "(");
+            Self::ignore_blank(&mut stream);
+            let error = if error {
+                let mut message = String::new();
+                let mut escaped = false;
+                loop {
+                    let c = stream.get();
+                    match c {
+                        Char::Char(')') if !escaped => break,
+                        Char::Char('\\') if !escaped => escaped = true,
+                        Char::Char(c) => {
+                            message.push(c);
+                            escaped = false;
+                        }
+                        Char::EOF => return Err(Error::LexerGrammarEofString),
+                    }
+                    stream.incr_pos();
+                }
+                Self::read_keyword(&mut stream, ")");
+                Self::ignore_blank(&mut stream);
+                Some(message)
+            } else {
+                None
+            };
             let keyword = Self::read_keyword(&mut stream, "keyword");
             Self::ignore_blank(&mut stream);
             let (name, span) =
@@ -238,10 +281,13 @@ impl LexerGrammarBuilder {
                         }
                     },
                 )?;
-            names.push(name.clone());
-            if ignore {
-                ignores.insert(name);
+	    if ignore || error.is_some() {
+                ignores.insert(name.clone());
             }
+            if let Some(message) = error {
+                errors.insert(TerminalId(names.len()), message);
+            }
+            names.push(name.clone());
             Self::ignore_blank_lines(&mut stream);
         }
         let re = regex_builder.build();
@@ -252,7 +298,7 @@ impl LexerGrammarBuilder {
                 ignores_set.insert(id);
             }
         }
-        warnings.with_ok(LexerGrammar::new(re, names, ignores_set))
+        warnings.with_ok(LexerGrammar::new(re, names, ignores_set, errors))
     }
 
     fn read_pattern(stream: &mut StringStream) -> String {
@@ -346,6 +392,7 @@ pub struct LexerGrammar {
     pattern: CompiledRegex,
     names: Vec<String>,
     ignores: Ignores,
+    errors: Errors,
     default_allowed: Vec<TerminalId>,
     name_map: HashMap<String, TerminalId>,
 }
@@ -355,6 +402,7 @@ impl LexerGrammar {
         pattern: CompiledRegex,
         names: Vec<String>,
         ignores: Ignores,
+        errors: Errors,
     ) -> Self {
         let mut name_map = HashMap::new();
         for (i, name) in names.iter().enumerate() {
@@ -366,6 +414,7 @@ impl LexerGrammar {
             pattern,
             names,
             ignores,
+            errors,
             default_allowed,
             name_map,
         }
@@ -385,6 +434,10 @@ impl LexerGrammar {
 
     pub fn ignored(&self, idx: TerminalId) -> bool {
         self.ignores.contains(idx)
+    }
+
+    pub fn err_message(&self, idx: TerminalId) -> Option<&String> {
+        self.errors.get(&idx)
     }
 
     pub fn pattern(&self) -> &CompiledRegex {

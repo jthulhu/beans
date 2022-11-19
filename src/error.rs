@@ -59,14 +59,19 @@ pub enum Error {
         token: String,
         location: Fragile<Span>,
     },
+    #[error("Reached EOF while trying to read a string")]
+    LexerGrammarEofString,
     /// `LexingError(message: String)`: error while transforming a string stream into a token stream.
-    #[error("Error while lexing: {message}, at {location}")]
+    #[error("Lexing error: cannot recognize a token at {location}")]
     LexingError {
-        /// The message giving details about the error.
-        message: String,
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
         location: Fragile<Span>,
+    },
+    #[error("Lexing error: {message}, at {span}")]
+    UnwantedToken {
+	span: Fragile<Span>,
+	message: String,
     },
     /// `GrammarDuplicateDefinition(message: String, location: Location)`: duplicate definition at `location`.
     #[error("Found duplicate definition of terminal in grammar: {message}, at {location}.")]

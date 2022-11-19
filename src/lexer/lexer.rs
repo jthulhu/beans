@@ -113,6 +113,31 @@ mod tests {
         assert!(lexed_input.next(Allowed::All).unwrap().unwrap().is_none());
     }
 
+    #[test]
+    fn unwantend_token() {
+        let lexer = LexerBuilder::from_grammar(
+            LexerGrammarBuilder::from_stream(StringStream::new(
+                Path::new("<unwanted token>"),
+                r#"ignore COMMENT ::= /\*([^*]|\*[^/])\*/
+(unclosed comment) ECOMMENT ::= /\*([^*]|\*[^/])"#,
+            ))
+            .build()
+            .unwrap()
+            .unwrap(),
+        )
+        .build();
+        let mut input =
+            StringStream::new(Path::new("<unwanted input>"), "/* hello /");
+        let mut lexed_input = lexer.lex(&mut input);
+
+        let Error::UnwantedToken { message, .. } =
+            lexed_input.next(Allowed::All).unwrap_err()
+	else {
+	    panic!("wrong error");
+	};
+        assert_eq!("unclosed comment", message);
+    }
+
     fn verify_input(
         mut lexed_input: LexedStream<'_, '_>,
         result: &[(Location, Location, &str)],
@@ -631,10 +656,18 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
                 let start = self.stream.pos();
                 self.stream.shift(result.chars_length());
                 let end = self.stream.pos();
+                let span = self.stream.span_between(start, end - 1);
+                if let Some(err_message) =
+                    self.lexer.grammar().err_message(result.id())
+                {
+                    break 'lex Err(Error::UnwantedToken {
+                        span: Fragile::new(span),
+                        message: err_message.clone(),
+                    });
+                }
                 if self.lexer.grammar().ignored(result.id()) {
                     continue;
                 }
-                let span = self.stream.span_between(start, end - 1);
                 let id = self.lexer.grammar.id(&name).unwrap();
                 let token = Token::new(name, id, attributes, span.clone());
                 self.last_location = span;
@@ -643,7 +676,6 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
             } else {
                 break 'lex Err(Error::LexingError {
                     location: Fragile::new(self.stream.curr_span()),
-                    message: String::from("cannot recognize a token here"),
                 });
             }
         }

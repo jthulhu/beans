@@ -1,6 +1,6 @@
 [package]
 name = "beans"
-version = "6.1.0"
+version = "6.2.0"
 authors = ["Adrien Mathieu <adrien.lc.mathieu@gmail.com>"]
 license = "MIT OR GPL-3.0-or-later"
 edition = "2021"

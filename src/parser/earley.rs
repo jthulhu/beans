@@ -791,27 +791,37 @@ impl EarleyParser {
                 .chain(scans.keys().cloned())
                 .collect::<Vec<_>>();
             let allowed = Allowed::Some(possible_scans.clone());
-            let Ok(next_token) = input.next(allowed) else {
-		let error = if let Some(token) =
-                    input.next(Allowed::All)?.unpack_into(&mut warnings)
-                {
-                    let name = token.name().to_string();
-                    let location = token.location().clone();
-                    Error::SyntaxError {
-			name,
-			alternatives: scans
-                            .keys()
-                            .map(|tok| input.lexer().grammar().name(*tok).to_string())
-                            .collect::<Vec<_>>(),
-                        location: Fragile::new(location),
-                    }
-                } else {
-                    Error::SyntaxErrorValidPrefix {
-                        location: input.last_location().into(),
-                    }
-                };
-                return Err(error);
-	    };
+            let next_token = match input.next(allowed) {
+                Ok(r) => r,
+                Err(Error::LexingError { .. }) => {
+                    let error = if let Some(token) =
+                        input.next(Allowed::All)?.unpack_into(&mut warnings)
+                    {
+                        let name = token.name().to_string();
+                        let location = token.location().clone();
+                        Error::SyntaxError {
+                            name,
+                            alternatives: scans
+                                .keys()
+                                .map(|tok| {
+                                    input
+                                        .lexer()
+                                        .grammar()
+                                        .name(*tok)
+                                        .to_string()
+                                })
+                                .collect::<Vec<_>>(),
+                            location: Fragile::new(location),
+                        }
+                    } else {
+                        Error::SyntaxErrorValidPrefix {
+                            location: input.last_location().into(),
+                        }
+                    };
+                    return Err(error);
+                }
+                Err(error) => return Err(error),
+            };
             if let Some(token) = next_token.unpack_into(&mut warnings) {
                 for item in scans.entry(token.id()).or_default() {
                     next_state.add(*item);
@@ -1316,11 +1326,11 @@ RPAR ::= \)
     ) {
         let length1 = rules1.0.len();
         let length2 = rules2.len();
-	match length1.cmp(&length2) {
-	    std::cmp::Ordering::Greater => panic!("Grammar 1 is longer"),
-	    std::cmp::Ordering::Less => panic!("Grammar 2 is longer"),
-	    std::cmp::Ordering::Equal => {}
-	}
+        match length1.cmp(&length2) {
+            std::cmp::Ordering::Greater => panic!("Grammar 1 is longer"),
+            std::cmp::Ordering::Less => panic!("Grammar 2 is longer"),
+            std::cmp::Ordering::Equal => {}
+        }
         for (i, (r1, r2)) in rules1.0.iter().zip(rules2.iter()).enumerate() {
             assert!(
                 r2.matches(r1, parser_grammar, lexer_grammar),

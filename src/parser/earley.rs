@@ -1,6 +1,6 @@
 use super::grammarparser::{
-    Axioms, ElementType, Grammar, GrammarBuilder, NonTerminalName, Rule,
-    RuleElement,
+    Axioms, ElementType, Grammar, GrammarBuilder, NonTerminalDescription,
+    NonTerminalName, Rule, RuleElement,
 };
 use super::parser::{NonTerminalId, ParseResult, Parser, RuleId};
 use super::parser::{Value, AST};
@@ -223,6 +223,7 @@ pub struct EarleyGrammar {
     id_of: HashMap<Rc<str>, NonTerminalId>,
     /// Maps the non-terminal to its name
     name_of: NonTerminalName,
+    description_of: NonTerminalDescription,
     /// Maps the identifier of a non-terminal to the identifiers of its rules.
     /// Its rules are the rules of which it is the LHS.
     rules_of: RulesMap,
@@ -240,6 +241,7 @@ impl Grammar<'_> for EarleyGrammar {
         axioms: Axioms,
         id_of: HashMap<Rc<str>, NonTerminalId>,
         name_of: NonTerminalName,
+        description_of: NonTerminalDescription,
     ) -> Result<Self> {
         let warnings = WarningSet::empty();
         let nb_non_terminals = axioms.len_as(); // Number of non terminals
@@ -290,12 +292,17 @@ impl Grammar<'_> for EarleyGrammar {
             nullables,
             id_of,
             name_of,
+            description_of,
             rules_of,
         })
     }
 
     fn name_of(&self, id: NonTerminalId) -> Rc<str> {
         self.name_of[id].clone()
+    }
+
+    fn description_of(&self, id: NonTerminalId) -> Option<Rc<str>> {
+        self.description_of[id].as_ref().cloned()
     }
 
     fn id_of(&self, name: Rc<str>) -> NonTerminalId {
@@ -722,6 +729,9 @@ impl EarleyParser {
         'outer: loop {
             let mut next_state = StateSet::default();
             let mut scans: HashMap<TerminalId, Vec<_>> = HashMap::new();
+            let mut first_add = true;
+            let mut possible_first_nonterminals = HashSet::new();
+            let mut possible_first_terminals = HashSet::new();
             '_inner: while let Some(&item) = sets.last_mut().unwrap().next() {
                 let mut to_be_added = Vec::new();
                 match self.grammar().rules[item.rule]
@@ -748,6 +758,15 @@ impl EarleyParser {
                         }
                         // Scan
                         ElementType::Terminal(id) => {
+                            if first_add {
+                                possible_first_terminals.insert(
+                                    input
+                                        .lexer()
+                                        .grammar()
+                                        .name(id)
+                                        .to_string(),
+                                );
+                            }
                             scans.entry(id).or_default().push(EarleyItem {
                                 rule: item.rule,
                                 origin: item.origin,
@@ -780,8 +799,18 @@ impl EarleyParser {
                     }
                 }
                 for item in to_be_added {
+                    if first_add {
+                        if let Some(description) = self
+                            .grammar()
+                            .description_of(self.grammar().rules[item.rule].id)
+                        {
+                            possible_first_nonterminals
+                                .insert(description.to_string());
+                        }
+                    }
                     sets.last_mut().unwrap().add(item);
                 }
+                first_add = false;
             }
 
             let possible_scans = input
@@ -801,16 +830,10 @@ impl EarleyParser {
                         let location = token.location().clone();
                         Error::SyntaxError {
                             name,
-                            alternatives: scans
-                                .keys()
-                                .map(|tok| {
-                                    input
-                                        .lexer()
-                                        .grammar()
-                                        .name(*tok)
-                                        .to_string()
-                                })
-                                .collect::<Vec<_>>(),
+                            alternatives: possible_first_nonterminals
+                                .into_iter()
+                                .chain(possible_first_terminals.into_iter())
+                                .collect(),
                             location: Fragile::new(location),
                         }
                     } else {

@@ -50,6 +50,11 @@ newty! {
     pub vec NonTerminalName(FullName)[NonTerminalId]
 }
 
+newty! {
+    #[derive(Serialize, Deserialize)]
+    pub vec NonTerminalDescription(Option<FullName>)[NonTerminalId]
+}
+
 /// # Summary
 ///
 /// `Attribute` identifies a child element of the node that will take the node's
@@ -375,6 +380,7 @@ impl InvokedMacro {
         let id = reader.name_of.len_as();
         let full_name = self.full_name(reader);
         reader.name_of.push(full_name.clone());
+	reader.description_of.push(None);
         reader.invoked_macros.insert(self.clone(), id);
         reader.id_of.insert(full_name, id);
         let declaration = reader.macro_declarations[&self.name].clone();
@@ -427,6 +433,7 @@ struct GrammarReader<'lexer, 'stream> {
     axioms: Vec<NonTerminalId>,
     found_declarations: HashMap<Name, Span>,
     name_of: NonTerminalName,
+    description_of: NonTerminalDescription,
 }
 
 impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
@@ -445,6 +452,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
             axioms: Vec::new(),
             found_declarations: HashMap::new(),
             name_of: NonTerminalName::new(),
+            description_of: NonTerminalDescription::new(),
         }
     }
 
@@ -744,6 +752,14 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
     }
 
     fn read_definition(&mut self) -> std::result::Result<bool, Error> {
+        let description = self.next_token()?.and_then(|tok| {
+            if tok.name() == token::STRING {
+                Some(tok.content().into())
+            } else {
+		self.lexed_input.drop_last();
+                None
+            }
+        });
         let axiom = self.peek_token(token::KEY_START)?;
         let definition_name_token = match self
             .lexed_input
@@ -794,6 +810,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         if arguments.is_empty() {
             let nonterminal_id = self.name_of.len_as();
             self.name_of.push(definition_name.clone());
+            self.description_of.push(description);
             self.id_of.insert(definition_name, nonterminal_id);
             self.rules.extend(
                 rules
@@ -823,6 +840,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         HashMap<Rc<str>, NonTerminalId>,
         Vec<NonTerminalId>,
         NonTerminalName,
+        NonTerminalDescription,
     )> {
         while self.read_definition()? {}
         let mut rules = GrammarRules::new();
@@ -835,8 +853,13 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
             );
             rules.push(rule);
         }
-        self.warnings
-            .with_ok((rules, self.id_of, self.axioms, self.name_of))
+        self.warnings.with_ok((
+            rules,
+            self.id_of,
+            self.axioms,
+            self.name_of,
+            self.description_of,
+        ))
     }
 }
 
@@ -871,14 +894,15 @@ pub trait GrammarBuilder<'deserializer>: Sized {
         let temp_lexer = self.grammar_lexer()?.unpack_into(&mut warnings);
         let lexed_input = temp_lexer.lex(&mut stream);
 
-        let (rules, id_of, axioms_vec, name_of) =
+        let (rules, id_of, axioms_vec, name_of, description_of) =
             GrammarReader::new(lexer, lexed_input)
                 .read()?
                 .unpack_into(&mut warnings);
         let number_of_nonterminals = name_of.len_as();
         let axioms = Axioms::from_vec(number_of_nonterminals, axioms_vec);
-        let grammar = Self::Grammar::new(rules, axioms, id_of, name_of)?
-            .unpack_into(&mut warnings);
+        let grammar =
+            Self::Grammar::new(rules, axioms, id_of, name_of, description_of)?
+                .unpack_into(&mut warnings);
 
         warnings.with_ok(grammar)
     }
@@ -891,6 +915,7 @@ pub trait Grammar<'d>: Sized + Serialize + Deserialize<'d> {
         axioms: Axioms,
         id_of: HashMap<Rc<str>, NonTerminalId>,
         name_of: NonTerminalName,
+	description_of: NonTerminalDescription,
     ) -> Result<Self>;
 
     fn deserialize(bytes: &'d [u8]) -> Result<Self> {
@@ -900,6 +925,7 @@ pub trait Grammar<'d>: Sized + Serialize + Deserialize<'d> {
     }
 
     fn name_of(&self, id: NonTerminalId) -> Rc<str>;
+    fn description_of(&self, id: NonTerminalId) -> Option<Rc<str>>;
     fn id_of(&self, name: Rc<str>) -> NonTerminalId;
 
     fn serialize(&self) -> Result<Vec<u8>> {

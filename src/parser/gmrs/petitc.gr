@@ -12,29 +12,36 @@ List[content, separation] ::=
 Empty ::=
   <>;
 
+"a file"
 @File ::=
   List[INCLUDE, Empty] List[FunctionDeclaration, Empty]@decls <>;
 
+"a function declaration"
 FunctionDeclaration ::=
   Type@rettype IDENT.0@name LPAR List[TypedParam, COMMA]@args RPAR Block@block <>;
 
+"a type"
 Type ::=
   VOID <Void>
   INTTY <Int>
   BOOL <Bool>
   Type@pointed ASTERISK <Pointer>;
 
+"a parameter"
 TypedParam ::=
   Type@type IDENT.0@name <>;
 
+"an integer"
 Int ::=
   INT.0@value <Int>
   CHAR.0@value <Char>;
 
+"a boolean"
 Bool ::=
   TRUE <True>
   FALSE <False>;
 
+"an expression"
 Expr ::=
   Int@value <Int>
   Bool@value <Bool>
@@ -69,31 +76,38 @@ Expr ::=
   (left-assoc) Expr@left OrOp@op Expr@right <BinOp>
   (right-assoc) Expr@key EQUAL Expr@value <Assign>;
 
+"an operator"
 MulDivModOp ::=
   ASTERISK <Mul>
   SLASH <Div>
   PERCENT <Mod>;
 
+"an operator"
 AddSubOp ::=
   PLUS <Add>
   MINUS <Sub>;
 
+"an operator"
 CmpOp ::=
   LT <Lt>
   GT <Gt>
   GEQ <Geq>
   LEQ <Leq>;
 
+"an operator"
 EqOp ::=
   EQ <Equal>
   NEQ <NotEqual>;
 
+"an operator"
 AndOp ::=
   AND <And>;
 
+"an operator"
 OrOp ::=
   OR <Or>;
 
+"a statement"
 Statement ::=
   SEMICOLON <None>
   Expr@stmt SEMICOLON <Regular>
@@ -114,6 +128,7 @@ Statement ::=
 Else ::=
   ELSE Statement@else <>;
 
+"a block"
 Block ::=
   LBRACE List[DeclStatement, Empty]@stmts RBRACE <>;
 
@@ -122,6 +137,7 @@ DeclStatement ::=
   VariableDeclaration@declaration SEMICOLON <Declaration>
   Statement@stmt <Statement>;
 
+"a variable declaration"
 VariableDeclaration ::=
   Type@type IDENT.0@name Option[Definition]@value <>;
 

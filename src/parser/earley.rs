@@ -178,6 +178,11 @@ struct EarleyItem {
     origin: usize,
     /// `position` is the advancement of the current item. It corresponds to the position of the fat dot.
     position: usize,
+    /// `parent_has_been_shown` indicates whether a parent item should be reported in case
+    /// of failure. It should *not* be showed if it has no description, if it hash
+    /// matched something already, or if a parent item is already a candidate
+    /// for the error message.
+    parent_has_been_shown: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -711,16 +716,30 @@ impl EarleyParser {
         let mut warnings = WarningSet::empty();
         let mut sets = Vec::new();
         let mut first_state = StateSet::default();
+        let mut possible_first_nonterminals = HashSet::new();
+        let mut possible_first_terminals = HashSet::new();
         (0..self.grammar().rules.len())
             .map(RuleId)
             .filter(|id| {
                 self.grammar.axioms.contains(self.grammar.rules[*id].id)
             })
             .for_each(|id| {
+		let parent_has_been_shown =
+		    if let Some(description) = self
+                    .grammar()
+                    .description_of(self.grammar().rules[id].id)
+                {
+		    possible_first_nonterminals.insert(description);
+		    true
+		} else {
+		    false
+		};
+		
                 first_state.add(EarleyItem {
                     rule: id,
                     origin: 0,
                     position: 0,
+                    parent_has_been_shown,
                 })
             });
         let mut raw_input = Vec::new();
@@ -729,9 +748,6 @@ impl EarleyParser {
         'outer: loop {
             let mut next_state = StateSet::default();
             let mut scans: HashMap<TerminalId, Vec<_>> = HashMap::new();
-            let mut first_add = true;
-            let mut possible_first_nonterminals = HashSet::new();
-            let mut possible_first_terminals = HashSet::new();
             '_inner: while let Some(&item) = sets.last_mut().unwrap().next() {
                 let mut to_be_added = Vec::new();
                 match self.grammar().rules[item.rule]
@@ -742,10 +758,24 @@ impl EarleyParser {
                         // Prediction
                         ElementType::NonTerminal(id) => {
                             for &rule in self.grammar().has_rules(id) {
+                                let parent_has_been_shown = item
+                                    .parent_has_been_shown
+                                    || if let Some(description) =
+                                        self.grammar.description_of(
+                                            self.grammar().rules[rule].id,
+                                        )
+                                    {
+                                        possible_first_nonterminals
+                                            .insert(description);
+                                        true
+                                    } else {
+                                        false
+                                    };
                                 to_be_added.push(EarleyItem {
                                     rule,
                                     origin: pos,
                                     position: 0,
+                                    parent_has_been_shown,
                                 });
                             }
                             if self.grammar.nullables.contains(id) {
@@ -753,12 +783,14 @@ impl EarleyParser {
                                     rule: item.rule,
                                     origin: item.origin,
                                     position: item.position + 1,
+                                    parent_has_been_shown: item
+                                        .parent_has_been_shown,
                                 });
                             }
                         }
                         // Scan
                         ElementType::Terminal(id) => {
-                            if first_add {
+                            if !item.parent_has_been_shown {
                                 possible_first_terminals.insert(
                                     input
                                         .lexer()
@@ -771,6 +803,7 @@ impl EarleyParser {
                                 rule: item.rule,
                                 origin: item.origin,
                                 position: item.position + 1,
+                                parent_has_been_shown: false,
                             })
                         }
                     },
@@ -792,6 +825,8 @@ impl EarleyParser {
                                         rule: parent.rule,
                                         origin: parent.origin,
                                         position: parent.position + 1,
+                                        parent_has_been_shown: item
+                                            .parent_has_been_shown,
                                     })
                                 }
                             }
@@ -799,18 +834,8 @@ impl EarleyParser {
                     }
                 }
                 for item in to_be_added {
-                    if first_add {
-                        if let Some(description) = self
-                            .grammar()
-                            .description_of(self.grammar().rules[item.rule].id)
-                        {
-                            possible_first_nonterminals
-                                .insert(description.to_string());
-                        }
-                    }
                     sets.last_mut().unwrap().add(item);
                 }
-                first_add = false;
             }
 
             let possible_scans = input
@@ -831,8 +856,9 @@ impl EarleyParser {
                         Error::SyntaxError {
                             name,
                             alternatives: possible_first_nonterminals
-                                .into_iter()
-                                .chain(possible_first_terminals.into_iter())
+                                .drain()
+                                .map(|x| x.to_string())
+                                .chain(possible_first_terminals.drain())
                                 .collect(),
                             location: Fragile::new(location),
                         }
@@ -845,6 +871,8 @@ impl EarleyParser {
                 }
                 Err(error) => return Err(error),
             };
+            possible_first_nonterminals.clear();
+            possible_first_terminals.clear();
             if let Some(token) = next_token.unpack_into(&mut warnings) {
                 for item in scans.entry(token.id()).or_default() {
                     next_state.add(*item);

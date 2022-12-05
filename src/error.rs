@@ -45,7 +45,7 @@ pub enum Error {
     SerializationError(#[from] bincode::Error),
     /// `LexerGrammarSyntax(message: String)`: error in the syntax of the lexer grammar.
     #[error(
-        "Error in the syntax of the lexer grammar: {message}, at {location}."
+        "Error in the syntax of the lexer grammar: {message}, {location}."
     )]
     LexerGrammarSyntax {
         /// The message giving details about the error.
@@ -55,29 +55,29 @@ pub enum Error {
         location: Fragile<Span>,
     },
     /// `LexerGrammarDuplicateDefinition(token: String)`: duplicate terminal definition.
-    #[error("Duplicate definition of the token {token}, at {location}.")]
+    #[error("Duplicate definition of the token {token}, {location}.")]
     LexerGrammarDuplicateDefinition {
         token: String,
         location: Fragile<Span>,
     },
-    #[error("The token {token} is unwanted, therefore it must have a description, at {span}.")]
+    #[error("The token {token} is unwanted, therefore it must have a description, {span}.")]
     LexerGrammarUnwantedNoDescription { token: String, span: Fragile<Span> },
     #[error("Reached EOF while trying to read a string")]
     LexerGrammarEofString,
     /// `LexingError(message: String)`: error while transforming a string stream into a token stream.
-    #[error("Lexing error: cannot recognize a token at {location}")]
+    #[error("Lexing error: cannot recognize a token {location}")]
     LexingError {
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
         location: Fragile<Span>,
     },
-    #[error("Lexing error: {message}, at {span}")]
+    #[error("Lexing error: {message}, {span}")]
     UnwantedToken {
         span: Fragile<Span>,
         message: String,
     },
     /// `GrammarDuplicateDefinition(message: String, location: Location)`: duplicate definition at `location`.
-    #[error("Found duplicate definition of terminal in grammar: {message}, at {location}.")]
+    #[error("Found duplicate definition of terminal in grammar: {message}, {location}.")]
     GrammarDuplicateDefinition {
         /// The message giving details about the error.
         message: String,
@@ -87,7 +87,7 @@ pub enum Error {
         /// The `Location` where the first definition has been found.
         old_location: Fragile<Span>,
     },
-    #[error("Found two references to {macro_name}, with arities {first_arity} and {second_arity}, at {location}.")]
+    #[error("Found two references to {macro_name}, with arities {first_arity} and {second_arity}, {location}.")]
     GrammarArityMismatch {
         macro_name: String,
         first_arity: usize,
@@ -95,7 +95,7 @@ pub enum Error {
         location: Fragile<Span>,
     },
     /// `GrammarNonTerminalDuplicate(message: String)`: duplicate non-terminal in the grammar.
-    #[error("Found duplicate definition of nonterminal in grammar: {message}, at {location}.")]
+    #[error("Found duplicate definition of nonterminal in grammar: {message}, {location}.")]
     GrammarNonTerminalDuplicate {
         /// The message giving details about the error.
         message: String,
@@ -103,13 +103,13 @@ pub enum Error {
         /// be patched.
         location: Fragile<Span>,
     },
-    #[error("Tried to invoke terminal {terminal} as if it was a macro, at {location}.")]
+    #[error("Tried to invoke terminal {terminal} as if it was a macro, {location}.")]
     GrammarTerminalInvocation {
         terminal: String,
         location: Fragile<Span>,
     },
     /// `GrammarSyntaxError(message: String)`: syntax error in the grammar.
-    #[error("Syntax error in grammar: {message}, at {location}.")]
+    #[error("Syntax error in grammar: {message}, {location}.")]
     GrammarSyntaxError {
         /// The message giving details about the error.
         message: String,
@@ -118,11 +118,11 @@ pub enum Error {
         location: Fragile<Span>,
     },
     /// `GrammarVariantKey(message: String)`: have a variant key in proxy is bad.
-    #[error("The `variant` key is reserved in proxies, at {location}.")]
+    #[error("The `variant` key is reserved in proxies, {location}.")]
     GrammarVariantKey { location: Fragile<Span> },
     /// `SyntaxError`: syntax error in the input.
     #[error(
-	"Syntax error: the token {name} doesn't make sense at {location}.\n{}",
+	"Syntax error: {name} doesn't make sense {location}.\n{}",
 	match &.alternatives[..] {
 	    [] => "".to_string(),
 	    [x] => format!("  -> try inserting {} instead", x.to_string()),
@@ -144,13 +144,13 @@ pub enum Error {
         /// be patched.
         location: Fragile<Span>,
     },
-    #[error("Syntax error: EOF but parsing isn't done at {location}.")]
+    #[error("Syntax error: EOF but parsing isn't done {location}.")]
     SyntaxErrorValidPrefix { location: Fragile<Span> },
     /// `IOError`: any io error.
     #[error("IO error: {0}")]
     IOError(#[from] std::io::Error),
     /// `RegexError`: any regex error
-    #[error("Regex error: {message}, at {location}")]
+    #[error("Regex error: {message}, {location}")]
     RegexError {
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.

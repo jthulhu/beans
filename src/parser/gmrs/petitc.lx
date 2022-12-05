@@ -2,50 +2,102 @@ ignore SPACE ::= \s+
 ignore NEWLINE ::= \n
 ignore COMMENT ::= //[^\n]*\n
 ignore MULTICOMMENT ::= /\*([^*]|\*[^/])*\*/
+(unclosed comment)
+unwanted EMULTICMMENT ::= /\*([^*]|\*[^/])*
+(an include)
 INCLUDE ::= #include\s*<[^>]*>\s*
 
+(`<`)
 LT ::= <
+(`>`)
 GT ::= >
+(`(`)
 LPAR ::= \(
+(`\)`)
 RPAR ::= \)
+(`{`)
 LBRACE ::= {
+(`}`)
 RBRACE ::= }
+(`[`)
 LBRACKET ::= \[
+(`]`)
 RBRACKET ::= \]
+(`bool`)
 keyword BOOL ::= bool
+(`break`)
 keyword BREAK ::= break
+(`continue`)
 keyword CONTINUE ::= continue
+(`else`)
 keyword ELSE ::= else
+(`false`)
 keyword FALSE ::= false
+(`true`)
 keyword TRUE ::= true
+(`for`)
 keyword FOR ::= for
+(`if`)
 keyword IF ::= if
+(`int`)
 keyword INTTY ::= int
+(`null`)
 keyword NULL ::= NULL
+(`return`)
 keyword RETURN ::= return
+(`sizeof`)
 keyword SIZEOF ::= sizeof
+(`void`)
 keyword VOID ::= void
+(`while`)
 keyword WHILE ::= while
 
+(an integer)
 INT ::= (0|[1-9][0-9]*)
+(a character)
 CHAR ::= '([ -&(-[\]-~]|\\\\|\\'|\\n|\\t)'
+(`'` has to be escaped in a literal `char`)
+unwanted UEACHAR ::= '''
+(`\\` has to be escaped in a literal `char`)
+unwanted UEBCHAR ::= '\\'
+(unclosed character)
+unwanted UECCHAR ::= '.[^']
+(an identifier)
 IDENT ::= ([a-zA-Z_][a-zA-Z_0-9]*)
+(`,`)
 COMMA ::= ,
+(`;`)
 SEMICOLON ::= ;
 
+(`*`)
 ASTERISK ::= \*
+(`++`)
 PLUSPLUS ::= \+\+
+(`--`)
 MINUSMINUS ::= --
+(`&`)
 AMPERSAND ::= &
+(`!`)
 EXCLAM ::= !
+(`+`)
 PLUS ::= \+
+(`-`)
 MINUS ::= -
+(`=`)
 EQUAL ::= =
+(`==`)
 EQ ::= ==
+(`!=`)
 NEQ ::= !=
+(`<=`)
 LEQ ::= <=
+(`>=`)
 GEQ ::= >=
+(`/`)
 SLASH ::= /
+(`%`)
 PERCENT ::= %
+(`&&`)
 AND ::= &&
+(`||`)
 OR ::= \|\|

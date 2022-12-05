@@ -856,8 +856,18 @@ impl EarleyParser {
                     let error = if let Some(token) =
                         input.next(Allowed::All)?.unpack_into(&mut warnings)
                     {
-                        let name = token.name().to_string();
-                        let location = token.location().clone();
+			let location = token.location().clone();
+                        let name = {
+                            let id = token.id();
+			    let name = token.name().to_string();
+                            if let Some(description) =
+                                input.lexer().grammar().description_of(id)
+                            {
+                                description.to_string()
+                            } else {
+                                name
+                            }
+                        };
                         Error::SyntaxError {
                             name,
                             alternatives: possible_first_nonterminals

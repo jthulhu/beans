@@ -146,7 +146,7 @@ impl std::fmt::Display for Span {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "in file {}, ", self.file.display())?;
         if self.start.0 == self.end.0 {
-            if self.start.1 + 1 == self.end.1 {
+            if self.start.1 == self.end.1 {
                 write!(
                     f,
                     "at character {} of line {}",
@@ -158,7 +158,7 @@ impl std::fmt::Display for Span {
                     f,
                     "at characters {}-{} of line {}",
                     self.start.1,
-                    self.end.1.checked_sub(1).unwrap_or_default(),
+                    self.end.1,
                     self.start.0 + 1,
                 )
             }
@@ -168,7 +168,7 @@ impl std::fmt::Display for Span {
                 "from character {} of line {} to character {} of line {}",
                 self.start.1,
                 self.start.0 + 1,
-                self.end.1.checked_sub(1).unwrap_or_default(),
+                self.end.1,
                 self.end.0 + 1,
             )
         }

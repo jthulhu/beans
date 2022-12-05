@@ -11,6 +11,7 @@ use fragile::Fragile;
 use std::collections::{linked_list, LinkedList};
 use std::fmt;
 use std::rc::Rc;
+use itertools::Itertools;
 
 /// [`EMPTY_WARNING_SET`] is a warning set without any warnings.
 /// It is useful to use this set as an empty warning set
@@ -59,6 +60,8 @@ pub enum Error {
         token: String,
         location: Fragile<Span>,
     },
+    #[error("The token {token} is unwanted, therefore it must have a description, at {span}.")]
+    LexerGrammarUnwantedNoDescription { token: String, span: Fragile<Span> },
     #[error("Reached EOF while trying to read a string")]
     LexerGrammarEofString,
     /// `LexingError(message: String)`: error while transforming a string stream into a token stream.
@@ -70,8 +73,8 @@ pub enum Error {
     },
     #[error("Lexing error: {message}, at {span}")]
     UnwantedToken {
-	span: Fragile<Span>,
-	message: String,
+        span: Fragile<Span>,
+        message: String,
     },
     /// `GrammarDuplicateDefinition(message: String, location: Location)`: duplicate definition at `location`.
     #[error("Found duplicate definition of terminal in grammar: {message}, at {location}.")]
@@ -102,8 +105,8 @@ pub enum Error {
     },
     #[error("Tried to invoke terminal {terminal} as if it was a macro, at {location}.")]
     GrammarTerminalInvocation {
-	terminal: String,
-	location: Fragile<Span>,
+        terminal: String,
+        location: Fragile<Span>,
     },
     /// `GrammarSyntaxError(message: String)`: syntax error in the grammar.
     #[error("Syntax error in grammar: {message}, at {location}.")]
@@ -118,18 +121,31 @@ pub enum Error {
     #[error("The `variant` key is reserved in proxies, at {location}.")]
     GrammarVariantKey { location: Fragile<Span> },
     /// `SyntaxError`: syntax error in the input.
-    #[error("Syntax error: the token {name} doesn't make sense at {location}.")]
+    #[error(
+	"Syntax error: the token {name} doesn't make sense at {location}.\n{}",
+	match &.alternatives[..] {
+	    [] => "".to_string(),
+	    [x] => format!("  -> try inserting {} instead", x.to_string()),
+	    [rest@.., last] => format!(
+		"  -> try inserting {} or {} instead",
+		rest
+		    .into_iter()
+		    .map(|x| &**x)
+		    .intersperse(", ")
+		    .collect::<String>(),
+		last
+	    ),
+	}
+    )]
     SyntaxError {
-	name: String,
-	alternatives: Vec<String>,
+        name: String,
+        alternatives: Vec<String>,
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
         location: Fragile<Span>,
     },
     #[error("Syntax error: EOF but parsing isn't done at {location}.")]
-    SyntaxErrorValidPrefix {
-	location: Fragile<Span>,
-    },
+    SyntaxErrorValidPrefix { location: Fragile<Span> },
     /// `IOError`: any io error.
     #[error("IO error: {0}")]
     IOError(#[from] std::io::Error),

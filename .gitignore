@@ -1,12 +1,7 @@
-*~
-*.bo
-*.bns
-
 *.clx
 *.cgr
 
 .direnv
 
-#Added by cargo
-
-/target
+target/
+out/

@@ -166,15 +166,15 @@ mod tests {
         let grammar = LexerGrammarBuilder::from_stream(StringStream::new(
             Path::new("<grammar report>"),
             r#"ignore COMMENT ::= /\*([^*]|\*[^/])\*/
-(unclosed comment) ECOMMENT ::= /\*([^*]|\*[^/])"#,
+(unclosed comment) unwanted ECOMMENT ::= /\*([^*]|\*[^/])"#,
         ))
         .build()
         .unwrap()
         .unwrap();
         assert_eq!(1, grammar.errors.len());
         assert_eq!(
-            &String::from("unclosed comment"),
-            grammar.errors.get(&TerminalId(1)).unwrap()
+            "unclosed comment",
+            &**grammar.errors.get(&TerminalId(1)).unwrap()
         );
     }
 }
@@ -189,7 +189,12 @@ newty! {
 
 newty! {
     #[derive(Serialize, Deserialize)]
-    pub map Errors(String) [TerminalId]
+    pub map Errors(Rc<str>) [TerminalId]
+}
+
+newty! {
+    #[derive(Serialize, Deserialize)]
+    pub map Descriptions(Rc<str>) [TerminalId]
 }
 
 /// # Summary
@@ -222,37 +227,42 @@ impl LexerGrammarBuilder {
         let mut stream = self.stream;
         let mut ignores = HashSet::new();
         let mut errors = Errors::new();
-        let mut names = vec![];
+        let mut descriptions = Descriptions::new();
+        let mut names = Vec::new();
         let mut regex_builder = RegexBuilder::new();
         let mut found_identifiers = HashSet::new();
         Self::ignore_blank_lines(&mut stream);
         while !stream.is_empty() {
+            let description: Option<Rc<str>> =
+                if Self::read_keyword(&mut stream, "(") {
+                    let mut message = String::new();
+                    let mut escaped = false;
+                    loop {
+                        let c = stream.get();
+                        match c {
+                            Char::Char(')') if !escaped => break,
+                            Char::Char('\\') if !escaped => escaped = true,
+                            Char::Char(c) => {
+                                message.push(c);
+                                escaped = false;
+                            }
+                            Char::EOF => {
+                                return Err(Error::LexerGrammarEofString)
+                            }
+                        }
+                        stream.incr_pos();
+                    }
+                    Self::read_keyword(&mut stream, ")");
+		    Self::ignore_blank_lines(&mut stream);
+                    Some(message.into())
+                } else {
+                    None
+                };
+            Self::ignore_blank(&mut stream);
             let ignore = Self::read_keyword(&mut stream, "ignore");
             Self::ignore_blank(&mut stream);
-            let error = Self::read_keyword(&mut stream, "(");
+            let error = Self::read_keyword(&mut stream, "unwanted");
             Self::ignore_blank(&mut stream);
-            let error = if error {
-                let mut message = String::new();
-                let mut escaped = false;
-                loop {
-                    let c = stream.get();
-                    match c {
-                        Char::Char(')') if !escaped => break,
-                        Char::Char('\\') if !escaped => escaped = true,
-                        Char::Char(c) => {
-                            message.push(c);
-                            escaped = false;
-                        }
-                        Char::EOF => return Err(Error::LexerGrammarEofString),
-                    }
-                    stream.incr_pos();
-                }
-                Self::read_keyword(&mut stream, ")");
-                Self::ignore_blank(&mut stream);
-                Some(message)
-            } else {
-                None
-            };
             let keyword = Self::read_keyword(&mut stream, "keyword");
             Self::ignore_blank(&mut stream);
             let (name, span) =
@@ -281,11 +291,21 @@ impl LexerGrammarBuilder {
                         }
                     },
                 )?;
-	    if ignore || error.is_some() {
+            if ignore || error {
                 ignores.insert(name.clone());
             }
-            if let Some(message) = error {
-                errors.insert(TerminalId(names.len()), message);
+            if error {
+                if let Some(ref message) = description {
+                    errors.insert(TerminalId(names.len()), message.clone());
+                } else {
+                    return Err(Error::LexerGrammarUnwantedNoDescription {
+                        token: name,
+                        span: Fragile::new(span),
+                    });
+                }
+            }
+            if let Some(message) = description {
+                descriptions.insert(TerminalId(names.len()), message);
             }
             names.push(name.clone());
             Self::ignore_blank_lines(&mut stream);
@@ -298,7 +318,13 @@ impl LexerGrammarBuilder {
                 ignores_set.insert(id);
             }
         }
-        warnings.with_ok(LexerGrammar::new(re, names, ignores_set, errors))
+        warnings.with_ok(LexerGrammar::new(
+            re,
+            names,
+            ignores_set,
+            errors,
+            descriptions,
+        ))
     }
 
     fn read_pattern(stream: &mut StringStream) -> String {
@@ -393,6 +419,7 @@ pub struct LexerGrammar {
     names: Vec<String>,
     ignores: Ignores,
     errors: Errors,
+    descriptions: Descriptions,
     default_allowed: Vec<TerminalId>,
     name_map: HashMap<String, TerminalId>,
 }
@@ -403,6 +430,7 @@ impl LexerGrammar {
         names: Vec<String>,
         ignores: Ignores,
         errors: Errors,
+        descriptions: Descriptions,
     ) -> Self {
         let mut name_map = HashMap::new();
         for (i, name) in names.iter().enumerate() {
@@ -415,6 +443,7 @@ impl LexerGrammar {
             names,
             ignores,
             errors,
+            descriptions,
             default_allowed,
             name_map,
         }
@@ -436,8 +465,12 @@ impl LexerGrammar {
         self.ignores.contains(idx)
     }
 
-    pub fn err_message(&self, idx: TerminalId) -> Option<&String> {
-        self.errors.get(&idx)
+    pub fn err_message(&self, idx: TerminalId) -> Option<&str> {
+        self.errors.get(&idx).map(|x| &**x)
+    }
+
+    pub fn description_of(&self, idx: TerminalId) -> Option<&str> {
+        self.descriptions.get(&idx).map(|x| &**x)
     }
 
     pub fn pattern(&self) -> &CompiledRegex {

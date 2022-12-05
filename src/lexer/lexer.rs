@@ -119,7 +119,7 @@ mod tests {
             LexerGrammarBuilder::from_stream(StringStream::new(
                 Path::new("<unwanted token>"),
                 r#"ignore COMMENT ::= /\*([^*]|\*[^/])\*/
-(unclosed comment) ECOMMENT ::= /\*([^*]|\*[^/])"#,
+(unclosed comment) unwanted ECOMMENT ::= /\*([^*]|\*[^/])"#,
             ))
             .build()
             .unwrap()
@@ -662,7 +662,7 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
                 {
                     break 'lex Err(Error::UnwantedToken {
                         span: Fragile::new(span),
-                        message: err_message.clone(),
+                        message: err_message.to_string(),
                     });
                 }
                 if self.lexer.grammar().ignored(result.id()) {

@@ -724,17 +724,15 @@ impl EarleyParser {
                 self.grammar.axioms.contains(self.grammar.rules[*id].id)
             })
             .for_each(|id| {
-		let parent_has_been_shown =
-		    if let Some(description) = self
-                    .grammar()
-                    .description_of(self.grammar().rules[id].id)
+                let parent_has_been_shown = if let Some(description) =
+                    self.grammar().description_of(self.grammar().rules[id].id)
                 {
-		    possible_first_nonterminals.insert(description);
-		    true
-		} else {
-		    false
-		};
-		
+                    possible_first_nonterminals.insert(description);
+                    true
+                } else {
+                    false
+                };
+
                 first_state.add(EarleyItem {
                     rule: id,
                     origin: 0,
@@ -791,13 +789,20 @@ impl EarleyParser {
                         // Scan
                         ElementType::Terminal(id) => {
                             if !item.parent_has_been_shown {
-                                possible_first_terminals.insert(
-                                    input
-                                        .lexer()
-                                        .grammar()
-                                        .name(id)
-                                        .to_string(),
-                                );
+                                if let Some(message) =
+                                    input.lexer().grammar().description_of(id)
+                                {
+                                    possible_first_terminals
+                                        .insert(message.to_string());
+                                } else {
+                                    possible_first_terminals.insert(
+                                        input
+                                            .lexer()
+                                            .grammar()
+                                            .name(id)
+                                            .to_string(),
+                                    );
+                                };
                             }
                             scans.entry(id).or_default().push(EarleyItem {
                                 rule: item.rule,

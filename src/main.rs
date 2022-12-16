@@ -6,7 +6,8 @@ use beans::parser::earley::{
 };
 use beans::parser::GrammarBuilder;
 use beans::parser::Parser;
-use beans::printer::print_ast;
+use crate::printer::print_ast;
+use crate::render::render_ast;
 use beans::regex::Allowed;
 use beans::stream::StringStream;
 use bincode::{deserialize, serialize};
@@ -14,6 +15,9 @@ use clap::{Parser as CliParser, Subcommand};
 use std::fs::File;
 use std::io::{prelude::*, stdout, BufWriter};
 use std::path::PathBuf;
+
+mod printer;
+mod render;
 
 #[derive(CliParser)]
 #[command(author, version, about, long_about=None)]
@@ -222,7 +226,7 @@ fn main() -> anyhow::Result<()> {
                 print_final_sets(&forest, &parser, &lexer);
             }
             let ast = parser.select_ast(&forest, &raw_input);
-            print_ast(&ast)?;
+            render_ast(&ast);
         }
     }
     for warning in warnings.iter() {

@@ -30,16 +30,20 @@
           cargo = rust;
           rustc = rust;
         };
+        dependencies = with pkgs; [
+          ncurses.dev
+        ];
       in {
         defaultPackage = naersk-lib.buildPackage {
           pname = "Beans";
           root = ./.;
+          buildInputs = dependencies;
         };
         defaultApp = utils.lib.mkApp {
             drv = self.defaultPackage.${system};
         };
         devShell = pkgs.mkShell {
-          buildInputs = with pkgs; [
+          buildInputs = (with pkgs; [
             gdb
             rust
             cargo
@@ -47,7 +51,7 @@
             rustfmt
             clippy
             rust-analyzer
-          ];
+          ]) ++ dependencies;
         };
       });
 }

@@ -21,6 +21,8 @@ fragile = "2"
 itertools = "0.10"
 ptree = "0.4"
 const_format = "0.2"
+cursive = "0.20.0"
+cursive_tree_view = "0.8.0"
 
 [dev-dependencies]
 criterion = "0.3"

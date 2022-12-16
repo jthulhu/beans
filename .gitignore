@@ -1,6 +1,3 @@
-*.clx
-*.cgr
-
 .direnv
 
 target/

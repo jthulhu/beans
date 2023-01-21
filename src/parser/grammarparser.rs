@@ -380,7 +380,7 @@ impl InvokedMacro {
         let id = reader.name_of.len_as();
         let full_name = self.full_name(reader);
         reader.name_of.push(full_name.clone());
-	reader.description_of.push(None);
+        reader.description_of.push(None);
         reader.invoked_macros.insert(self.clone(), id);
         reader.id_of.insert(full_name, id);
         let declaration = reader.macro_declarations[&self.name].clone();
@@ -756,7 +756,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
             if tok.name() == token::STRING {
                 Some(tok.content().into())
             } else {
-		self.lexed_input.drop_last();
+                self.lexed_input.drop_last();
                 None
             }
         });
@@ -915,7 +915,7 @@ pub trait Grammar<'d>: Sized + Serialize + Deserialize<'d> {
         axioms: Axioms,
         id_of: HashMap<Rc<str>, NonTerminalId>,
         name_of: NonTerminalName,
-	description_of: NonTerminalDescription,
+        description_of: NonTerminalDescription,
     ) -> Result<Self>;
 
     fn deserialize(bytes: &'d [u8]) -> Result<Self> {

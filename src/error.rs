@@ -8,10 +8,10 @@
 use crate::case::Case;
 use crate::span::Span;
 use fragile::Fragile;
+use itertools::Itertools;
 use std::collections::{linked_list, LinkedList};
 use std::fmt;
 use std::rc::Rc;
-use itertools::Itertools;
 
 /// [`EMPTY_WARNING_SET`] is a warning set without any warnings.
 /// It is useful to use this set as an empty warning set
@@ -103,7 +103,9 @@ pub enum Error {
         /// be patched.
         location: Fragile<Span>,
     },
-    #[error("Tried to invoke terminal {terminal} as if it was a macro, {location}.")]
+    #[error(
+        "Tried to invoke terminal {terminal} as if it was a macro, {location}."
+    )]
     GrammarTerminalInvocation {
         terminal: String,
         location: Fragile<Span>,

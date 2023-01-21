@@ -41,33 +41,21 @@ mod tests {
         let text1 = "/* hello, world */#and other stuff";
         let text2 = "/* hello,\nworld */#and other stuff";
         let text3 = "/* unicode éèàç */#and other stuff";
-        let Match { char_pos: end, id, .. } = find(
-            &program,
-            text1,
-            nb_groups,
-            &Allowed::All,
-        )
-        .unwrap();
+        let Match {
+            char_pos: end, id, ..
+        } = find(&program, text1, nb_groups, &Allowed::All).unwrap();
         assert_eq!(id, TerminalId(0));
         assert_eq!(end, 18);
         assert_eq!(text1.chars().nth(end).unwrap(), '#');
-        let Match { char_pos: end, id, .. } = find(
-            &program,
-            text2,
-            nb_groups,
-            &Allowed::All,
-        )
-        .unwrap();
+        let Match {
+            char_pos: end, id, ..
+        } = find(&program, text2, nb_groups, &Allowed::All).unwrap();
         assert_eq!(id, TerminalId(0));
         assert_eq!(end, 18);
         assert_eq!(text2.chars().nth(end).unwrap(), '#');
-        let Match { char_pos: end, id, .. } = find(
-            &program,
-            text3,
-            nb_groups,
-            &Allowed::All,
-        )
-        .unwrap();
+        let Match {
+            char_pos: end, id, ..
+        } = find(&program, text3, nb_groups, &Allowed::All).unwrap();
         assert_eq!(id, TerminalId(0));
         assert_eq!(end, 18);
         assert_eq!(text2.chars().nth(end).unwrap(), '#');
@@ -229,9 +217,9 @@ newty! {
     #[cfg_attr(test, derive(PartialEq))]
     pub vec Program (Instruction) [InstructionPointer]
     impl {
-	pub fn len_ip(&self) -> InstructionPointer {
+    pub fn len_ip(&self) -> InstructionPointer {
             InstructionPointer(self.len())
-	}
+    }
     }
 }
 
@@ -439,7 +427,9 @@ fn match_next(
         }
         Instruction::Match(id) => {
             if let Some(Match {
-                char_pos: p, id: prior, ..
+                char_pos: p,
+                id: prior,
+                ..
             }) = best_match
             {
                 if chars_pos > *p || *prior > *id {
@@ -498,7 +488,7 @@ pub fn find(
         while let Some(thread) = current.get() {
             match_next(
                 chr,
-		bytes_pos,
+                bytes_pos,
                 chars_pos,
                 thread,
                 &mut current,
@@ -511,13 +501,13 @@ pub fn find(
         }
         current = next;
         last = Some(chr);
-	bytes_pos += chr.len_utf8();
+        bytes_pos += chr.len_utf8();
     }
     let chars_pos = input.len();
     while let Some(thread) = current.get() {
         match_next(
             '#',
-	    bytes_pos,
+            bytes_pos,
             chars_pos,
             thread,
             &mut current,

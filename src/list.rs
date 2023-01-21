@@ -75,7 +75,7 @@ impl<T> List<T> {
                 head,
                 tail: self.content.clone(),
             })),
-	    size: self.size+1,
+            size: self.size + 1,
         }
     }
 
@@ -83,7 +83,7 @@ impl<T> List<T> {
     pub fn tail(&self) -> Self {
         List {
             content: self.content.as_ref().and_then(|node| node.tail.clone()),
-	    size: self.size.saturating_sub(1),
+            size: self.size.saturating_sub(1),
         }
     }
 

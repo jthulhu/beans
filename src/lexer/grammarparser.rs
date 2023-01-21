@@ -253,7 +253,7 @@ impl LexerGrammarBuilder {
                         stream.incr_pos();
                     }
                     Self::read_keyword(&mut stream, ")");
-		    Self::ignore_blank_lines(&mut stream);
+                    Self::ignore_blank_lines(&mut stream);
                     Some(message.into())
                 } else {
                     None

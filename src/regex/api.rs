@@ -87,7 +87,7 @@ mod tests {
             .with_named_regex("(b)(c)", String::from("BC"), false)
             .unwrap()
             .build();
-	let text = "aaacd";
+        let text = "aaacd";
         let match1 = regex.find(text, &Allowed::All).unwrap();
         assert_eq!(match1.chars_length, 3);
         assert_eq!(match1.name, "As");
@@ -97,7 +97,7 @@ mod tests {
         assert_eq!(handle.bytes_end, 3);
         assert_eq!(handle.text(text), "aaa");
 
-	let text = "bc";
+        let text = "bc";
         let match2 = regex.find(text, &Allowed::All).unwrap();
         assert_eq!(match2.chars_length, 2);
         assert_eq!(match2.name, "BC");
@@ -111,7 +111,7 @@ mod tests {
         assert_eq!(handle.bytes_end, 2);
         assert_eq!(handle.text(text), "c");
 
-	let text = "cde";
+        let text = "cde";
         let match3 = regex.find(text, &Allowed::All);
         assert!(match3.is_none());
     }
@@ -124,7 +124,7 @@ mod tests {
             .with_named_regex("\"(.*)\"", String::from("STRING"), false)
             .unwrap()
             .build();
-	let text = "'blabla'";
+        let text = "'blabla'";
         let match1 = regex.find(text, &Allowed::All).unwrap();
         assert_eq!(match1.chars_length, 8);
         assert_eq!(match1.name, "STRING");
@@ -141,7 +141,10 @@ mod tests {
             .with_named_regex(".*", String::from("Default"), false)
             .unwrap()
             .build();
-        assert_eq!(regex.find("0123456", &Allowed::All).unwrap().chars_length, 7);
+        assert_eq!(
+            regex.find("0123456", &Allowed::All).unwrap().chars_length,
+            7
+        );
         assert_eq!(regex.find("012", &Allowed::All).unwrap().chars_length, 3);
         assert_eq!(regex.find("", &Allowed::All).unwrap().chars_length, 0);
     }

@@ -7,13 +7,13 @@
 //! This library contains an API to parse grammars, compile them and compile source code.
 
 mod case;
-mod list;
-pub mod printer;
 pub mod error;
 pub mod lexer;
-pub mod span;
+mod list;
 pub mod parser;
+pub mod printer;
 pub mod regex;
+pub mod span;
 pub mod stream;
 // Macros
 #[macro_use]

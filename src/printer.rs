@@ -1,5 +1,5 @@
-use crate::parser::{AST, Value};
-use ptree::{TreeBuilder, print_tree};
+use crate::parser::{Value, AST};
+use ptree::{print_tree, TreeBuilder};
 
 fn build_tree(tree: &mut TreeBuilder, ast: &AST) {
     match ast {
@@ -11,27 +11,27 @@ fn build_tree(tree: &mut TreeBuilder, ast: &AST) {
             }
         }
         AST::Literal {
-	    value: Value::Int(i),
-	    ..
-	} => {
+            value: Value::Int(i),
+            ..
+        } => {
             tree.add_empty_child(i.to_string());
         }
         AST::Literal {
-	    value: Value::Str(string),
-	    ..
-	}=> {
+            value: Value::Str(string),
+            ..
+        } => {
             tree.add_empty_child(string.to_string());
         }
         AST::Literal {
-	    value: Value::Float(f),
-	    ..
-	} => {
+            value: Value::Float(f),
+            ..
+        } => {
             tree.add_empty_child(f.to_string());
         }
         AST::Literal {
-	    value: Value::Bool(b),
-	    ..
-	} => {
+            value: Value::Bool(b),
+            ..
+        } => {
             tree.add_empty_child(b.to_string());
         }
         AST::Terminal(ter) => {

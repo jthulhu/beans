@@ -33,11 +33,11 @@ pub enum AST {
     Node {
         nonterminal: NonTerminalId,
         attributes: HashMap<Rc<str>, AST>,
-	span: Span,
+        span: Span,
     },
     Literal {
-	value: Value,
-	span: Option<Span>,
+        value: Value,
+        span: Option<Span>,
     },
     Terminal(Token),
 }

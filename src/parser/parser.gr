@@ -50,7 +50,7 @@ Proxy ::=
 
 "a proxy item"
 ProxyItem ::=
-  ID.0@variant <Variant>
+  ID.0@var <Variant>
   ID.0@key COLON Expression@value <Entry>;
 
 "an argument"

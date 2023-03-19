@@ -16,15 +16,15 @@ impl RawStream {
     /// Creates a new `RowStream` a path, and the content of that file
     /// as bytes.
     pub fn from_bytes(path: impl Into<Rc<Path>>, bytes: Vec<u8>) -> Self {
-	Self {
-	    origin: path.into(),
-	    stream: bytes,
-	}
+        Self {
+            origin: path.into(),
+            stream: bytes,
+        }
     }
     pub fn read_from_path(path: impl Into<Rc<Path>>) -> Result<Self> {
         let path = path.into();
-        let mut file_stream = File::open(path.as_ref())
-            .map_err(|error| Error::with_file(error, &*path))?;
+        let mut file_stream =
+            File::open(path.as_ref()).map_err(|error| Error::with_file(error, &*path))?;
         let mut stream_buffer = Vec::new();
         file_stream
             .read_to_end(&mut stream_buffer)
@@ -42,7 +42,7 @@ impl TryFrom<RawStream> for StringStream {
     fn try_from(value: RawStream) -> StdResult<Self, Self::Error> {
         let string = String::from_utf8(value.stream)
             .map_err(|error| Error::with_file(error, &*value.origin))?;
-	Ok(StringStream::new(value.origin, string))
+        Ok(StringStream::new(value.origin, string))
     }
 }
 
@@ -93,10 +93,7 @@ struct CharSpan {
 
 impl StringStream {
     /// Build a new `StringStream`, based on its `origin` and on a given `string`.
-    pub fn new(
-        origin: impl Into<Rc<Path>>,
-        string: impl Into<Rc<str>>,
-    ) -> Self {
+    pub fn new(origin: impl Into<Rc<Path>>, string: impl Into<Rc<str>>) -> Self {
         let origin = origin.into();
         let string = string.into();
         let mut current_char = 0;
@@ -144,8 +141,8 @@ impl StringStream {
     /// Create a [`StringStream`] directly from a file. This will try to read the content of the file right away.
     pub fn from_file(file: impl Into<Rc<Path>>) -> Result<Self> {
         let file = file.into();
-        let mut file_stream = File::open(file.as_ref())
-            .map_err(|err| Error::with_file(err, &*file))?;
+        let mut file_stream =
+            File::open(file.as_ref()).map_err(|err| Error::with_file(err, &*file))?;
         let mut stream_buffer = String::new();
         file_stream
             .read_to_string(&mut stream_buffer)
@@ -252,9 +249,7 @@ impl StringStream {
                      ..
                  }| (loc, byte_loc),
             )
-            .unwrap_or_else(|| {
-                (self.eof_span.start(), self.eof_span.start_byte())
-            });
+            .unwrap_or_else(|| (self.eof_span.start(), self.eof_span.start_byte()));
         let (end_location, end_byte) = self
             .spans
             .get(end)
@@ -368,10 +363,7 @@ hij";
             assert_eq!(expected_location, curr_span.start());
             assert_eq!(curr_span.start_byte(), curr_span.end_byte());
             assert_eq!(byte, curr_span.start_byte());
-            assert_eq!(
-                line_byte,
-                curr_span.line_bytes_of_line(expected_location.0)
-            );
+            assert_eq!(line_byte, curr_span.line_bytes_of_line(expected_location.0));
             stream.incr_pos();
         }
         assert!(stream.is_empty());

@@ -302,7 +302,7 @@ impl Grammar<'_> for EarleyGrammar {
 impl EarleyGrammar {
     const PLAIN_EXTENSION: &str = "gr";
     const COMPILED_EXTENSION: &str = "cgr";
-    const AST_EXTENSION: &str = "ast";
+    const AST_EXTENSION: &str = "gr.ast";
 
     fn build_from_compiled(blob: &[u8]) -> Result<Self> {
         WarningSet::empty_with_ok(deserialize(blob)?)
@@ -327,6 +327,10 @@ impl EarleyGrammar {
         // a non-terminal, or something undefined (and therefore to raise an error).
         let mut found_nonterminals = HashMap::new();
         let mut available_id = NonTerminalId(0);
+        let mut id_of = HashMap::new();
+        let mut name_of = NonTerminalName::new();
+        let mut description_of = NonTerminalDescription::new();
+
         for decl in typed_ast.decls {
             match decl {
                 ToplevelDeclaration::Macro(macro_decl) => {
@@ -348,6 +352,9 @@ impl EarleyGrammar {
                         }
                         .err();
                     }
+                    id_of.insert(decl.name.clone(), id);
+                    name_of.push(decl.name.clone());
+                    description_of.push(decl.comment.clone());
                     non_terminal_declarations.push((decl, id));
                 }
             }
@@ -359,8 +366,12 @@ impl EarleyGrammar {
             available_id: &mut NonTerminalId,
             rules: &mut GrammarRules,
             invoked_macros: &mut InvokedMacros,
+            name_of: &mut NonTerminalName,
+            description_of: &mut NonTerminalDescription,
+            id_of: &mut HashMap<Rc<str>, NonTerminalId>,
             found_nonterminals: &HashMap<Rc<str>, NonTerminalId>,
             macro_declarations: &MacroDeclarations,
+            scope: &HashMap<Rc<str>, ElementType>,
             lexer_grammar: &LexerGrammar,
         ) -> Result<Rule> {
             let mut warnings = WarningSet::empty();
@@ -372,8 +383,12 @@ impl EarleyGrammar {
                     available_id,
                     rules,
                     invoked_macros,
+                    name_of,
+                    description_of,
+                    id_of,
                     found_nonterminals,
                     macro_declarations,
+                    scope,
                     lexer_grammar,
                 )?
                 .unpack_into(&mut warnings);
@@ -405,6 +420,9 @@ impl EarleyGrammar {
             available_id: &mut NonTerminalId,
             rules: &mut GrammarRules,
             invoked_macros: &mut InvokedMacros,
+            name_of: &mut NonTerminalName,
+            description_of: &mut NonTerminalDescription,
+            id_of: &mut HashMap<Rc<str>, NonTerminalId>,
             found_nonterminals: &HashMap<Rc<str>, NonTerminalId>,
             macro_declarations: &MacroDeclarations,
             lexer_grammar: &LexerGrammar,
@@ -428,6 +446,12 @@ impl EarleyGrammar {
                 .err();
             }
 
+            let scope = arg_names
+                .iter()
+                .cloned()
+                .zip(args.into_iter().copied())
+                .collect();
+
             for rule in macro_rules {
                 let actual_rule = eval_rule(
                     rule,
@@ -435,8 +459,12 @@ impl EarleyGrammar {
                     available_id,
                     rules,
                     invoked_macros,
+                    name_of,
+                    description_of,
+                    id_of,
                     found_nonterminals,
                     macro_declarations,
+                    &scope,
                     lexer_grammar,
                 )?
                 .unpack_into(&mut warnings);
@@ -451,20 +479,27 @@ impl EarleyGrammar {
             available_id: &mut NonTerminalId,
             rules: &mut GrammarRules,
             invoked_macros: &mut InvokedMacros,
+            name_of: &mut NonTerminalName,
+            description_of: &mut NonTerminalDescription,
+            id_of: &mut HashMap<Rc<str>, NonTerminalId>,
             found_nonterminals: &HashMap<Rc<str>, NonTerminalId>,
             macro_declarations: &MacroDeclarations,
+            scope: &HashMap<Rc<str>, ElementType>,
             lexer_grammar: &LexerGrammar,
         ) -> Result<ElementType> {
             let mut warnings = WarningSet::empty();
             let res = match expr {
                 Item::SelfNonTerminal => ElementType::NonTerminal(self_id),
                 Item::Regular { name } => {
-                    if let Some(id) = found_nonterminals.get(name) {
+                    if let Some(element) = scope.get(name) {
+                        *element
+                    } else if let Some(id) = found_nonterminals.get(name) {
                         // The item is a non terminal
                         ElementType::NonTerminal(*id)
                     } else if let Some(id) = lexer_grammar.id(name) {
                         ElementType::Terminal(id)
                     } else {
+                        panic!("Undefined non-terminal {name}");
                         return ErrorKind::GrammarUndefinedNonTerminal {
                             name: name.to_string(),
                             span: todo!(),
@@ -481,8 +516,12 @@ impl EarleyGrammar {
                             available_id,
                             rules,
                             invoked_macros,
+                            name_of,
+                            description_of,
+                            id_of,
                             found_nonterminals,
                             macro_declarations,
+                            scope,
                             lexer_grammar,
                         )?
                         .unpack_into(&mut warnings);
@@ -491,6 +530,21 @@ impl EarleyGrammar {
                     let args: Rc<[_]> = Rc::from(args);
                     if !invoked_macros.contains_key(&(name.clone(), args.clone())) {
                         let id = available_id.next();
+                        let mut complete_name = name.to_string();
+                        complete_name.push('[');
+                        complete_name.extend(
+                            args.iter()
+                                .map(|element| match element {
+                                    ElementType::NonTerminal(id) => &*name_of[*id],
+                                    ElementType::Terminal(id) => lexer_grammar.name(*id),
+                                })
+                                .intersperse(", "),
+                        );
+                        complete_name.push(']');
+                        let complete_name: Rc<str> = Rc::from(complete_name);
+                        id_of.insert(complete_name.clone(), id);
+                        name_of.push(complete_name);
+                        description_of.push(None);
                         invoked_macros.insert((name.clone(), args.clone()), id);
                         invoke_macro(
                             name.clone(),
@@ -499,6 +553,9 @@ impl EarleyGrammar {
                             available_id,
                             rules,
                             invoked_macros,
+                            name_of,
+                            description_of,
+                            id_of,
                             found_nonterminals,
                             macro_declarations,
                             lexer_grammar,
@@ -517,8 +574,12 @@ impl EarleyGrammar {
             available_id: &mut NonTerminalId,
             rules: &mut GrammarRules,
             invoked_macros: &mut InvokedMacros,
+            name_of: &mut NonTerminalName,
+            description_of: &mut NonTerminalDescription,
+            id_of: &mut HashMap<Rc<str>, NonTerminalId>,
             found_nonterminals: &HashMap<Rc<str>, NonTerminalId>,
             macro_declarations: &MacroDeclarations,
+            scope: &HashMap<Rc<str>, ElementType>,
             lexer_grammar: &LexerGrammar,
         ) -> Result<RuleElement> {
             let mut warnings = WarningSet::empty();
@@ -545,8 +606,12 @@ impl EarleyGrammar {
                 available_id,
                 rules,
                 invoked_macros,
+                name_of,
+                description_of,
+                id_of,
                 found_nonterminals,
                 macro_declarations,
+                scope,
                 lexer_grammar,
             )?
             .unpack_into(&mut warnings);
@@ -608,18 +673,13 @@ impl EarleyGrammar {
         }
 
         let mut invoked_macros: InvokedMacros = HashMap::new();
-        let mut axioms = Axioms::new();
+        let mut found_axioms = Vec::new();
         let mut rules = GrammarRules::new();
-        let mut id_of = HashMap::new();
-        let mut name_of = NonTerminalName::new();
-        let mut description_of = NonTerminalDescription::new();
+        let empty_scope = HashMap::new();
         for (declaration, id) in non_terminal_declarations {
-            id_of.insert(declaration.name.clone(), id);
-            name_of.push(declaration.name);
             if declaration.axiom {
-                axioms.put(id);
+                found_axioms.push(id);
             }
-            description_of.push(declaration.comment);
             for rule in declaration.rules {
                 let parsed_rule = eval_rule(
                     &rule,
@@ -627,13 +687,21 @@ impl EarleyGrammar {
                     &mut available_id,
                     &mut rules,
                     &mut invoked_macros,
+                    &mut name_of,
+                    &mut description_of,
+                    &mut id_of,
                     &found_nonterminals,
                     &macro_declarations,
+                    &empty_scope,
                     lexer_grammar,
                 )?
                 .unpack_into(&mut warnings);
                 rules.push(parsed_rule);
             }
+        }
+        let mut axioms = Axioms::with_capacity(available_id.next());
+        for axiom in found_axioms {
+            axioms.put(axiom);
         }
         let res = Self::new(rules, axioms, id_of, name_of, description_of)?
             .unpack_into(&mut warnings);
@@ -646,8 +714,8 @@ impl EarleyGrammar {
     ) -> Result<Self> {
         let mut warnings = WarningSet::empty();
         let (lexer, parser) = build_system!(
-            lexer => "parser.lx.ast",
-            parser => "parser.gr.ast",
+            lexer => "parser.clx",
+            parser => "parser.cgr",
         )?
         .unpack_into(&mut warnings);
         let mut input = lexer.lex(&mut source);
@@ -682,7 +750,7 @@ impl EarleyGrammar {
                 let mut file = File::open(&actual_path)
                     .map_err(|err| Error::with_file(err, &actual_path))?;
                 let mut buffer = Vec::new();
-                file.read(&mut buffer)
+                file.read_to_end(&mut buffer)
                     .map_err(|err| Error::with_file(err, &actual_path))?;
                 let result = Self::build_from_compiled(&buffer)?.unpack_into(&mut warnings);
                 return warnings.with_ok(result);
@@ -716,16 +784,17 @@ impl EarleyGrammar {
             ],
         ) {
             FileResult::Valid((_, Format::Compiled)) => {
+		println!("Parser: compiled");
                 let result = Self::build_from_compiled(&blob)?.unpack_into(&mut warnings);
                 return warnings.with_ok(result);
             }
             FileResult::Valid((actual_path, Format::Ast)) => {
-		let string = std::str::from_utf8(blob)
-		    .map_err(|_| Error::new(todo!()))?;
-		serde_json::from_str(string)
-		    .map_err(|_| Error::new(todo!()))?
+		println!("Parser: ast");
+                let string = std::str::from_utf8(blob).map_err(|_| Error::new(todo!()))?;
+                serde_json::from_str(string).map_err(|_| Error::new(todo!()))?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
+		println!("Parser: plain");
                 let string =
                     String::from_utf8(blob.to_vec()).map_err(|_err| Error::new(todo!()))?;
                 let stream = StringStream::new(actual_path, string);
@@ -1073,14 +1142,14 @@ impl EarleyParser {
                         element.key.as_ref().map(|key| match &element.attribute {
                             Attribute::Named(attr) => {
                                 let AST::Node { attributes, .. } = item else {
-					unreachable!()
-				    };
+				    unreachable!("{item:?}.{attr}")
+				};
                                 (key.clone(), attributes[attr].clone())
                             }
                             Attribute::Indexed(idx) => {
                                 let AST::Terminal(token) = item else {
-					unreachable!()
-				    };
+				    unreachable!("{item:?}.{idx}")
+				};
                                 (
                                     key.clone(),
                                     AST::Literal {

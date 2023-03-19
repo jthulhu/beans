@@ -62,7 +62,7 @@ pub fn select_format<'a, T>(
 
 pub trait Buildable: Sized {
     const RAW_EXTENSION: &'static str;
-    const AST_EXTENSION: &'static str = "ast";
+    const AST_EXTENSION: &'static str;
     const COMPILED_EXTENSION: &'static str;
 
     fn build_from_ast(ast: AST) -> BResult<Self>;
@@ -79,22 +79,18 @@ pub trait Buildable: Sized {
             ],
         ) {
             FileResult::Valid((_, Format::Compiled)) => {
-                let result = Self::build_from_compiled(&blob)?
-                    .unpack_into(&mut warnings);
+                let result = Self::build_from_compiled(&blob)?.unpack_into(&mut warnings);
                 return warnings.with_ok(result);
             }
             FileResult::Valid((actual_path, Format::Ast)) => {
-		let string = std::str::from_utf8(blob)
-		    .map_err(|_| -> Error { todo!() })?;
-                serde_json::from_str(string)
-                    .map_err(|_err| Error::new(todo!()))?
+                let string = std::str::from_utf8(blob).map_err(|_| -> Error { todo!() })?;
+                serde_json::from_str(string).map_err(|_err| Error::new(todo!()))?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
-                let string = String::from_utf8(blob.to_vec())
-                    .map_err(|_| -> Error { todo!() })?;
+                let string =
+                    String::from_utf8(blob.to_vec()).map_err(|_| -> Error { todo!() })?;
                 let stream = StringStream::new(actual_path, string);
-                let result =
-                    Self::build_from_plain(stream)?.unpack_into(&mut warnings);
+                let result = Self::build_from_plain(stream)?.unpack_into(&mut warnings);
                 return warnings.with_ok(result);
             }
             FileResult::NonExisting => {
@@ -115,7 +111,6 @@ pub trait Buildable: Sized {
         warnings.with_ok(grammar)
     }
     fn build_from_path(path: &Path) -> BResult<Self> {
-	println!("build_from_path: {}", path.display());
         let mut warnings = WarningSet::empty();
         let ast: AST = match select_format(
             path,
@@ -129,23 +124,19 @@ pub trait Buildable: Sized {
                 let mut file = File::open(&actual_path)
                     .map_err(|err| Error::with_file(err, &actual_path))?;
                 let mut buffer = Vec::new();
-                file.read(&mut buffer)
+                file.read_to_end(&mut buffer)
                     .map_err(|err| Error::with_file(err, &actual_path))?;
-                let result = Self::build_from_compiled(&buffer)?
-                    .unpack_into(&mut warnings);
+                let result = Self::build_from_compiled(&buffer)?.unpack_into(&mut warnings);
                 return warnings.with_ok(result);
             }
             FileResult::Valid((actual_path, Format::Ast)) => {
                 let file = File::open(&actual_path)
                     .map_err(|err| Error::with_file(err, actual_path))?;
-                serde_json::from_reader(file)
-                    .map_err(|_err| Error::new(todo!()))?
+                serde_json::from_reader(file).map_err(|_err| Error::new(todo!()))?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
-                let stream = StringStream::from_file(actual_path)?
-                    .unpack_into(&mut warnings);
-                let result =
-                    Self::build_from_plain(stream)?.unpack_into(&mut warnings);
+                let stream = StringStream::from_file(actual_path)?.unpack_into(&mut warnings);
+                let result = Self::build_from_plain(stream)?.unpack_into(&mut warnings);
                 return warnings.with_ok(result);
             }
             FileResult::NonExisting => {
@@ -171,19 +162,17 @@ pub trait Buildable: Sized {
 macro_rules! build_system {
     (lexer => $lexer_path:literal, parser => $parser_path:literal $(,)?) => {
         (|| -> $crate::error::Result<($crate::lexer::Lexer, $crate::parser::earley::EarleyParser)> {
-	    println!("Building system for {} and {}", $lexer_path, $parser_path);
-            let mut warnings: $crate::error::WarningSet =
+            let mut warnings =
                 $crate::error::WarningSet::empty();
-            let lexer_source: &[u8] = include_bytes!($lexer_path);
-            let parser_source: &[u8] = include_bytes!($parser_path);
-	    println!("Up to now, it's ok!");
-            let lexer: $crate::lexer::Lexer =
+            let lexer_source = include_bytes!($lexer_path);
+            let parser_source = include_bytes!($parser_path);
+            let lexer =
                 $crate::lexer::Lexer::build_from_blob(
                     lexer_source,
                     ::std::path::Path::new($lexer_path),
                 )?
                 .unpack_into(&mut warnings);
-            let parser: $crate::parser::earley::EarleyParser =
+            let parser =
                 $crate::parser::earley::EarleyParser::build_from_blob(
                     parser_source,
                     ::std::path::Path::new($parser_path),

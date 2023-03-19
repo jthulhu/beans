@@ -66,10 +66,7 @@ pub trait Parser<'deserializer> {
         input: &'input mut LexedStream<'input, 'input>,
     ) -> Result<ParseResult>;
     /// Just return whether the input is recognised.
-    fn is_valid<'input>(
-        &self,
-        input: &'input mut LexedStream<'input, 'input>,
-    ) -> bool {
+    fn is_valid<'input>(&self, input: &'input mut LexedStream<'input, 'input>) -> bool {
         self.parse(input).is_ok()
     }
 }

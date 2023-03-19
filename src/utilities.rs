@@ -16,11 +16,9 @@ macro_rules! int_err {
 macro_rules! retrieve {
     ($resource: expr) => {{
         let result = std::mem::replace(&mut $resource, None).ok_or(
-            $crate::error::Error::new(
-                $crate::error::ErrorKind::InternalError {
-                    message: format!("{} missing", stringify!($resource)),
-                },
-            ),
+            $crate::error::Error::new($crate::error::ErrorKind::InternalError {
+                message: format!("{} missing", stringify!($resource)),
+            }),
         )?;
         result
     }};

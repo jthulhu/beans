@@ -162,7 +162,7 @@ impl Tree for Element {
         let mut node = node!(ast);
         Self {
             item: Item::read(get!(node => item)),
-            attribute: Option::read(get!(node => attribute)),
+            attribute: Option::read(get!(node => attr)),
             key: Option::read(get!(node => key)),
         }
     }
@@ -225,7 +225,10 @@ pub(super) struct Proxy {
 impl Tree for Proxy {
     fn read(ast: AST) -> Self {
         let mut node = node!(ast);
+	println!("Reading proxy...");
+	println!("{node:#?}");
         let vec_items: Vec<ProxyItem> = Vec::read(get!(node => through));
+	println!("Done reading proxy.");
         let mut items = HashMap::new();
         let mut variant = None;
         for item in vec_items {
@@ -247,6 +250,7 @@ pub(super) enum ProxyItem {
 impl Tree for ProxyItem {
     fn read(ast: AST) -> Self {
         let mut node = node!(ast);
+	println!("{node:#?}");
         match_variant! {(node) {
             Variant => Self::Variant(value!(node => variant)),
             Entry => Self::Entry {
@@ -271,7 +275,8 @@ pub(super) enum Expression {
 impl Tree for Expression {
     fn read(ast: AST) -> Self {
         let mut node = node!(ast);
-        match_variant! {(node) {
+	println!("Reading expression...");
+        let res = match_variant! {(node) {
             String => Self::String(value!(node => value)),
 	    Id => Self::Id(value!(node => name)),
             Instanciation => {
@@ -279,7 +284,7 @@ impl Tree for Expression {
             let mut children = HashMap::new();
             for item in Vec::read(get!(node => children)) {
                 match item {
-                ProxyItem::Variant(var) => variant = Some(var),
+                ProxyItem::Variant(var) => variant = Some(var), 
                 ProxyItem::Entry { key, value } =>
                     drop(children.insert(key, value)),
                 }
@@ -290,6 +295,8 @@ impl Tree for Expression {
                 variant,
             }
             }
-        }}
+        }};
+	println!("Done expression");
+	res
     }
 }

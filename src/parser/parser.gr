@@ -59,7 +59,7 @@ FormalArgument ::=
 
 "an element"
 Element ::=
-  Item@item Option[Attribute]@attr Option[Key]@key <>;
+  Item@item Option[Attribute]@attribute Option[Key]@key <>;
 
 "an attribute"
 Attribute ::=

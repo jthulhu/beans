@@ -84,9 +84,9 @@ pub trait Buildable: Sized {
                 return warnings.with_ok(result);
             }
             FileResult::Valid((actual_path, Format::Ast)) => {
-                let file = File::open(&actual_path)
-                    .map_err(|err| Error::with_file(err, actual_path))?;
-                serde_json::from_reader(file)
+		let string = std::str::from_utf8(blob)
+		    .map_err(|_| -> Error { todo!() })?;
+                serde_json::from_str(string)
                     .map_err(|_err| Error::new(todo!()))?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
@@ -115,6 +115,7 @@ pub trait Buildable: Sized {
         warnings.with_ok(grammar)
     }
     fn build_from_path(path: &Path) -> BResult<Self> {
+	println!("build_from_path: {}", path.display());
         let mut warnings = WarningSet::empty();
         let ast: AST = match select_format(
             path,
@@ -170,10 +171,12 @@ pub trait Buildable: Sized {
 macro_rules! build_system {
     (lexer => $lexer_path:literal, parser => $parser_path:literal $(,)?) => {
         (|| -> $crate::error::Result<($crate::lexer::Lexer, $crate::parser::earley::EarleyParser)> {
+	    println!("Building system for {} and {}", $lexer_path, $parser_path);
             let mut warnings: $crate::error::WarningSet =
                 $crate::error::WarningSet::empty();
             let lexer_source: &[u8] = include_bytes!($lexer_path);
             let parser_source: &[u8] = include_bytes!($parser_path);
+	    println!("Up to now, it's ok!");
             let lexer: $crate::lexer::Lexer =
                 $crate::lexer::Lexer::build_from_blob(
                     lexer_source,

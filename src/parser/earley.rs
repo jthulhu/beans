@@ -646,8 +646,8 @@ impl EarleyGrammar {
     ) -> Result<Self> {
         let mut warnings = WarningSet::empty();
         let (lexer, parser) = build_system!(
-            lexer => "parser.clx",
-            parser => "parser.cgr",
+            lexer => "parser.lx.ast",
+            parser => "parser.gr.ast",
         )?
         .unpack_into(&mut warnings);
         let mut input = lexer.lex(&mut source);
@@ -720,9 +720,10 @@ impl EarleyGrammar {
                 return warnings.with_ok(result);
             }
             FileResult::Valid((actual_path, Format::Ast)) => {
-                let file = File::open(&actual_path)
-                    .map_err(|err| Error::with_file(err, actual_path))?;
-                serde_json::from_reader(file).map_err(|_err| Error::new(todo!()))?
+		let string = std::str::from_utf8(blob)
+		    .map_err(|_| Error::new(todo!()))?;
+		serde_json::from_str(string)
+		    .map_err(|_| Error::new(todo!()))?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
                 let string =

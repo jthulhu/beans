@@ -3,6 +3,7 @@ use crate::error::Result;
 use crate::lexer::{LexedStream, Token};
 use crate::span::Span;
 use newty::newty;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -20,7 +21,7 @@ newty! {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     Int(i32),
     Str(Rc<str>),
@@ -28,7 +29,7 @@ pub enum Value {
     Bool(bool),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum AST {
     Node {
         nonterminal: NonTerminalId,

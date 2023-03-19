@@ -51,7 +51,7 @@ checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
 name = "beans"
-version = "6.6.0"
+version = "7.0.0"
 dependencies = [
  "anyhow",
  "bincode",
@@ -61,11 +61,13 @@ dependencies = [
  "fixedbitset",
  "fragile",
  "itertools",
+ "macros",
  "newty",
  "ptree",
  "rand",
  "regex",
  "serde 1.0.147",
+ "serde_json",
  "thiserror",
  "unbounded-interval-tree",
 ]
@@ -530,6 +532,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "macros"
+version = "7.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "memchr"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -919,9 +930,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.89"
+version = "1.0.91"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "020ff22c755c2ed3f8cf162dbb41a7268d934702f3ed3631656ea597e08fc3db"
+checksum = "877c235533714907a8c2464236f5c4b2a17262ef1bd71f38f35ea592c8da6883"
 dependencies = [
  "itoa 1.0.4",
  "ryu",

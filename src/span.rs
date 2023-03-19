@@ -6,6 +6,7 @@
 use std::{path::Path, rc::Rc};
 
 use fragile::Fragile;
+use serde::{Deserialize, Serialize};
 
 /// # Summary
 ///
@@ -128,7 +129,7 @@ mod tests {
 /// )
 /// # ;
 /// ```
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Span {
     file: Rc<Path>,
     start: Location,

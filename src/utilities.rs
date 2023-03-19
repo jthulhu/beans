@@ -16,9 +16,11 @@ macro_rules! int_err {
 macro_rules! retrieve {
     ($resource: expr) => {{
         let result = std::mem::replace(&mut $resource, None).ok_or(
-            $crate::error::Error::InternalError {
-                message: format!("{} missing", stringify!($resource)),
-            },
+            $crate::error::Error::new(
+                $crate::error::ErrorKind::InternalError {
+                    message: format!("{} missing", stringify!($resource)),
+                },
+            ),
         )?;
         result
     }};
@@ -53,5 +55,56 @@ macro_rules! unwrap_or_continue {
         } else {
             continue;
         }
+    };
+}
+
+#[macro_export]
+macro_rules! error {
+    ($($tok:tt)*) => {{
+	eprintln!(
+	    "File \"{}\", line {}, character {}:\nInternal error:",
+	    ::std::file!(),
+	    ::std::line!(),
+	    ::std::column!(),
+	);
+	eprintln!($($tok)*);
+	::std::process::exit(2);
+    }};
+}
+
+#[macro_export]
+macro_rules! get {
+    ($node:expr => $key:literal) => {{
+        $node.attributes.remove($key).unwrap_or_else(|| {
+            $crate::error!("expected to find child {}, got\n{:?}", $key, $node,)
+        })
+    }};
+}
+
+#[macro_export]
+macro_rules! node {
+    ($node:expr) => {
+        if let $crate::parser::AST::Node {
+            attributes, span, ..
+        } = $node
+        {
+            $crate::parser::AstNode { attributes, span }
+        } else {
+            $crate::error!("expected to find node");
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! value {
+    ($node:expr => $key:literal) => {
+	if let $crate::parser::AST::Literal {
+	    value: $crate::parser::Value::Str(result),
+	    ..
+	} = get!($node => $key) {
+	    result
+	} else {
+	    error!("expected to find value, got\n{:?}", $node)
+	}
     };
 }

@@ -1,19 +1,26 @@
+use super::ast::{
+    Ast, Attribute as AstAttribute, Proxy as AstProxy, Rule as AstRule, ToplevelDeclaration,
+};
 use super::grammarparser::{
-    Axioms, ElementType, Grammar, GrammarBuilder, NonTerminalDescription,
-    NonTerminalName, Rule, RuleElement,
+    Axioms, ElementType, Grammar, GrammarBuilder, NonTerminalDescription, NonTerminalName,
+    Rule, RuleElement,
 };
 use super::parser::{NonTerminalId, ParseResult, Parser, RuleId};
 use super::parser::{Value, AST};
-use crate::error::Result;
-use crate::error::{Error, WarningSet};
+use crate::builder::{select_format, Buildable, FileResult, Format};
+use crate::error::{Error, Result};
+use crate::error::{ErrorKind, WarningSet};
 use crate::lexer::Token;
 use crate::lexer::{LexedStream, Lexer};
-use crate::lexer::{LexerBuilder, TerminalId};
+use crate::lexer::{LexerGrammar, TerminalId};
 use crate::list::List;
-use crate::parser::grammarparser::Attribute;
+use crate::parser::ast::{Element, Expression, Item};
+use crate::parser::grammarparser::{Attribute, Proxy, ValueTemplate};
 use crate::regex::Allowed;
-use crate::retrieve;
 use crate::stream::StringStream;
+use crate::typed::Tree;
+use crate::{build_system, retrieve};
+use bincode::deserialize;
 use fragile::Fragile;
 use itertools::Itertools;
 use newty::{newty, nvec};
@@ -22,6 +29,8 @@ use std::cmp::{Ordering, Reverse};
 use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::fs::File;
+use std::io::Read;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -34,16 +43,12 @@ pub fn print_sets(sets: &[StateSet], parser: &EarleyParser, lexer: &Lexer) {
             line.push_str(&parser.grammar().name_of[rule.id]);
             line.push_str(" -> ");
             for i in 0..item.position {
-                line.push_str(
-                    &rule.elements[i].name(lexer.grammar(), parser.grammar()),
-                );
+                line.push_str(&rule.elements[i].name(lexer.grammar(), parser.grammar()));
                 line.push(' ');
             }
             line.push_str("• ");
             for i in item.position..rule.elements.len() {
-                line.push_str(
-                    &rule.elements[i].name(lexer.grammar(), parser.grammar()),
-                );
+                line.push_str(&rule.elements[i].name(lexer.grammar(), parser.grammar()));
                 line.push(' ');
             }
             line.extend(format!("({})", item.origin).chars());
@@ -53,11 +58,7 @@ pub fn print_sets(sets: &[StateSet], parser: &EarleyParser, lexer: &Lexer) {
     }
 }
 
-pub fn print_final_sets(
-    sets: &[FinalSet],
-    parser: &EarleyParser,
-    lexer: &Lexer,
-) {
+pub fn print_final_sets(sets: &[FinalSet], parser: &EarleyParser, lexer: &Lexer) {
     for (i, set) in sets.iter().enumerate() {
         println!("=== {} ===", i);
         for item in &set.set.0 {
@@ -118,29 +119,17 @@ impl GrammarBuilder<'_> for EarleyGrammarBuilder {
         self
     }
 
-    fn with_grammar_file(
-        mut self,
-        grammar: impl Into<Rc<Path>>,
-    ) -> Result<Self> {
+    fn with_grammar_file(mut self, grammar: impl Into<Rc<Path>>) -> Result<Self> {
         let mut warnings = WarningSet::empty();
-        self.grammar_lexer = Some(
-            LexerBuilder::from_file(grammar)?
-                .unpack_into(&mut warnings)
-                .build(),
-        );
+        self.grammar_lexer =
+            Some(Lexer::build_from_path(&grammar.into())?.unpack_into(&mut warnings));
         warnings.with_ok(self)
     }
 
-    fn with_grammar_stream(
-        mut self,
-        grammar_stream: StringStream,
-    ) -> Result<Self> {
+    fn with_grammar_stream(mut self, grammar_stream: StringStream) -> Result<Self> {
         let mut warnings = WarningSet::empty();
-        self.grammar_lexer = Some(
-            LexerBuilder::from_stream(grammar_stream)?
-                .unpack_into(&mut warnings)
-                .build(),
-        );
+        self.grammar_lexer =
+            Some(Lexer::build_from_plain(grammar_stream)?.unpack_into(&mut warnings));
         warnings.with_ok(self)
     }
 
@@ -193,10 +182,7 @@ struct FinalItem {
 }
 
 impl fmt::Display for FinalItem {
-    fn fmt(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-    ) -> std::result::Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::result::Result<(), fmt::Error> {
         write!(f, "#{}\t\t({})", self.rule, self.end)
     }
 }
@@ -278,9 +264,7 @@ impl Grammar<'_> for EarleyGrammar {
                 if !nullables.contains(lhs_id)
                     && rules[rule_id].elements.iter().all(|element| {
                         match element.element_type {
-                            ElementType::NonTerminal(id) => {
-                                nullables.contains(id)
-                            }
+                            ElementType::NonTerminal(id) => nullables.contains(id),
                             _ => false,
                         }
                     })
@@ -314,6 +298,506 @@ impl Grammar<'_> for EarleyGrammar {
         self.id_of[&name]
     }
 }
+
+impl EarleyGrammar {
+    const PLAIN_EXTENSION: &str = "gr";
+    const COMPILED_EXTENSION: &str = "cgr";
+    const AST_EXTENSION: &str = "ast";
+
+    fn build_from_compiled(blob: &[u8]) -> Result<Self> {
+        WarningSet::empty_with_ok(deserialize(blob)?)
+    }
+
+    fn build_from_ast(ast: AST, lexer_grammar: &LexerGrammar) -> Result<Self> {
+        type InvokedMacros = HashMap<(Rc<str>, Rc<[ElementType]>), NonTerminalId>;
+        type MacroDeclarations = HashMap<Rc<str>, (Vec<Rc<str>>, Vec<AstRule>)>;
+
+        let mut warnings = WarningSet::empty();
+
+        let typed_ast = Ast::read(ast);
+        // `macro_declarations` holds every macro declaration found in a grammar. This will be
+        // used to invoke the macros.
+        //
+        // It maps a macro name to a tuple containing the name of its arguments, and the rules
+        // it produces.
+        let mut macro_declarations = HashMap::new();
+        let mut non_terminal_declarations = Vec::new();
+        // `found_nonterminals` contains the *name* of the nonterminals found.
+        // It's useful to decide, as soon as we find a name later on, whether it's a terminal,
+        // a non-terminal, or something undefined (and therefore to raise an error).
+        let mut found_nonterminals = HashMap::new();
+        let mut available_id = NonTerminalId(0);
+        for decl in typed_ast.decls {
+            match decl {
+                ToplevelDeclaration::Macro(macro_decl) => {
+                    if macro_declarations
+                        .insert(macro_decl.name, (macro_decl.args, macro_decl.rules))
+                        .is_some()
+                    {
+                        return Err(todo!());
+                    }
+                }
+                ToplevelDeclaration::Decl(decl) => {
+                    let id = available_id.next();
+                    if found_nonterminals.insert(decl.name.clone(), id).is_some() {
+                        // TODO: Once spans are supported, make this error take them into account
+                        return ErrorKind::GrammarDuplicateDefinition {
+                            message: String::new(),
+                            span: todo!(),
+                            old_span: todo!(),
+                        }
+                        .err();
+                    }
+                    non_terminal_declarations.push((decl, id));
+                }
+            }
+        }
+
+        fn eval_rule(
+            rule: &AstRule,
+            macro_id: NonTerminalId,
+            available_id: &mut NonTerminalId,
+            rules: &mut GrammarRules,
+            invoked_macros: &mut InvokedMacros,
+            found_nonterminals: &HashMap<Rc<str>, NonTerminalId>,
+            macro_declarations: &MacroDeclarations,
+            lexer_grammar: &LexerGrammar,
+        ) -> Result<Rule> {
+            let mut warnings = WarningSet::empty();
+            let mut new_elements = Vec::with_capacity(rule.elements.len());
+            for element in rule.elements.iter() {
+                let el = eval_element(
+                    &element,
+                    macro_id,
+                    available_id,
+                    rules,
+                    invoked_macros,
+                    found_nonterminals,
+                    macro_declarations,
+                    lexer_grammar,
+                )?
+                .unpack_into(&mut warnings);
+                new_elements.push(el);
+            }
+            let proxy = eval_proxy(
+                &rule.proxy,
+                macro_id,
+                available_id,
+                rules,
+                invoked_macros,
+                found_nonterminals,
+                macro_declarations,
+                lexer_grammar,
+            )?
+            .unpack_into(&mut warnings);
+            warnings.with_ok(Rule::new(
+                macro_id,
+                new_elements,
+                proxy,
+                rule.left_associative,
+            ))
+        }
+
+        fn invoke_macro(
+            name: Rc<str>,
+            args: Rc<[ElementType]>,
+            macro_id: NonTerminalId,
+            available_id: &mut NonTerminalId,
+            rules: &mut GrammarRules,
+            invoked_macros: &mut InvokedMacros,
+            found_nonterminals: &HashMap<Rc<str>, NonTerminalId>,
+            macro_declarations: &MacroDeclarations,
+            lexer_grammar: &LexerGrammar,
+        ) -> Result<()> {
+            let mut warnings = WarningSet::empty();
+            let Some((arg_names, macro_rules)) = macro_declarations.get(&name) else {
+		return ErrorKind::GrammarUndefinedMacro {
+		    name: name.to_string(),
+		    span: todo!(),
+		}
+		.err();
+	    };
+
+            if args.len() != arg_names.len() {
+                return ErrorKind::GrammarArityMismatch {
+                    macro_name: name.to_string(),
+                    first_arity: arg_names.len(),
+                    second_arity: args.len(),
+                    span: todo!(),
+                }
+                .err();
+            }
+
+            for rule in macro_rules {
+                let actual_rule = eval_rule(
+                    rule,
+                    macro_id,
+                    available_id,
+                    rules,
+                    invoked_macros,
+                    found_nonterminals,
+                    macro_declarations,
+                    lexer_grammar,
+                )?
+                .unpack_into(&mut warnings);
+                rules.push(actual_rule);
+            }
+            warnings.with_ok(())
+        }
+
+        fn eval_expression(
+            expr: &Item,
+            self_id: NonTerminalId,
+            available_id: &mut NonTerminalId,
+            rules: &mut GrammarRules,
+            invoked_macros: &mut InvokedMacros,
+            found_nonterminals: &HashMap<Rc<str>, NonTerminalId>,
+            macro_declarations: &MacroDeclarations,
+            lexer_grammar: &LexerGrammar,
+        ) -> Result<ElementType> {
+            let mut warnings = WarningSet::empty();
+            let res = match expr {
+                Item::SelfNonTerminal => ElementType::NonTerminal(self_id),
+                Item::Regular { name } => {
+                    if let Some(id) = found_nonterminals.get(name) {
+                        // The item is a non terminal
+                        ElementType::NonTerminal(*id)
+                    } else if let Some(id) = lexer_grammar.id(name) {
+                        ElementType::Terminal(id)
+                    } else {
+                        return ErrorKind::GrammarUndefinedNonTerminal {
+                            name: name.to_string(),
+                            span: todo!(),
+                        }
+                        .err();
+                    }
+                }
+                Item::MacroInvocation { name, arguments } => {
+                    let mut args = Vec::new();
+                    for arg in arguments {
+                        let evaled = eval_expression(
+                            arg,
+                            self_id,
+                            available_id,
+                            rules,
+                            invoked_macros,
+                            found_nonterminals,
+                            macro_declarations,
+                            lexer_grammar,
+                        )?
+                        .unpack_into(&mut warnings);
+                        args.push(evaled);
+                    }
+                    let args: Rc<[_]> = Rc::from(args);
+                    if !invoked_macros.contains_key(&(name.clone(), args.clone())) {
+                        let id = available_id.next();
+                        invoked_macros.insert((name.clone(), args.clone()), id);
+                        invoke_macro(
+                            name.clone(),
+                            args.clone(),
+                            id,
+                            available_id,
+                            rules,
+                            invoked_macros,
+                            found_nonterminals,
+                            macro_declarations,
+                            lexer_grammar,
+                        )?
+                        .unpack_into(&mut warnings);
+                    }
+                    ElementType::NonTerminal(invoked_macros[&(name.clone(), args)])
+                }
+            };
+            warnings.with_ok(res)
+        }
+
+        fn eval_element(
+            element: &Element,
+            id: NonTerminalId,
+            available_id: &mut NonTerminalId,
+            rules: &mut GrammarRules,
+            invoked_macros: &mut InvokedMacros,
+            found_nonterminals: &HashMap<Rc<str>, NonTerminalId>,
+            macro_declarations: &MacroDeclarations,
+            lexer_grammar: &LexerGrammar,
+        ) -> Result<RuleElement> {
+            let mut warnings = WarningSet::empty();
+            let attribute = match &element.attribute {
+                Some(AstAttribute {
+                    attribute,
+                    named: true,
+                }) => Attribute::Named(attribute.clone()),
+                Some(AstAttribute {
+                    attribute,
+                    named: false,
+                }) => {
+                    let index = attribute
+                        .parse()
+                        .map_err(|_| Error::integer_too_big(attribute.to_string()))?;
+                    Attribute::Indexed(index)
+                }
+                None => Attribute::None,
+            };
+            let key = element.key.as_ref().map(|k| k.0.clone());
+            let element_type = eval_expression(
+                &element.item,
+                id,
+                available_id,
+                rules,
+                invoked_macros,
+                found_nonterminals,
+                macro_declarations,
+                lexer_grammar,
+            )?
+            .unpack_into(&mut warnings);
+            warnings.with_ok(RuleElement::new(attribute, key, element_type))
+        }
+
+        fn eval_proxy(
+            proxy: &AstProxy,
+            id: NonTerminalId,
+            available_id: &mut NonTerminalId,
+            rules: &mut GrammarRules,
+            invoked_macros: &mut InvokedMacros,
+            found_nonterminals: &HashMap<Rc<str>, NonTerminalId>,
+            macro_declarations: &MacroDeclarations,
+            lexer_grammar: &LexerGrammar,
+        ) -> Result<Proxy> {
+            let mut warnings = WarningSet::empty();
+            let mut actual_proxy = HashMap::new();
+            if let Some(ref variant) = proxy.variant {
+                actual_proxy.insert("variant".into(), ValueTemplate::Str(variant.clone()));
+            }
+            for (key, expression) in proxy.items.iter() {
+                let value = match expression {
+                    Expression::String(string) => ValueTemplate::Str(string.clone()),
+                    Expression::Id(id) => ValueTemplate::Id(id.clone()),
+                    Expression::Instanciation {
+                        name,
+                        children,
+                        variant,
+                    } => {
+                        let Some(nonterminal) = found_nonterminals.get(name) else {
+			    return todo!();
+			};
+
+                        let fake_proxy = AstProxy {
+                            variant: variant.as_ref().cloned(),
+                            items: children.clone(),
+                        };
+                        let attributes = eval_proxy(
+                            &fake_proxy,
+                            id,
+                            available_id,
+                            rules,
+                            invoked_macros,
+                            found_nonterminals,
+                            macro_declarations,
+                            lexer_grammar,
+                        )?
+                        .unpack_into(&mut warnings);
+                        ValueTemplate::InlineRule {
+                            nonterminal: *nonterminal,
+                            attributes,
+                        }
+                    }
+                };
+                actual_proxy.insert(key.clone(), value);
+            }
+            warnings.with_ok(actual_proxy)
+        }
+
+        let mut invoked_macros: InvokedMacros = HashMap::new();
+        let mut axioms = Axioms::new();
+        let mut rules = GrammarRules::new();
+        let mut id_of = HashMap::new();
+        let mut name_of = NonTerminalName::new();
+        let mut description_of = NonTerminalDescription::new();
+        for (declaration, id) in non_terminal_declarations {
+            id_of.insert(declaration.name.clone(), id);
+            name_of.push(declaration.name);
+            if declaration.axiom {
+                axioms.put(id);
+            }
+            description_of.push(declaration.comment);
+            for rule in declaration.rules {
+                let parsed_rule = eval_rule(
+                    &rule,
+                    id,
+                    &mut available_id,
+                    &mut rules,
+                    &mut invoked_macros,
+                    &found_nonterminals,
+                    &macro_declarations,
+                    lexer_grammar,
+                )?
+                .unpack_into(&mut warnings);
+                rules.push(parsed_rule);
+            }
+        }
+        let res = Self::new(rules, axioms, id_of, name_of, description_of)?
+            .unpack_into(&mut warnings);
+        warnings.with_ok(res)
+    }
+
+    fn build_from_plain(
+        mut source: StringStream,
+        lexer_grammar: &LexerGrammar,
+    ) -> Result<Self> {
+        let mut warnings = WarningSet::empty();
+        let (lexer, parser) = build_system!(
+            lexer => "parser.clx",
+            parser => "parser.cgr",
+        )?
+        .unpack_into(&mut warnings);
+        let mut input = lexer.lex(&mut source);
+        let result = parser.parse(&mut input)?.unpack_into(&mut warnings);
+        let grammar =
+            Self::build_from_ast(result.tree, lexer_grammar)?.unpack_into(&mut warnings);
+        warnings.with_ok(grammar)
+    }
+
+    fn build_from_path(path: &Path, lexer_grammar: &LexerGrammar) -> Result<Self> {
+        let mut warnings = WarningSet::empty();
+        let ast: AST = match select_format(
+            path,
+            &[
+                (Self::COMPILED_EXTENSION, Format::Compiled),
+                (Self::AST_EXTENSION, Format::Ast),
+                (Self::PLAIN_EXTENSION, Format::Plain),
+            ],
+        ) {
+            FileResult::Valid((actual_path, Format::Ast)) => {
+                let file = File::open(&actual_path)
+                    .map_err(|error| Error::with_file(error, &actual_path))?;
+                serde_json::from_reader(file).map_err(|_err| Error::new(todo!()))?
+            }
+            FileResult::Valid((actual_path, Format::Plain)) => {
+                let stream = StringStream::from_file(actual_path)?.unpack_into(&mut warnings);
+                let result =
+                    Self::build_from_plain(stream, lexer_grammar)?.unpack_into(&mut warnings);
+                return warnings.with_ok(result);
+            }
+            FileResult::Valid((actual_path, Format::Compiled)) => {
+                let mut file = File::open(&actual_path)
+                    .map_err(|err| Error::with_file(err, &actual_path))?;
+                let mut buffer = Vec::new();
+                file.read(&mut buffer)
+                    .map_err(|err| Error::with_file(err, &actual_path))?;
+                let result = Self::build_from_compiled(&buffer)?.unpack_into(&mut warnings);
+                return warnings.with_ok(result);
+            }
+            FileResult::WrongExtension(extension) => {
+                return ErrorKind::UnrecognisedExtension {
+                    extension,
+                    path: path.to_owned(),
+                }
+                .err();
+            }
+            FileResult::NonExisting => {
+                return ErrorKind::GrammarNotFound {
+                    path: path.to_owned(),
+                }
+                .err();
+            }
+        };
+        let parser = Self::build_from_ast(ast, lexer_grammar)?.unpack_into(&mut warnings);
+        warnings.with_ok(parser)
+    }
+
+    fn build_from_blob(blob: &[u8], path: &Path, lexer_grammar: &LexerGrammar) -> Result<Self> {
+        let mut warnings = WarningSet::empty();
+        let ast: AST = match select_format(
+            path,
+            &[
+                (Self::COMPILED_EXTENSION, Format::Compiled),
+                (Self::AST_EXTENSION, Format::Ast),
+                (Self::PLAIN_EXTENSION, Format::Plain),
+            ],
+        ) {
+            FileResult::Valid((_, Format::Compiled)) => {
+                let result = Self::build_from_compiled(&blob)?.unpack_into(&mut warnings);
+                return warnings.with_ok(result);
+            }
+            FileResult::Valid((actual_path, Format::Ast)) => {
+                let file = File::open(&actual_path)
+                    .map_err(|err| Error::with_file(err, actual_path))?;
+                serde_json::from_reader(file).map_err(|_err| Error::new(todo!()))?
+            }
+            FileResult::Valid((actual_path, Format::Plain)) => {
+                let string =
+                    String::from_utf8(blob.to_vec()).map_err(|_err| Error::new(todo!()))?;
+                let stream = StringStream::new(actual_path, string);
+                let result =
+                    Self::build_from_plain(stream, lexer_grammar)?.unpack_into(&mut warnings);
+                return warnings.with_ok(result);
+            }
+            FileResult::NonExisting => {
+                return ErrorKind::GrammarNotFound {
+                    path: path.to_owned(),
+                }
+                .err();
+            }
+            FileResult::WrongExtension(extension) => {
+                return ErrorKind::UnrecognisedExtension {
+                    extension,
+                    path: path.to_owned(),
+                }
+                .err();
+            }
+        };
+        let grammar = Self::build_from_ast(ast, lexer_grammar)?.unpack_into(&mut warnings);
+        warnings.with_ok(grammar)
+    }
+}
+
+// impl Buildable for EarleyGrammar {
+//     const RAW_EXTENSION: &'static str = "gr";
+//     const COMPILED_EXTENSION: &'static str = "cgr";
+
+//     fn build_from_ast(ast: AST) -> Result<Self> {
+//         let typed_ast = Ast::read(ast);
+//         let mut declarations = HashMap::new();
+//         let mut rules_declarations = Vec::new();
+//         for decl in typed_ast.decls {
+//             match decl {
+//                 ToplevelDeclaration::Macro(macro_decl) => {
+//                     if declarations
+//                         .insert(
+//                             macro_decl.name,
+//                             (macro_decl.args, macro_decl.rules),
+//                         )
+//                         .is_some()
+//                     {
+//                         return todo!(); // fail
+//                     }
+//                 }
+//                 ToplevelDeclaration::Decl(decl) => {
+// 		    rules_declarations.push(decl);
+// 		}
+//             }
+//         }
+//         todo!()
+//     }
+
+//     fn build_from_compiled(blob: &[u8]) -> Result<Self> {
+//         WarningSet::empty().with_ok(deserialize(blob)?)
+//     }
+
+//     fn build_from_plain(mut source: StringStream) -> Result<Self> {
+//         let mut warnings = WarningSet::empty();
+//         let (lexer, parser) = build_system!(
+//             lexer => "parser.clx",
+//             parser => "parser.cgr",
+//         )?
+//         .unpack_into(&mut warnings);
+//         let mut input = lexer.lex(&mut source);
+//         let result = parser.parse(&mut input)?.unpack_into(&mut warnings);
+//         let grammar =
+//             Self::build_from_ast(result.tree)?.unpack_into(&mut warnings);
+//         warnings.with_ok(grammar)
+//     }
+// }
 
 newty! {
     id FinalItemId
@@ -359,10 +843,7 @@ impl FinalSet {
 }
 
 impl std::fmt::Display for FinalSet {
-    fn fmt(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-    ) -> std::result::Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> std::result::Result<(), fmt::Error> {
         write!(
             f,
             r"== ({}) ==
@@ -466,6 +947,17 @@ pub struct EarleyParser {
 }
 
 impl EarleyParser {
+    pub fn build_from_blob(
+        blob: &[u8],
+        path: &Path,
+        lexer_grammar: &LexerGrammar,
+    ) -> Result<Self> {
+        let mut warnings = WarningSet::empty();
+        let grammar = EarleyGrammar::build_from_blob(blob, path, lexer_grammar)?
+            .unpack_into(&mut warnings);
+        warnings.with_ok(Self { grammar })
+    }
+
     fn find_children(
         &self,
         element: SyntaxicItem,
@@ -480,21 +972,15 @@ impl EarleyParser {
                     for (children, curpos) in boundary.drain(..) {
                         match elem.element_type {
                             ElementType::NonTerminal(id) => {
-                                if let Some(rules) =
-                                    forest[curpos].index.get(&id)
-                                {
+                                if let Some(rules) = forest[curpos].index.get(&id) {
                                     for final_item in rules
                                         .iter()
                                         .map(|&rule| &forest[curpos].set[rule])
-                                        .filter(|final_item| {
-                                            final_item.end <= element.end
-                                        })
+                                        .filter(|final_item| final_item.end <= element.end)
                                     {
                                         next_boundary.push((
                                             children.cons(SyntaxicItem {
-                                                kind: SyntaxicItemKind::Rule(
-                                                    final_item.rule,
-                                                ),
+                                                kind: SyntaxicItemKind::Rule(final_item.rule),
                                                 start: curpos,
                                                 end: final_item.end,
                                             }),
@@ -504,8 +990,7 @@ impl EarleyParser {
                                 }
                             }
                             ElementType::Terminal(id)
-                                if curpos < element.end
-                                    && raw_input[curpos].id() == id =>
+                                if curpos < element.end && raw_input[curpos].id() == id =>
                             {
                                 next_boundary.push((
                                     children.cons(SyntaxicItem {
@@ -534,29 +1019,27 @@ impl EarleyParser {
                     })
                     .max_by(|left_children, right_children| {
                         for (left, right) in left_children.iter().zip(right_children.iter()) {
-			    let SyntaxicItemKind::Rule(left_rule) = left.kind else {
+                            let SyntaxicItemKind::Rule(left_rule) = left.kind else {
 				continue;
 			    };
-			    let SyntaxicItemKind::Rule(right_rule) = right.kind else {
+                            let SyntaxicItemKind::Rule(right_rule) = right.kind else {
 				continue;
 			    };
-			    let assoc_ord = if self.grammar.rules[rule].left_associative {
-				left.start.cmp(&right.start)
-			    } else {
-				right.start.cmp(&left.start)
-			    };
-			    let ord = match assoc_ord {
-				Ordering::Equal => {
-				    left_rule.cmp(&right_rule)
-				}
-				other => other
-			    };
-			    match ord {
-				Ordering::Equal => continue,
-				other => return other,
-			    }
-			}
-			Ordering::Equal
+                            let assoc_ord = if self.grammar.rules[rule].left_associative {
+                                left.start.cmp(&right.start)
+                            } else {
+                                right.start.cmp(&left.start)
+                            };
+                            let ord = match assoc_ord {
+                                Ordering::Equal => left_rule.cmp(&right_rule),
+                                other => other,
+                            };
+                            match ord {
+                                Ordering::Equal => continue,
+                                other => return other,
+                            }
+                        }
+                        Ordering::Equal
                     })
                     .unwrap();
                 children
@@ -570,12 +1053,7 @@ impl EarleyParser {
             SyntaxicItemKind::Token(_) => Vec::new(),
         }
     }
-    fn build_ast(
-        &self,
-        item: SyntaxicItem,
-        forest: &[FinalSet],
-        raw_input: &[Token],
-    ) -> AST {
+    fn build_ast(&self, item: SyntaxicItem, forest: &[FinalSet], raw_input: &[Token]) -> AST {
         match item.kind {
             SyntaxicItemKind::Rule(rule) => {
                 let span = if item.end == item.start {
@@ -591,30 +1069,28 @@ impl EarleyParser {
                     .map(|item| self.build_ast(item, forest, raw_input))
                     .zip(self.grammar.rules[rule].elements.iter())
                     .filter_map(|(item, element)| {
-                        element.key.as_ref().map(|key| {
-                            match &element.attribute {
-                                Attribute::Named(attr) => {
-				    let AST::Node { attributes, .. } = item else {
+                        element.key.as_ref().map(|key| match &element.attribute {
+                            Attribute::Named(attr) => {
+                                let AST::Node { attributes, .. } = item else {
 					unreachable!()
 				    };
-                                    (
-                                        key.clone(),
-                                        attributes[attr.as_str()].clone(),
-                                    )
-                                }
-                                Attribute::Indexed(idx) => {
-				    let AST::Terminal(token) = item else {
-					unreachable!()
-				    };
-				    (key.clone(), AST::Literal {
-					value: Value::Str(Rc::from(
-					    token.attributes()[idx].as_str(),
-					)),
-					span: Some(token.location().clone()),
-				    })
-                                }
-                                Attribute::None => (key.clone(), item),
+                                (key.clone(), attributes[attr].clone())
                             }
+                            Attribute::Indexed(idx) => {
+                                let AST::Terminal(token) = item else {
+					unreachable!()
+				    };
+                                (
+                                    key.clone(),
+                                    AST::Literal {
+                                        value: Value::Str(Rc::from(
+                                            token.attributes()[idx].as_str(),
+                                        )),
+                                        span: Some(token.location().clone()),
+                                    },
+                                )
+                            }
+                            Attribute::None => (key.clone(), item),
                         })
                     })
                     .collect::<HashMap<Rc<str>, _>>();
@@ -673,29 +1149,23 @@ impl EarleyParser {
             .unwrap()
     }
 
-    pub fn to_forest(
-        &self,
-        table: &[StateSet],
-        raw_input: &[Token],
-    ) -> Result<Forest> {
+    pub fn to_forest(&self, table: &[StateSet], raw_input: &[Token]) -> Result<Forest> {
         let warnings = WarningSet::default();
         let mut forest = vec![FinalSet::default(); table.len()];
         for (i, set) in table.iter().enumerate() {
             forest[i].position = i;
             if set.is_empty() {
-                return Err(Error::InternalError {
+                return ErrorKind::InternalError {
                     message: format!(
-			"While creating the forest, could not find any item in set {}, at {}",
-			i,
-			raw_input[i].location(),
-		    ),
-                });
+                        "While creating the forest, could not find any item in set {}, at {}",
+                        i,
+                        raw_input[i].location(),
+                    ),
+                }
+                .err();
             }
             set.iter()
-                .filter(|item| {
-                    item.position
-                        == self.grammar.rules[item.rule].elements.len()
-                })
+                .filter(|item| item.position == self.grammar.rules[item.rule].elements.len())
                 .for_each(|item| {
                     forest[item.origin].add(
                         FinalItem {
@@ -720,9 +1190,7 @@ impl EarleyParser {
         let mut possible_first_terminals = HashSet::new();
         (0..self.grammar().rules.len())
             .map(RuleId)
-            .filter(|id| {
-                self.grammar.axioms.contains(self.grammar.rules[*id].id)
-            })
+            .filter(|id| self.grammar.axioms.contains(self.grammar.rules[*id].id))
             .for_each(|id| {
                 let parent_has_been_shown = if let Some(description) =
                     self.grammar().description_of(self.grammar().rules[id].id)
@@ -748,23 +1216,17 @@ impl EarleyParser {
             let mut scans: HashMap<TerminalId, Vec<_>> = HashMap::new();
             '_inner: while let Some(&item) = sets.last_mut().unwrap().next() {
                 let mut to_be_added = Vec::new();
-                match self.grammar().rules[item.rule]
-                    .elements
-                    .get(item.position)
-                {
+                match self.grammar().rules[item.rule].elements.get(item.position) {
                     Some(element) => match element.element_type {
                         // Prediction
                         ElementType::NonTerminal(id) => {
                             for &rule in self.grammar().has_rules(id) {
-                                let parent_has_been_shown = item
-                                    .parent_has_been_shown
-                                    || if let Some(description) =
-                                        self.grammar.description_of(
-                                            self.grammar().rules[rule].id,
-                                        )
+                                let parent_has_been_shown = item.parent_has_been_shown
+                                    || if let Some(description) = self
+                                        .grammar
+                                        .description_of(self.grammar().rules[rule].id)
                                     {
-                                        possible_first_nonterminals
-                                            .insert(description);
+                                        possible_first_nonterminals.insert(description);
                                         true
                                     } else {
                                         false
@@ -781,8 +1243,7 @@ impl EarleyParser {
                                     rule: item.rule,
                                     origin: item.origin,
                                     position: item.position + 1,
-                                    parent_has_been_shown: item
-                                        .parent_has_been_shown,
+                                    parent_has_been_shown: item.parent_has_been_shown,
                                 });
                             }
                         }
@@ -792,16 +1253,10 @@ impl EarleyParser {
                                 if let Some(message) =
                                     input.lexer().grammar().description_of(id)
                                 {
-                                    possible_first_terminals
-                                        .insert(message.to_string());
+                                    possible_first_terminals.insert(message.to_string());
                                 } else {
-                                    possible_first_terminals.insert(
-                                        input
-                                            .lexer()
-                                            .grammar()
-                                            .name(id)
-                                            .to_string(),
-                                    );
+                                    possible_first_terminals
+                                        .insert(input.lexer().grammar().name(id).to_string());
                                 };
                             }
                             scans.entry(id).or_default().push(EarleyItem {
@@ -816,22 +1271,18 @@ impl EarleyParser {
                     None => {
                         for &parent in sets[item.origin].slice() {
                             if let Some(RuleElement {
-                                element_type:
-                                    ElementType::NonTerminal(nonterminal),
+                                element_type: ElementType::NonTerminal(nonterminal),
                                 ..
                             }) = self.grammar().rules[parent.rule]
                                 .elements
                                 .get(parent.position)
                             {
-                                if *nonterminal
-                                    == self.grammar().rules[item.rule].id
-                                {
+                                if *nonterminal == self.grammar().rules[item.rule].id {
                                     to_be_added.push(EarleyItem {
                                         rule: parent.rule,
                                         origin: parent.origin,
                                         position: parent.position + 1,
-                                        parent_has_been_shown: item
-                                            .parent_has_been_shown,
+                                        parent_has_been_shown: item.parent_has_been_shown,
                                     })
                                 }
                             }
@@ -852,7 +1303,9 @@ impl EarleyParser {
             let allowed = Allowed::Some(possible_scans.clone());
             let next_token = match input.next(allowed) {
                 Ok(r) => r,
-                Err(Error::LexingError { .. }) => {
+                Err(Error {
+                    kind: box ErrorKind::LexingError { .. },
+                }) => {
                     let error = if let Some(token) =
                         input.next(Allowed::All)?.unpack_into(&mut warnings)
                     {
@@ -868,22 +1321,23 @@ impl EarleyParser {
                                 name
                             }
                         };
-                        Error::SyntaxError {
+                        ErrorKind::SyntaxError {
                             name,
                             alternatives: possible_first_nonterminals
                                 .drain()
                                 .map(|x| x.to_string())
                                 .chain(possible_first_terminals.drain())
                                 .collect(),
-                            location: Fragile::new(location),
+                            span: Fragile::new(location),
                         }
                     } else {
-                        Error::SyntaxErrorValidPrefix {
-                            location: input.last_location().into(),
+                        ErrorKind::SyntaxErrorValidPrefix {
+                            span: input.last_location().into(),
                         }
                     };
-                    return Err(error);
+                    return error.err();
                 }
+                // Reallocation is necessary, because the type differs
                 Err(error) => return Err(error),
             };
             possible_first_nonterminals.clear();
@@ -901,9 +1355,10 @@ impl EarleyParser {
             }) {
                 break 'outer warnings.with_ok((sets, raw_input));
             } else {
-                return Err(Error::SyntaxErrorValidPrefix {
-                    location: input.last_location().into(),
-                });
+                return ErrorKind::SyntaxErrorValidPrefix {
+                    span: input.last_location().into(),
+                }
+                .err();
             };
 
             sets.push(next_state);
@@ -924,10 +1379,7 @@ impl Parser<'_> for EarleyParser {
         &self.grammar
     }
 
-    fn is_valid<'input>(
-        &self,
-        input: &'input mut LexedStream<'input, 'input>,
-    ) -> bool {
+    fn is_valid<'input>(&self, input: &'input mut LexedStream<'input, 'input>) -> bool {
         self.recognise(input).is_ok()
     }
 
@@ -936,8 +1388,7 @@ impl Parser<'_> for EarleyParser {
         input: &'input mut LexedStream<'input, 'input>,
     ) -> Result<ParseResult> {
         let mut warnings = WarningSet::default();
-        let (table, raw_input) =
-            self.recognise(input)?.unpack_into(&mut warnings);
+        let (table, raw_input) = self.recognise(input)?.unpack_into(&mut warnings);
         let forest = self
             .to_forest(&table, &raw_input)?
             .unpack_into(&mut warnings);
@@ -947,19 +1398,31 @@ impl Parser<'_> for EarleyParser {
     }
 }
 
+// impl Buildable for EarleyParser {
+//     const RAW_EXTENSION: &'static str = "gr";
+//     const COMPILED_EXTENSION: &'static str = "cgr";
+
+//     fn build_from_ast(ast: AST) -> Result<Self> {
+//         EarleyGrammar::build_from_ast(ast).map(|ws| ws.map(Self::new))
+//     }
+
+//     fn build_from_compiled(blob: &[u8]) -> Result<Self> {
+//         EarleyGrammar::build_from_compiled(blob).map(|ws| ws.map(Self::new))
+//     }
+
+//     fn build_from_plain(raw: StringStream) -> Result<Self> {
+//         EarleyGrammar::build_from_plain(raw).map(|ws| ws.map(Self::new))
+//     }
+// }
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::{LexerGrammar, LexerGrammarBuilder};
+    use crate::lexer::LexerGrammar;
     // use crate::printer::print_ast;
     use crate::rules;
 
-    use crate::{
-        lexer::LexerBuilder,
-        parser::grammarparser::{
-            Attribute, ElementType, Key, Proxy, Rule, RuleElement,
-        },
-    };
+    use crate::parser::grammarparser::{Attribute, ElementType, Key, Proxy, Rule, RuleElement};
 
     const GRAMMAR_NUMBERS_LEXER: &str = r#"
 NUMBER ::= ([0-9])
@@ -1050,8 +1513,7 @@ RPAR ::= \)
             set_id: usize,
             item_id: usize,
         ) {
-            let error_message =
-                format!("Set #{}, item #{}: no match:", set_id, item_id);
+            let error_message = format!("Set #{}, item #{}: no match:", set_id, item_id);
             let item = &parser.grammar().rules[other.rule];
             assert_eq!(
                 self.name,
@@ -1074,11 +1536,7 @@ RPAR ::= \)
                 "{} fat dot position.",
                 error_message,
             );
-            assert_eq!(
-                self.origin, other.origin,
-                "{} origin set.",
-                error_message
-            );
+            assert_eq!(self.origin, other.origin, "{} origin set.", error_message);
             for i in 0..self.left_elements.len() {
                 assert_eq!(
                     self.left_elements[i],
@@ -1091,8 +1549,7 @@ RPAR ::= \)
             for i in 0..self.right_elements.len() {
                 assert_eq!(
                     self.right_elements[i],
-                    &*item.elements[i + other.position]
-                        .name(lexer.grammar(), parser.grammar()),
+                    &*item.elements[i + other.position].name(lexer.grammar(), parser.grammar()),
                     "{} elements #{}.",
                     error_message,
                     i + other.position
@@ -1255,11 +1712,11 @@ RPAR ::= \)
             self.id == other.id
                 && self.proxy == other.proxy
                 && self.elements.len() == other.elements.len()
-                && self.elements.iter().zip(other.elements.iter()).all(
-                    |(left, right)| {
-                        left.matches(right, parser_grammar, lexer_grammar)
-                    },
-                )
+                && self
+                    .elements
+                    .iter()
+                    .zip(other.elements.iter())
+                    .all(|(left, right)| left.matches(right, parser_grammar, lexer_grammar))
         }
     }
 
@@ -1310,10 +1767,7 @@ RPAR ::= \)
     struct MapVec(Vec<(&'static str, TestAST)>);
 
     impl std::fmt::Debug for MapVec {
-        fn fmt(
-            &self,
-            formatter: &mut std::fmt::Formatter<'_>,
-        ) -> std::fmt::Result {
+        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             formatter
                 .debug_map()
                 .entries(self.0.iter().map(|&(ref k, ref v)| (k, v)))
@@ -1366,18 +1820,12 @@ RPAR ::= \)
                             .collect::<HashMap<_, _>>();
                         tattributes.len() == attributes.len()
                             && tattributes.iter().all(|(key, value)| {
-                                attributes
-                                    .get(key)
-                                    .map_or(false, |v| *value == v)
+                                attributes.get(key).map_or(false, |v| *value == v)
                             })
                     }
                 }
-                (TestAST::Terminal(ttoken), AST::Terminal(token)) => {
-                    ttoken == token
-                }
-                (TestAST::Literal(tvalue), AST::Literal { value, .. }) => {
-                    tvalue == value
-                }
+                (TestAST::Terminal(ttoken), AST::Terminal(token)) => ttoken == token,
+                (TestAST::Literal(tvalue), AST::Literal { value, .. }) => tvalue == value,
                 _ => false,
             }
         }
@@ -1411,14 +1859,13 @@ RPAR ::= \)
     #[test]
     fn earley_grammar_builder() {
         use crate::lexer::LexerBuilder;
-        let lexer_grammar = LexerGrammarBuilder::from_file(Path::new(
-            "src/parser/gmrs/dummy.lx",
-        ))
-        .unwrap()
-        .unwrap()
-        .build()
-        .unwrap()
-        .unwrap();
+        let lexer_grammar =
+            LexerGrammarBuilder::from_file(Path::new("src/parser/gmrs/dummy.lx"))
+                .unwrap()
+                .unwrap()
+                .build()
+                .unwrap()
+                .unwrap();
         let lexer = LexerBuilder::from_grammar(lexer_grammar).build();
         let grammar = EarleyGrammarBuilder::default()
             .with_file(Path::new("src/parser/gmrs/dummy.gr"))
@@ -1543,10 +1990,7 @@ B ::= A <>;"#;
             B -> A . (0)
         );
         let (recognised, _) = parser
-            .recognise(
-                &mut lexer
-                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
-            )
+            .recognise(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
             .unwrap()
             .unwrap();
         print_sets(&recognised, &parser, &lexer);
@@ -1579,10 +2023,7 @@ int main() {
             .unwrap();
         let parser = EarleyParser::new(grammar);
         let _ast = parser
-            .parse(
-                &mut lexer
-                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
-            )
+            .parse(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
             .unwrap()
             .unwrap();
     }
@@ -1615,10 +2056,7 @@ int main() {
             .unwrap();
         let parser = EarleyParser::new(grammar);
         let _ast = parser
-            .parse(
-                &mut lexer
-                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
-            )
+            .parse(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
             .unwrap()
             .unwrap();
         // print_ast(&_ast.tree).unwrap();
@@ -1635,19 +2073,13 @@ int main() {
         .unwrap()
         .build();
         let grammar = EarleyGrammarBuilder::default()
-            .with_stream(StringStream::new(
-                Path::new("<NUMBERS>"),
-                GRAMMAR_NUMBERS,
-            ))
+            .with_stream(StringStream::new(Path::new("<NUMBERS>"), GRAMMAR_NUMBERS))
             .build(&lexer)
             .unwrap()
             .unwrap();
         let parser = EarleyParser::new(grammar);
         assert!(parser
-            .parse(
-                &mut lexer
-                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
-            )
+            .parse(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)),)
             .is_err());
     }
 
@@ -1674,146 +2106,187 @@ int main() {
             .unwrap();
         let parser = EarleyParser::new(grammar);
         let ast = parser
-            .parse(
-                &mut lexer
-                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
-            )
+            .parse(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
             .unwrap()
             .unwrap();
-        let test_ast =
-            {
-                use super::super::parser::Value::*;
-                use TestAST::*;
-                let add = Literal(Str("AddSub".into()));
-                let literal = Literal(Str("Literal".into()));
-                let mul = Literal(Str("MulDiv".into()));
-                Node {
-                    id: 0,
-                    attributes: vec![
-                        ("variant", add.clone()),
-                        (
-                            "left",
-                            Node {
-                                id: 0,
-                                attributes: vec![
-                                    ("variant", literal.clone()),
-                                    ("value", Literal(Str("1".into()))),
-                                ]
-                                .into(),
-                            },
-                        ),
-                        (
-                            "right",
-                            Node {
-                                id: 0,
-                                attributes: vec![
-                                    ("variant", add.clone()),
-                                    (
-                                        "left",
-                                        Node {
-                                            id: 0,
-                                            attributes: vec![
-                                                ("variant", literal.clone()),
-                                                (
-                                                    "value",
-                                                    Literal(Str("2".into())),
-                                                ),
-                                            ]
-                                            .into(),
-                                        },
-                                    ),
-                                    (
-                                        "right",
-                                        Node {
-                                            id: 0,
-                                            attributes: vec![
-                                                ("variant", add.clone()),
-                                                (
-                                                    "left",
-                                                    Node {
-                                                        id: 0,
-                                                        attributes: vec![
-							    ("variant", mul.clone()),
-							    ("left", Node {
-								id: 0,
-								attributes: vec![
-								    ("variant", mul.clone()),
-								    ("left", Node {
-									id: 0,
-									attributes: vec![
+        let test_ast = {
+            use super::super::parser::Value::*;
+            use TestAST::*;
+            let add = Literal(Str("AddSub".into()));
+            let literal = Literal(Str("Literal".into()));
+            let mul = Literal(Str("MulDiv".into()));
+            Node {
+                id: 0,
+                attributes: vec![
+                    ("variant", add.clone()),
+                    (
+                        "left",
+                        Node {
+                            id: 0,
+                            attributes: vec![
+                                ("variant", literal.clone()),
+                                ("value", Literal(Str("1".into()))),
+                            ]
+                            .into(),
+                        },
+                    ),
+                    (
+                        "right",
+                        Node {
+                            id: 0,
+                            attributes: vec![
+                                ("variant", add.clone()),
+                                (
+                                    "left",
+                                    Node {
+                                        id: 0,
+                                        attributes: vec![
+                                            ("variant", literal.clone()),
+                                            ("value", Literal(Str("2".into()))),
+                                        ]
+                                        .into(),
+                                    },
+                                ),
+                                (
+                                    "right",
+                                    Node {
+                                        id: 0,
+                                        attributes: vec![
+                                            ("variant", add.clone()),
+                                            (
+                                                "left",
+                                                Node {
+                                                    id: 0,
+                                                    attributes: vec![
+                                                        ("variant", mul.clone()),
+                                                        (
+                                                            "left",
+                                                            Node {
+                                                                id: 0,
+                                                                attributes: vec![
+                                                                    ("variant", mul.clone()),
+                                                                    (
+                                                                        "left",
+                                                                        Node {
+                                                                            id: 0,
+                                                                            attributes: vec![
 									    ("variant", literal.clone()),
 									    ("value", Literal(Str("3".into()))),
-									].into(),
-								    }),
-								    ("right", Node {
-									id: 0,
-									attributes: vec![
+									]
+                                                                            .into(),
+                                                                        },
+                                                                    ),
+                                                                    (
+                                                                        "right",
+                                                                        Node {
+                                                                            id: 0,
+                                                                            attributes: vec![
 									    ("variant", literal.clone()),
 									    ("value", Literal(Str("4".into()))),
-									].into(),
-								    }),
-								].into(),
-							    }),
-							    ("right", Node {
-								id: 0,
-								attributes: vec![
-								    ("variant", literal.clone()),
-								    ("value", Literal(Str("5".into()))),
-								].into(),
-							    })
-							]
-                                                        .into(),
-                                                    },
-                                                ),
-                                                (
-                                                    "right",
-                                                    Node {
-                                                        id: 0,
-                                                        attributes: vec![
-							("variant", add.clone()),
-							("left", Node {
-							    id: 0,
-							    attributes: vec![
-								("variant", literal.clone()),
-								("value", Literal(Str("6".into()))),
-							    ].into()
-							}),
-							("right", Node {
-							    id: 0,
-							    attributes: vec![
-								("variant", mul.clone()),
-								("left", Node {
-								    id: 0,
-								    attributes: vec![
+									]
+                                                                            .into(),
+                                                                        },
+                                                                    ),
+                                                                ]
+                                                                .into(),
+                                                            },
+                                                        ),
+                                                        (
+                                                            "right",
+                                                            Node {
+                                                                id: 0,
+                                                                attributes: vec![
+                                                                    (
+                                                                        "variant",
+                                                                        literal.clone(),
+                                                                    ),
+                                                                    (
+                                                                        "value",
+                                                                        Literal(
+                                                                            Str("5".into()),
+                                                                        ),
+                                                                    ),
+                                                                ]
+                                                                .into(),
+                                                            },
+                                                        ),
+                                                    ]
+                                                    .into(),
+                                                },
+                                            ),
+                                            (
+                                                "right",
+                                                Node {
+                                                    id: 0,
+                                                    attributes: vec![
+                                                        ("variant", add.clone()),
+                                                        (
+                                                            "left",
+                                                            Node {
+                                                                id: 0,
+                                                                attributes: vec![
+                                                                    (
+                                                                        "variant",
+                                                                        literal.clone(),
+                                                                    ),
+                                                                    (
+                                                                        "value",
+                                                                        Literal(
+                                                                            Str("6".into()),
+                                                                        ),
+                                                                    ),
+                                                                ]
+                                                                .into(),
+                                                            },
+                                                        ),
+                                                        (
+                                                            "right",
+                                                            Node {
+                                                                id: 0,
+                                                                attributes: vec![
+                                                                    ("variant", mul.clone()),
+                                                                    (
+                                                                        "left",
+                                                                        Node {
+                                                                            id: 0,
+                                                                            attributes: vec![
 									("variant", literal.clone()),
 									("value", Literal(Str("7".into()))),
-								    ].into(),
-								}),
-								("right", Node {
-								    id: 0,
-								    attributes: vec![
+								    ]
+                                                                            .into(),
+                                                                        },
+                                                                    ),
+                                                                    (
+                                                                        "right",
+                                                                        Node {
+                                                                            id: 0,
+                                                                            attributes: vec![
 									("variant", literal.clone()),
 									("value", Literal(Str("8".into()))),
-								    ].into(),
-								}),
-							    ].into(),
-							}),
-						    ]
-                                                        .into(),
-                                                    },
-                                                ),
-                                            ]
-                                            .into(),
-                                        },
-                                    ),
-                                ]
-                                .into(),
-                            },
-                        ),
-                    ]
-                    .into(),
-                }
-            };
+								    ]
+                                                                            .into(),
+                                                                        },
+                                                                    ),
+                                                                ]
+                                                                .into(),
+                                                            },
+                                                        ),
+                                                    ]
+                                                    .into(),
+                                                },
+                                            ),
+                                        ]
+                                        .into(),
+                                    },
+                                ),
+                            ]
+                            .into(),
+                        },
+                    ),
+                ]
+                .into(),
+            }
+        };
         assert_eq!(ast.tree, test_ast,);
     }
 
@@ -1838,10 +2311,7 @@ int main() {
             .unwrap();
         let parser = EarleyParser::new(grammar);
         let (table, raw_input) = parser
-            .recognise(
-                &mut lexer
-                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
-            )
+            .recognise(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
             .unwrap()
             .unwrap();
         let forest = parser.to_forest(&table, &raw_input).unwrap().unwrap();
@@ -1888,9 +2358,9 @@ int main() {
                                                                     id: 2,
                                                                     attributes: vec![(
                                                                         "self",
-                                                                        Literal(Str(
-                                                                            "3".into()
-                                                                        )),
+                                                                        Literal(
+                                                                            Str("3".into()),
+                                                                        ),
                                                                     )]
                                                                     .into(),
                                                                 },
@@ -1901,9 +2371,9 @@ int main() {
                                                                     id: 1,
                                                                     attributes: vec![(
                                                                         "self",
-                                                                        Literal(Str(
-                                                                            "2".into()
-                                                                        )),
+                                                                        Literal(
+                                                                            Str("2".into()),
+                                                                        ),
                                                                     )]
                                                                     .into(),
                                                                 },
@@ -1930,8 +2400,7 @@ int main() {
                                 "self",
                                 Node {
                                     id: 1,
-                                    attributes: vec![("self", Literal(Str("1".into())))]
-                                        .into(),
+                                    attributes: vec![("self", Literal(Str("1".into())))].into(),
                                 },
                             )]
                             .into(),
@@ -1942,11 +2411,7 @@ int main() {
             }
         };
 
-        assert_eq!(
-            ast, test_ast,
-            "Expected\n{:#?}\n\nGot\n{:?}",
-            test_ast, ast
-        );
+        assert_eq!(ast, test_ast, "Expected\n{:#?}\n\nGot\n{:?}", test_ast, ast);
     }
 
     #[test]
@@ -2010,10 +2475,7 @@ int main() {
             );
 
         let (table, raw_input) = parser
-            .recognise(
-                &mut lexer
-                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
-            )
+            .recognise(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
             .unwrap()
             .unwrap();
         let forest = parser.to_forest(&table, &raw_input).unwrap().unwrap();
@@ -2129,10 +2591,7 @@ int main() {
             Sum -> Sum . PM Product (0)
         );
         let (recognised, _) = parser
-            .recognise(
-                &mut lexer
-                    .lex(&mut StringStream::new(Path::new("<input>"), input)),
-            )
+            .recognise(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
             .unwrap()
             .unwrap();
         verify_sets(sets, recognised, &parser, &lexer);
@@ -2145,9 +2604,7 @@ int main() {
         lexer: &Lexer,
     ) {
         assert_eq!(recognised.len(), sets.len());
-        for (set, (expected, recognised)) in
-            sets.iter().zip(recognised.iter()).enumerate()
-        {
+        for (set, (expected, recognised)) in sets.iter().zip(recognised.iter()).enumerate() {
             assert_eq!(
                 expected.len(),
                 recognised.set.len(),

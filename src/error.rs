@@ -8,10 +8,12 @@
 use crate::case::Case;
 use crate::span::Span;
 use fragile::Fragile;
-use itertools::Itertools;
 use std::collections::{linked_list, LinkedList};
-use std::fmt;
+use std::ffi::OsString;
+use std::fmt::{self, Display, Formatter};
+use std::path::PathBuf;
 use std::rc::Rc;
+use std::string::FromUtf8Error;
 
 /// [`EMPTY_WARNING_SET`] is a warning set without any warnings.
 /// It is useful to use this set as an empty warning set
@@ -23,147 +25,303 @@ const EMPTY_WARNING_SET: WarningSet = WarningSet::Empty;
 /// monad.
 pub type Result<T> = std::result::Result<WithWarnings<T>, Error>;
 
-/// `ErrorType` is an enum that contains all the possible errors
-/// that `beans` might encounter when parsing.
-///
-/// # Error types
-///
-/// `LexerGrammarSyntax`: error that arises when there is a syntax error within the grammar file.
-/// `LexingError`: error that arises when lexing.
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
-    /// `InternalError(message: String)`: error in the Beans implementation. This should not happen.
-    #[error(
-        "Error in the Beans implementation: {message}. This should not happen."
-    )]
+pub struct Error {
+    #[from]
+    pub kind: Box<ErrorKind>,
+}
+
+impl Error {
+    pub fn with_file<T>(error: T, file: impl Into<PathBuf>) -> Self
+    where
+        ErrorKind: From<(PathBuf, T)>,
+    {
+        Self::new((file.into(), error).into())
+    }
+
+    pub fn new(kind: ErrorKind) -> Self {
+        Self {
+            kind: Box::new(kind),
+        }
+    }
+
+    pub fn integer_too_big(string: String) -> Self {
+        Self::new(ErrorKind::IntegerTooBig { string })
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.kind.fmt(f)
+    }
+}
+
+impl<T: Into<ErrorKind>> From<T> for Error {
+    fn from(t: T) -> Self {
+        Self::new(t.into())
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum ErrorKind {
     InternalError {
-        /// The message giving details about the error.
         message: String,
     },
-    /// `SerializationError(message: String)`: error serializing.
-    #[error("Failed to serialize or deserialize: {0}")]
+    IntegerTooBig {
+        string: String,
+    },
     SerializationError(#[from] bincode::Error),
-    /// `LexerGrammarSyntax(message: String)`: error in the syntax of the lexer grammar.
-    #[error(
-        "Error in the syntax of the lexer grammar: {message}, {location}."
-    )]
-    LexerGrammarSyntax {
-        /// The message giving details about the error.
-        message: String,
-        /// The `Location` that made the error occur. It's a hint a what should
-        /// be patched.
-        location: Fragile<Span>,
+    IllformedAst {
+        error: serde_json::Error,
+        file: PathBuf,
     },
-    /// `LexerGrammarDuplicateDefinition(token: String)`: duplicate terminal definition.
-    #[error("Duplicate definition of the token {token}, {location}.")]
+    UnrecognisedExtension {
+        extension: OsString,
+        path: PathBuf,
+    },
+    NonUtf8Extension {
+        path: PathBuf,
+    },
+    NonUtf8Content {
+        path: PathBuf,
+        error: FromUtf8Error,
+    },
+    GrammarNotFound {
+        path: PathBuf,
+    },
+    LexerGrammarSyntax {
+        message: String,
+        span: Fragile<Span>,
+    },
     LexerGrammarDuplicateDefinition {
         token: String,
-        location: Fragile<Span>,
+        span: Fragile<Span>,
     },
-    #[error("The token {token} is unwanted, therefore it must have a description, {span}.")]
-    LexerGrammarUnwantedNoDescription { token: String, span: Fragile<Span> },
-    #[error("Reached EOF while trying to read a string")]
+    LexerGrammarUnwantedNoDescription {
+        token: String,
+        span: Fragile<Span>,
+    },
     LexerGrammarEofString,
     /// `LexingError(message: String)`: error while transforming a string stream into a token stream.
-    #[error("Lexing error: cannot recognize a token {location}")]
     LexingError {
         /// The `Location` that made the error occur. It's a hint a what should
         /// be patched.
-        location: Fragile<Span>,
+        span: Fragile<Span>,
     },
-    #[error("Lexing error: {message}, {span}")]
     UnwantedToken {
         span: Fragile<Span>,
         message: String,
     },
-    /// `GrammarDuplicateDefinition(message: String, location: Location)`: duplicate definition at `location`.
-    #[error("Found duplicate definition of terminal in grammar: {message}, {location}.")]
     GrammarDuplicateDefinition {
-        /// The message giving details about the error.
         message: String,
-        /// The `Location` where the second, offending, definition has been
-        /// found.
-        location: Fragile<Span>,
-        /// The `Location` where the first definition has been found.
-        old_location: Fragile<Span>,
+        span: Fragile<Span>,
+        old_span: Fragile<Span>,
     },
-    #[error("Found two references to {macro_name}, with arities {first_arity} and {second_arity}, {location}.")]
     GrammarArityMismatch {
         macro_name: String,
         first_arity: usize,
         second_arity: usize,
-        location: Fragile<Span>,
+        span: Fragile<Span>,
     },
-    /// `GrammarNonTerminalDuplicate(message: String)`: duplicate non-terminal in the grammar.
-    #[error("Found duplicate definition of nonterminal in grammar: {message}, {location}.")]
+    GrammarUndefinedNonTerminal {
+        name: String,
+        span: Fragile<Span>,
+    },
+    GrammarUndefinedMacro {
+        name: String,
+        span: Fragile<Span>,
+    },
     GrammarNonTerminalDuplicate {
-        /// The message giving details about the error.
         message: String,
-        /// The `Location` that made the error occur. It's a hint a what should
-        /// be patched.
-        location: Fragile<Span>,
+        span: Fragile<Span>,
     },
-    #[error(
-        "Tried to invoke terminal {terminal} as if it was a macro, {location}."
-    )]
     GrammarTerminalInvocation {
         terminal: String,
-        location: Fragile<Span>,
+        span: Fragile<Span>,
     },
-    /// `GrammarSyntaxError(message: String)`: syntax error in the grammar.
-    #[error("Syntax error in grammar: {message}, {location}.")]
     GrammarSyntaxError {
-        /// The message giving details about the error.
         message: String,
-        /// The `Location` that made the error occur. It's a hint a what should
-        /// be patched.
-        location: Fragile<Span>,
+        span: Fragile<Span>,
     },
-    /// `GrammarVariantKey(message: String)`: have a variant key in proxy is bad.
-    #[error("The `variant` key is reserved in proxies, {location}.")]
-    GrammarVariantKey { location: Fragile<Span> },
-    /// `SyntaxError`: syntax error in the input.
-    #[error(
-	"Syntax error: {name} doesn't make sense {location}.\n{}",
-	match &.alternatives[..] {
-	    [] => "".to_string(),
-	    [x] => format!("  -> try inserting {} instead", x.to_string()),
-	    [rest@.., last] => format!(
-		"  -> try inserting {} or {} instead",
-		rest
-		    .into_iter()
-		    .map(|x| &**x)
-		    .intersperse(", ")
-		    .collect::<String>(),
-		last
-	    ),
-	}
-    )]
+    GrammarVariantKey {
+        span: Fragile<Span>,
+    },
     SyntaxError {
         name: String,
         alternatives: Vec<String>,
-        /// The `Location` that made the error occur. It's a hint a what should
-        /// be patched.
-        location: Fragile<Span>,
+        span: Fragile<Span>,
     },
-    #[error("Syntax error: EOF but parsing isn't done {location}.")]
-    SyntaxErrorValidPrefix { location: Fragile<Span> },
-    /// `IOError`: any io error.
-    #[error("IO error: {0}")]
-    IOError(#[from] std::io::Error),
-    /// `RegexError`: any regex error
-    #[error("Regex error: {message}, {location}")]
+    SyntaxErrorValidPrefix {
+        span: Fragile<Span>,
+    },
+    IOError {
+        error: std::io::Error,
+        path: PathBuf,
+    },
     RegexError {
-        /// The `Location` that made the error occur. It's a hint a what should
-        /// be patched.
-        location: Fragile<Span>,
-        /// The message giving details about the error.
+        span: Fragile<Span>,
         message: String,
     },
-    /// `SameOutputAndInput`: writing to the output file would overwrite the
-    /// input file, which Beans refuses to do.
-    #[error("The file to be written is the same as the source file.")]
     SameOutputAndInput,
+}
+
+impl ErrorKind {
+    pub fn err<T>(self) -> std::result::Result<T, Error> {
+        Err(Error {
+            kind: Box::new(self),
+        })
+    }
+}
+
+impl From<(PathBuf, std::io::Error)> for ErrorKind {
+    fn from((path, error): (PathBuf, std::io::Error)) -> Self {
+        Self::IOError { error, path }
+    }
+}
+
+impl From<(PathBuf, FromUtf8Error)> for ErrorKind {
+    fn from((path, error): (PathBuf, FromUtf8Error)) -> Self {
+        Self::NonUtf8Content { path, error }
+    }
+}
+
+impl Display for ErrorKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::InternalError { message } => writeln!(f, "ICE: {message}"),
+            Self::SerializationError(error) => writeln!(
+                f,
+                "ICE: while trying to serialize, the following error occured\n{error}",
+            ),
+            Self::IllformedAst { error, file } => writeln!(
+                f,
+                "File {} contains an illformed AST.\n{error}",
+                file.display(),
+            ),
+            Self::UnrecognisedExtension { extension, path } => {
+                write!(
+                    f,
+                    "File {} has an extension that is not recognised by Beans",
+                    path.display(),
+                )?;
+                if let Some(ext) = extension.to_str() {
+                    writeln!(f, ": {ext}")
+                } else {
+                    writeln!(f)
+                }
+            }
+            Self::NonUtf8Extension { path } => writeln!(
+                f,
+                "File {} has an extension that is not valid utf-8.",
+                path.display(),
+            ),
+            Self::GrammarNotFound { path } => {
+                writeln!(f, "Grammar not found at {}", path.display(),)
+            }
+            Self::LexerGrammarSyntax { message, span } => {
+                writeln!(f, "Syntax error {span}.\n{message}")
+            }
+            Self::LexerGrammarDuplicateDefinition { token, span } => {
+                writeln!(f, "Found duplication definition of {token} {span}.")
+            }
+            Self::LexerGrammarUnwantedNoDescription { token, span } => {
+                writeln!(
+                    f,
+                    "{token} is tagged `unwanted` but has no description {span}."
+                )
+            }
+            Self::LexerGrammarEofString => {
+                writeln!(f, "Found EOF while reading a string.")
+            }
+            Self::LexingError { span } => {
+                writeln!(f, "Could not lex anything {span}.")
+            }
+            Self::UnwantedToken { span, message } => {
+                writeln!(f, "Lexing error {span}.\n{message}")
+            }
+            Self::GrammarDuplicateDefinition {
+                message,
+                span,
+                old_span,
+            } => {
+                writeln!(
+		    f,
+		    "Found two definitions of the same non-terminal {span} and {old_span}.\n{message}"
+		)
+            }
+            Self::GrammarArityMismatch {
+                macro_name,
+                first_arity,
+                second_arity,
+                span,
+            } => {
+                writeln!(f, "The macro {macro_name} is called with the wrong number of argument {first_arity} (expected {second_arity}) {span}.")
+            }
+            Self::GrammarNonTerminalDuplicate { message, span } => {
+                writeln!(
+                    f,
+                    "Found two definitions of the same non-terminal {span}\n.{message}"
+                )
+            }
+            Self::GrammarTerminalInvocation { terminal, span } => {
+                writeln!(
+                    f,
+                    "{terminal} is a terminal, not a macro, it cannot be invoked, {span}."
+                )
+            }
+            Self::GrammarSyntaxError { message, span } => {
+                writeln!(f, "Syntax error in the grammar {span}.\n{message}")
+            }
+            Self::GrammarVariantKey { span } => {
+                writeln!(f, "The `variant` key is reserved {span}.")
+            }
+            Self::SyntaxError {
+                name,
+                alternatives,
+                span,
+            } => {
+                writeln!(
+                    f,
+                    "Syntax error {name} {span}. You could have tried {alternatives:?}."
+                )
+            }
+            Self::IntegerTooBig { string } => {
+                writeln!(f, "Integer {string} does not fit on a 64 bit integer. Why do you even need such a number?")
+            }
+            Self::GrammarUndefinedMacro { name, span } => {
+                writeln!(f, "Macro {name} is undefined {span}.")
+            }
+            Self::GrammarUndefinedNonTerminal { name, span } => {
+                writeln!(f, "Non-terminal {name} is undefined {span}.")
+            }
+            Self::SyntaxErrorValidPrefix { span } => {
+                writeln!(
+                    f,
+                    "Syntax error {span}: reached EOF while parsing a valid file."
+                )
+            }
+            Self::IOError { error, path } => {
+                writeln!(
+                    f,
+                    "While opening {}, the following error occured: {error}",
+                    path.display(),
+                )
+            }
+            Self::RegexError { span, message } => {
+                writeln!(f, "Regex error {span}.\n{message}",)
+            }
+            Self::SameOutputAndInput => {
+                writeln!(f, "Beans refuses to overwrite a file it is reading.")
+            }
+            Self::NonUtf8Content { path, error } => {
+                writeln!(
+                    f,
+                    "Could not decode {} as valid utf-8.\n{error}",
+                    path.display()
+                )
+            }
+        }
+    }
 }
 
 /// # Summary
@@ -328,9 +486,7 @@ impl WarningSet {
     pub fn extend(&mut self, warningset: Self) {
         match self {
             Self::Set(selfwarnings) => match warningset {
-                Self::Set(mut otherwarnings) => {
-                    selfwarnings.append(&mut otherwarnings)
-                }
+                Self::Set(mut otherwarnings) => selfwarnings.append(&mut otherwarnings),
                 Self::Empty => {}
             },
             Self::Empty => match warningset {
@@ -348,10 +504,7 @@ impl WarningSet {
 
     /// Utilitary function to ease the usage of regular error types.
     #[inline]
-    pub fn unpack<T>(
-        &mut self,
-        WithWarnings { content, warnings }: WithWarnings<T>,
-    ) -> T {
+    pub fn unpack<T>(&mut self, WithWarnings { content, warnings }: WithWarnings<T>) -> T {
         self.extend(warnings);
         content
     }
@@ -366,10 +519,7 @@ impl WarningSet {
     }
 
     #[inline]
-    pub fn with_ok<T, E>(
-        self,
-        content: T,
-    ) -> std::result::Result<WithWarnings<T>, E> {
+    pub fn with_ok<T, E>(self, content: T) -> std::result::Result<WithWarnings<T>, E> {
         Ok(self.with(content))
     }
 
@@ -380,13 +530,14 @@ impl WarningSet {
         Self::empty().with(content)
     }
 
+    #[inline]
+    pub fn empty_with_ok<T>(content: T) -> Result<T> {
+        Ok(Self::empty().with(content))
+    }
+
     /// `on` provides a shorthand by conjuging `f` with `with` and `unpack`.
     #[inline]
-    pub fn on<T, F, U>(
-        mut self,
-        content: WithWarnings<T>,
-        f: F,
-    ) -> WithWarnings<U>
+    pub fn on<T, F, U>(mut self, content: WithWarnings<T>, f: F) -> WithWarnings<U>
     where
         F: FnOnce(T) -> U,
     {
@@ -460,10 +611,15 @@ impl<T> WithWarnings<T> {
 
     /// `with_ok` is `with` wrapped in `Ok`.
     #[inline]
-    pub fn with_ok<E>(
-        self,
-        warnings: WarningSet,
-    ) -> std::result::Result<WithWarnings<T>, E> {
+    pub fn with_ok<E>(self, warnings: WarningSet) -> std::result::Result<WithWarnings<T>, E> {
         Ok(self.with(warnings))
+    }
+
+    #[inline]
+    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> WithWarnings<U> {
+        WithWarnings {
+            content: f(self.content),
+            warnings: self.warnings,
+        }
     }
 }

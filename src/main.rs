@@ -1,6 +1,7 @@
 use anyhow::Context;
-use beans::error::{Error, WarningSet, WithWarnings};
-use beans::lexer::{LexerBuilder, LexerGrammar, LexerGrammarBuilder};
+use beans::builder::Buildable;
+use beans::error::{ErrorKind, WarningSet, WithWarnings};
+use beans::lexer::{Lexer, LexerGrammar};
 use beans::parser::earley::{
     print_final_sets, print_sets, EarleyGrammarBuilder, EarleyParser,
 };
@@ -79,16 +80,14 @@ fn compile(compile_action: CompileAction) -> anyhow::Result<WithWarnings<()>> {
             output_path,
         } => {
             let lexer_grammar =
-                LexerGrammarBuilder::from_file(lexer_grammar_path.as_path())?
-                    .unpack_into(&mut warnings)
-                    .build()?
+                LexerGrammar::build_from_path(lexer_grammar_path.as_path())?
                     .unpack_into(&mut warnings);
             let res = serialize(&lexer_grammar)?;
             let output = match output_path {
                 Some(output) => output,
                 None => {
                     if !lexer_grammar_path.set_extension("clx") {
-                        return Err(Error::SameOutputAndInput.into());
+                        return Err(ErrorKind::SameOutputAndInput.into());
                     }
                     lexer_grammar_path
                 }
@@ -104,20 +103,8 @@ fn compile(compile_action: CompileAction) -> anyhow::Result<WithWarnings<()>> {
             output_path,
             lexer_path,
         } => {
-            let lexer_grammar = if let Some("clx") =
-                lexer_path.extension().and_then(|x| x.to_str())
-            {
-                let mut fd = File::open(lexer_path.as_path())?;
-                let mut buffer = Vec::new();
-                fd.read_to_end(&mut buffer)?;
-                bincode::deserialize(&buffer)?
-            } else {
-                LexerGrammarBuilder::from_file(lexer_path.as_path())?
-                    .unpack_into(&mut warnings)
-                    .build()?
-                    .unpack_into(&mut warnings)
-            };
-            let lexer = LexerBuilder::from_grammar(lexer_grammar).build();
+            let lexer =
+                Lexer::build_from_path(&lexer_path)?.unpack_into(&mut warnings);
             let parser_grammar = EarleyGrammarBuilder::default()
                 .with_file(parser_grammar_path.as_path())?
                 .unpack_into(&mut warnings)
@@ -127,7 +114,7 @@ fn compile(compile_action: CompileAction) -> anyhow::Result<WithWarnings<()>> {
                 Some(output) => output,
                 None => {
                     if !parser_grammar_path.set_extension("cgr") {
-                        return Err(Error::SameOutputAndInput.into());
+                        return Err(ErrorKind::SameOutputAndInput.into());
                     }
                     parser_grammar_path
                 }
@@ -150,10 +137,8 @@ fn main() -> anyhow::Result<()> {
             lexer_grammar: lexer_grammar_path,
             source,
         } => {
-            let lexer_grammar =
-                LexerGrammar::deserialize_from(lexer_grammar_path)?
-                    .unpack_into(&mut warnings);
-            let lexer = LexerBuilder::from_grammar(lexer_grammar).build();
+            let lexer = Lexer::build_from_path(&lexer_grammar_path)?
+                .unpack_into(&mut warnings);
             let mut stream =
                 StringStream::from_file(source)?.unpack_into(&mut warnings);
             let mut lexed_stream = lexer.lex(&mut stream);
@@ -176,10 +161,8 @@ fn main() -> anyhow::Result<()> {
             parser_grammar: parser_grammar_path,
             source,
         } => {
-            let lexer_grammar =
-                LexerGrammar::deserialize_from(lexer_grammar_path)?
-                    .unpack_into(&mut warnings);
-            let lexer = LexerBuilder::from_grammar(lexer_grammar).build();
+            let lexer = Lexer::build_from_path(&lexer_grammar_path)?
+                .unpack_into(&mut warnings);
             let parser_grammar = if let Some("cgr") =
                 parser_grammar_path.extension().and_then(|x| x.to_str())
             {

@@ -1,3 +1,4 @@
+mod ast;
 pub mod earley;
 mod grammarparser;
 #[allow(clippy::module_inception)]

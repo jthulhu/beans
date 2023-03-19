@@ -1,0 +1,11 @@
+keyword IGNORE ::= ignore
+keyword KEYWORD ::= keyword
+keyword UNWANTED ::= unwanted
+
+ID ::= (\w+)
+REGEX ::= ([^\n ][^\n]*|)
+DEF ::= ::=
+COMMENT ::= \((([^)\\]|\\\))*)\)
+
+ignore NEWLINE ::= \n
+ignore SPACE ::= \s+

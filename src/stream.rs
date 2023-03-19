@@ -1,153 +1,48 @@
-use crate::error::{Result, WarningSet};
+use crate::error::{Error, Result, WarningSet};
 use crate::span::{Location, Span};
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::rc::Rc;
+use std::result::Result as StdResult;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn string_stream() {
-        let string = "What a nice content,\nall in a single stream!";
-        let origin = Path::new("somewhere");
-        let mut stream = StringStream::new(origin, string);
-        assert_eq!(stream.peek(), &*string);
-        for chr in string.chars() {
-            let got_char = stream.get();
-            match got_char {
-                Char::Char(c) => assert_eq!(chr, c),
-                Char::EOF => {
-                    panic!("Found EOF in stream, while expecting {}", chr)
-                }
-            }
-            stream.incr_pos();
-        }
-        assert!(matches!(stream.get(), Char::EOF));
+#[derive(Debug)]
+pub struct RawStream {
+    origin: Rc<Path>,
+    stream: Vec<u8>,
+}
+
+impl RawStream {
+    /// Creates a new `RowStream` a path, and the content of that file
+    /// as bytes.
+    pub fn from_bytes(path: impl Into<Rc<Path>>, bytes: Vec<u8>) -> Self {
+	Self {
+	    origin: path.into(),
+	    stream: bytes,
+	}
     }
-
-    #[test]
-    fn unicode() {
-        let string = "До́брый день.";
-        let origin = Path::new("Russia");
-        let mut stream = StringStream::new(origin, string);
-        assert_eq!(stream.peek(), &*string);
-        let mut curr_pos = 0;
-        for chr in string.chars() {
-            match stream.get() {
-                Char::Char(c) => assert_eq!(chr, c),
-                Char::EOF => {
-                    panic!("Found EOF in stream, while expecting {}", chr)
-                }
-            }
-            assert_eq!(&string[curr_pos..], stream.peek());
-            stream.incr_pos();
-            curr_pos += chr.len_utf8();
-        }
-    }
-
-    #[test]
-    fn spans() {
-        let string = "Добрый день
-defg
-hij";
-        let origin = Path::new("<SPANS>");
-        let mut stream = StringStream::new(origin, string);
-        let expected = [
-            ('Д', (0, 0), 0, (0, 22)),
-            ('о', (0, 1), 2, (0, 22)),
-            ('б', (0, 2), 4, (0, 22)),
-            ('р', (0, 3), 6, (0, 22)),
-            ('ы', (0, 4), 8, (0, 22)),
-            ('й', (0, 5), 10, (0, 22)),
-            (' ', (0, 6), 12, (0, 22)),
-            ('д', (0, 7), 13, (0, 22)),
-            ('е', (0, 8), 15, (0, 22)),
-            ('н', (0, 9), 17, (0, 22)),
-            ('ь', (0, 10), 19, (0, 22)),
-            ('\n', (0, 11), 21, (0, 22)),
-            ('d', (1, 0), 22, (22, 27)),
-            ('e', (1, 1), 23, (22, 27)),
-            ('f', (1, 2), 24, (22, 27)),
-            ('g', (1, 3), 25, (22, 27)),
-            ('\n', (1, 4), 26, (22, 27)),
-            ('h', (2, 0), 27, (27, 30)),
-            ('i', (2, 1), 28, (27, 30)),
-            ('j', (2, 2), 29, (27, 30)),
-        ];
-        assert_eq!(&string[0..22], "Добрый день\n");
-        assert_eq!(&string[22..27], "defg\n");
-        assert_eq!(&string[27..30], "hij");
-        for (expected_char, expected_location, byte, line_byte) in expected {
-            let Char::Char(found_char) = stream.get() else {
-		panic!("Expected {expected_char:?}, found EOF")
-	    };
-            assert_eq!(expected_char, found_char);
-            let curr_span = stream.curr_span();
-            assert_eq!(curr_span.start(), curr_span.end());
-            assert_eq!(expected_location, curr_span.start());
-            assert_eq!(curr_span.start_byte(), curr_span.end_byte());
-            assert_eq!(byte, curr_span.start_byte());
-            assert_eq!(
-                line_byte,
-                curr_span.line_bytes_of_line(expected_location.0)
-            );
-            stream.incr_pos();
-        }
-        assert!(stream.is_empty());
+    pub fn read_from_path(path: impl Into<Rc<Path>>) -> Result<Self> {
+        let path = path.into();
+        let mut file_stream = File::open(path.as_ref())
+            .map_err(|error| Error::with_file(error, &*path))?;
+        let mut stream_buffer = Vec::new();
+        file_stream
+            .read_to_end(&mut stream_buffer)
+            .map_err(|error| Error::with_file(error, &*path))?;
+        WarningSet::empty().with_ok(Self {
+            origin: path,
+            stream: stream_buffer,
+        })
     }
 }
 
-/// The type of data returned by the stream.
-/// Is a tuple of two elements, the element
-/// at a given index and its location.
-pub type StreamObject<T> = (T, Span);
+impl TryFrom<RawStream> for StringStream {
+    type Error = Error;
 
-/// # Summary
-///
-/// A stream-like object.
-///
-/// # Methods
-///
-/// `get_at`: get an object at a given index.
-/// `pos`: return the current position.
-/// `set_pos`: set the current position.
-/// `pos_pp`: increment the current position by one.
-/// `pos_inc`: increment the current position by a given (positive) ammount.
-/// `get`: get the object at the current position.
-pub trait Stream<'a> {
-    /// The type that this is a stream of.
-    type Output: 'a;
-    /// Get the object at the given position.
-    fn get_at(&'a self, pos: usize) -> Option<StreamObject<Self::Output>>;
-    /// Return the current position.
-    fn pos(&self) -> usize;
-    /// Set the current position.
-    fn set_pos(&mut self, pos: usize);
-    /// Increase the current position by one.
-    fn pos_pp(&mut self) {
-        self.set_pos(self.pos() + 1);
-    }
-    /// Increase the current position by a given (positive) ammount;
-    fn pos_inc(&mut self, off: usize) {
-        self.set_pos(self.pos() + off);
-    }
-    /// Get the object at the current position.
-    fn get(&'a self) -> Option<StreamObject<Self::Output>> {
-        self.get_at(self.pos())
-    }
-
-    /// Get the location of the object at position `pos`.
-    fn get_loc_of(&'a self, pos: usize) -> Option<Span> {
-        self.get_at(pos).map(|(_, location)| location)
-    }
-
-    /// Advance the stream to the next position, and return the object at that position.
-    fn next(&'a mut self) -> Option<StreamObject<Self::Output>> {
-        let pos = self.pos();
-        self.pos_pp();
-        self.get_at(pos)
+    fn try_from(value: RawStream) -> StdResult<Self, Self::Error> {
+        let string = String::from_utf8(value.stream)
+            .map_err(|error| Error::with_file(error, &*value.origin))?;
+	Ok(StringStream::new(value.origin, string))
     }
 }
 
@@ -249,9 +144,12 @@ impl StringStream {
     /// Create a [`StringStream`] directly from a file. This will try to read the content of the file right away.
     pub fn from_file(file: impl Into<Rc<Path>>) -> Result<Self> {
         let file = file.into();
-        let mut file_stream = File::open(file.as_ref())?;
+        let mut file_stream = File::open(file.as_ref())
+            .map_err(|err| Error::with_file(err, &*file))?;
         let mut stream_buffer = String::new();
-        file_stream.read_to_string(&mut stream_buffer)?;
+        file_stream
+            .read_to_string(&mut stream_buffer)
+            .map_err(|err| Error::with_file(err, &*file))?;
         Ok(WarningSet::empty_with(StringStream::new(
             file,
             stream_buffer,
@@ -383,5 +281,99 @@ impl StringStream {
 impl std::fmt::Debug for StringStream {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.peek().fmt(f)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn string_stream() {
+        let string = "What a nice content,\nall in a single stream!";
+        let origin = Path::new("somewhere");
+        let mut stream = StringStream::new(origin, string);
+        assert_eq!(stream.peek(), &*string);
+        for chr in string.chars() {
+            let got_char = stream.get();
+            match got_char {
+                Char::Char(c) => assert_eq!(chr, c),
+                Char::EOF => {
+                    panic!("Found EOF in stream, while expecting {}", chr)
+                }
+            }
+            stream.incr_pos();
+        }
+        assert!(matches!(stream.get(), Char::EOF));
+    }
+
+    #[test]
+    fn unicode() {
+        let string = "До́брый день.";
+        let origin = Path::new("Russia");
+        let mut stream = StringStream::new(origin, string);
+        assert_eq!(stream.peek(), &*string);
+        let mut curr_pos = 0;
+        for chr in string.chars() {
+            match stream.get() {
+                Char::Char(c) => assert_eq!(chr, c),
+                Char::EOF => {
+                    panic!("Found EOF in stream, while expecting {}", chr)
+                }
+            }
+            assert_eq!(&string[curr_pos..], stream.peek());
+            stream.incr_pos();
+            curr_pos += chr.len_utf8();
+        }
+    }
+
+    #[test]
+    fn spans() {
+        let string = "Добрый день
+defg
+hij";
+        let origin = Path::new("<SPANS>");
+        let mut stream = StringStream::new(origin, string);
+        let expected = [
+            ('Д', (0, 0), 0, (0, 22)),
+            ('о', (0, 1), 2, (0, 22)),
+            ('б', (0, 2), 4, (0, 22)),
+            ('р', (0, 3), 6, (0, 22)),
+            ('ы', (0, 4), 8, (0, 22)),
+            ('й', (0, 5), 10, (0, 22)),
+            (' ', (0, 6), 12, (0, 22)),
+            ('д', (0, 7), 13, (0, 22)),
+            ('е', (0, 8), 15, (0, 22)),
+            ('н', (0, 9), 17, (0, 22)),
+            ('ь', (0, 10), 19, (0, 22)),
+            ('\n', (0, 11), 21, (0, 22)),
+            ('d', (1, 0), 22, (22, 27)),
+            ('e', (1, 1), 23, (22, 27)),
+            ('f', (1, 2), 24, (22, 27)),
+            ('g', (1, 3), 25, (22, 27)),
+            ('\n', (1, 4), 26, (22, 27)),
+            ('h', (2, 0), 27, (27, 30)),
+            ('i', (2, 1), 28, (27, 30)),
+            ('j', (2, 2), 29, (27, 30)),
+        ];
+        assert_eq!(&string[0..22], "Добрый день\n");
+        assert_eq!(&string[22..27], "defg\n");
+        assert_eq!(&string[27..30], "hij");
+        for (expected_char, expected_location, byte, line_byte) in expected {
+            let Char::Char(found_char) = stream.get() else {
+		panic!("Expected {expected_char:?}, found EOF")
+	    };
+            assert_eq!(expected_char, found_char);
+            let curr_span = stream.curr_span();
+            assert_eq!(curr_span.start(), curr_span.end());
+            assert_eq!(expected_location, curr_span.start());
+            assert_eq!(curr_span.start_byte(), curr_span.end_byte());
+            assert_eq!(byte, curr_span.start_byte());
+            assert_eq!(
+                line_byte,
+                curr_span.line_bytes_of_line(expected_location.0)
+            );
+            stream.incr_pos();
+        }
+        assert!(stream.is_empty());
     }
 }

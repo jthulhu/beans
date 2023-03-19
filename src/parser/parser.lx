@@ -1,0 +1,27 @@
+ignore SPACE ::= \s+
+ignore NEWLINE ::= \n
+
+keyword LEFT ::= left-assoc
+keyword RIGHT ::= right-assoc
+keyword SELF ::= Self
+
+AT ::= @
+ID ::= (\w+)
+INT ::= (\d+)
+DEF ::= ::=
+
+SEMICOLON ::= ;
+COMMA ::= ,
+COLON ::= :
+DOT ::= \.
+
+LPROXY ::= <
+RPROXY ::= >
+LBRACKET ::= \[
+RBRACKET ::= \]
+LBRACE ::= {
+RBRACE ::= }
+LPAR ::= \(
+RPAR ::= \)
+
+STRING ::= "(([^\\"]|\\.)*)"

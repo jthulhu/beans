@@ -1,6 +1,6 @@
 use super::parser::{NonTerminalId, Value, AST};
-use crate::error::Result;
-use crate::error::{Error, WarningSet};
+use crate::error::{Error, Result};
+use crate::error::{ErrorKind, WarningSet};
 use crate::lexer::{LexedStream, Lexer, Token};
 use crate::lexer::{LexerGrammar, TerminalId};
 use crate::parser::earley::GrammarRules;
@@ -61,7 +61,7 @@ newty! {
 /// value.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Attribute {
-    Named(String),
+    Named(Rc<str>),
     Indexed(usize),
     None,
 }
@@ -262,7 +262,7 @@ pub enum ValueTemplate {
     Id(Rc<str>),
     /// Inline node
     InlineRule {
-        name: Rc<str>,
+        nonterminal: NonTerminalId,
         attributes: HashMap<Rc<str>, ValueTemplate>,
     },
 }
@@ -285,21 +285,16 @@ impl ValueTemplate {
                 removed.insert(name.clone());
                 all_attributes[name].clone()
             }
-            ValueTemplate::InlineRule { name, attributes } => {
-                let nonterminal = if &**name == keyword::SELF {
-                    current
-                } else {
-                    id_of[name]
-                };
+            ValueTemplate::InlineRule { nonterminal, attributes } => {
                 AST::Node {
-                    nonterminal,
+                    nonterminal: *nonterminal,
                     attributes: attributes
                         .iter()
                         .map(|(key, value_template)| {
                             (
                                 key.clone(),
                                 value_template.evaluate(
-                                    nonterminal,
+                                    *nonterminal,
                                     all_attributes,
                                     removed,
                                     id_of,
@@ -333,6 +328,7 @@ impl MacroInvocation {
                 ElementType::Terminal(id)
             } else {
                 context.get(&self.name).cloned().unwrap_or_else(|| {
+                    println!("{}", self.name);
                     ElementType::NonTerminal(reader.id_of[&self.name])
                 })
             }
@@ -481,10 +477,11 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         expected: &str,
         found: &str,
     ) -> std::result::Result<T, Error> {
-        Err(Error::GrammarSyntaxError {
+        ErrorKind::GrammarSyntaxError {
             message: format!("expected {expected}, found {found}"),
-            location: Fragile::new(location),
-        })
+            span: Fragile::new(location),
+        }
+        .err()
     }
 
     fn read_token(&mut self, name: &str) -> std::result::Result<Token, Error> {
@@ -542,8 +539,8 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
             token::IDENTIFIER => {
                 let name = token.content().into();
                 if self.peek_token(token::INLINE_RULE_START)? {
-                    ValueTemplate::InlineRule {
-                        name,
+                    ValueTemplate::InlineRule {  
+			nonterminal: todo!(),
                         attributes: self.read_proxy(token::INLINE_RULE_END)?,
                     }
                 } else {
@@ -568,9 +565,9 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         let key: Rc<str> = key_token.content().into();
         if self.peek_token(token::PROXY_ASSIGN)? {
             if &*key == keyword::VARIANT_NAME {
-                return Err(Error::GrammarVariantKey {
-                    location: key_token.location().into(),
-                });
+                return ErrorKind::GrammarVariantKey {
+                    span: key_token.location().into(),
+                }.err();
             }
             let value = self.read_proxy_value()?;
             Ok((key, value))
@@ -668,10 +665,10 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         let (invocation, span) = self.read_macro_invocation(name.clone())?;
         let element_type = if let Some(id) = self.lexer.grammar().id(&name) {
             if !invocation.args.is_empty() {
-                return Err(Error::GrammarTerminalInvocation {
+                return ErrorKind::GrammarTerminalInvocation {
                     terminal: name.to_string(),
-                    location: Fragile::new(span),
-                });
+                    span: Fragile::new(span),
+                }.err();
             }
             PartialElementType::Terminal(id)
         } else {
@@ -919,9 +916,9 @@ pub trait Grammar<'d>: Sized + Serialize + Deserialize<'d> {
     ) -> Result<Self>;
 
     fn deserialize(bytes: &'d [u8]) -> Result<Self> {
-        Ok(WarningSet::empty_with(bincode::deserialize::<'d, Self>(
+        WarningSet::empty_with_ok(bincode::deserialize::<'d, Self>(
             bytes,
-        )?))
+        )?)
     }
 
     fn name_of(&self, id: NonTerminalId) -> Rc<str>;

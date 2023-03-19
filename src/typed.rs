@@ -5,7 +5,7 @@ macro_rules! node {
         if let $crate::parser::AST::Node { attributes, .. } = $ast {
             attributes
         } else {
-            panic!("expected to find node");
+            panic!("expected to find node, found {:?}", $ast);
         }
     };
 }
@@ -102,7 +102,7 @@ impl<T: Tree> Tree for Vec<T> {
 }
 
 impl Tree for () {
-    fn read(ast: AST) -> Self {
-        let _node = node!(ast);
+    fn read(_ast: AST) -> Self {
+        // let _node = node!(ast);
     }
 }

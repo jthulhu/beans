@@ -608,10 +608,11 @@ impl Buildable for LexerGrammar {
     }
 
     fn build_from_plain(mut source: StringStream) -> Result<Self> {
+	println!("build_from_plain: {:?}", source);
         let mut warnings = WarningSet::empty();
         let (lexer, parser) = build_system!(
-            lexer => "lexer.clx",
-            parser => "lexer.cgr",
+            lexer => "lexer.lx.ast",
+            parser => "lexer.gr.ast",
         )?
         .unpack_into(&mut warnings);
         let mut input = lexer.lex(&mut source);

@@ -48,8 +48,8 @@ mod tests {
         assert_eq!(span.end(), (1, 6));
         assert_eq!(span.start_byte(), 3);
         assert_eq!(span.end_byte(), 11);
-        assert_eq!(span.text(), &*input);
-        assert_eq!(span.lines(), &*lines);
+        // assert_eq!(span.text(), &*input);
+        // assert_eq!(span.lines(), &*lines);
         let span = Span::new(
             Path::new(""),
             (0, 0),
@@ -64,8 +64,8 @@ mod tests {
         assert_eq!(span.end(), (0, 0));
         assert_eq!(span.start_byte(), 0);
         assert_eq!(span.end_byte(), 0);
-        assert_eq!(span.text(), &*input);
-        assert_eq!(span.lines(), &*lines);
+        // assert_eq!(span.text(), &*input);
+        // assert_eq!(span.lines(), &*lines);
     }
 
     #[test]
@@ -136,8 +136,8 @@ pub struct Span {
     end: Location,
     start_byte: usize,
     end_byte: usize,
-    text: Rc<str>,
-    lines: Rc<[usize]>,
+    // text: Rc<str>,
+    // lines: Rc<[usize]>,
 }
 
 impl std::fmt::Display for Span {
@@ -200,8 +200,8 @@ impl Span {
             end,
             start_byte,
             end_byte,
-            text,
-            lines,
+            // text,
+            // lines,
         }
     }
 
@@ -212,8 +212,8 @@ impl Span {
             end_byte: self.end_byte.max(other.end_byte),
             start: self.start.min(other.start),
             end: self.end.max(other.end),
-            text: self.text.clone(),
-            lines: self.lines.clone(),
+            // text: self.text.clone(),
+            // lines: self.lines.clone(),
         }
     }
 
@@ -240,25 +240,25 @@ impl Span {
         self.end_byte
     }
 
-    /// Returns (start, end), where the line `line_number` is
-    /// `self.text()[start..end]`
-    pub fn line_bytes_of_line(&self, line_number: usize) -> (usize, usize) {
-        let start = self.lines[line_number];
-        let end = if line_number + 1 == self.lines.len() {
-            self.text.len()
-        } else {
-            self.lines[line_number + 1]
-        };
-        (start, end)
-    }
+    // /// Returns (start, end), where the line `line_number` is
+    // /// `self.text()[start..end]`
+    // pub fn line_bytes_of_line(&self, line_number: usize) -> (usize, usize) {
+    //     let start = self.lines[line_number];
+    //     let end = if line_number + 1 == self.lines.len() {
+    //         self.text.len()
+    //     } else {
+    //         self.lines[line_number + 1]
+    //     };
+    //     (start, end)
+    // }
 
-    pub fn text(&self) -> &str {
-        &self.text
-    }
+    // pub fn text(&self) -> &str {
+    //     &self.text
+    // }
 
-    pub fn lines(&self) -> &[usize] {
-        &self.lines
-    }
+    // pub fn lines(&self) -> &[usize] {
+    //     &self.lines
+    // }
 }
 
 impl From<&Span> for Fragile<Span> {

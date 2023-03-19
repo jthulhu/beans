@@ -36,8 +36,7 @@ mod tests {
 
     #[test]
     fn multiline_comments() {
-        let (program, nb_groups) =
-            compile(r"/\*([^*]|\*[^/])*\*/", TerminalId(0)).unwrap();
+        let (program, nb_groups) = compile(r"/\*([^*]|\*[^/])*\*/", TerminalId(0)).unwrap();
         let text1 = "/* hello, world */#and other stuff";
         let text2 = "/* hello,\nworld */#and other stuff";
         let text3 = "/* unicode éèàç */#and other stuff";
@@ -84,10 +83,7 @@ mod tests {
         for (regex, tests) in escaped {
             let (program, _) = compile(regex, TerminalId(0)).unwrap();
             for (string, result) in tests {
-                assert_eq!(
-                    find(&program, string, 0, &Allowed::All).is_some(),
-                    result
-                );
+                assert_eq!(find(&program, string, 0, &Allowed::All).is_some(), result);
             }
         }
     }
@@ -470,16 +466,9 @@ fn match_next(
 }
 
 /// Simulate a VM with program `prog` on `input`. There should be `size` groups.
-pub fn find(
-    prog: &ProgramSlice,
-    input: &str,
-    size: usize,
-    allowed: &Allowed,
-) -> Option<Match> {
-    let mut current = ThreadList::from(
-        vec![Thread::new(InstructionPointer(0), size)],
-        prog.len(),
-    );
+pub fn find(prog: &ProgramSlice, input: &str, size: usize, allowed: &Allowed) -> Option<Match> {
+    let mut current =
+        ThreadList::from(vec![Thread::new(InstructionPointer(0), size)], prog.len());
     let mut best_match = None;
     let mut last = None;
     let mut bytes_pos = 0;

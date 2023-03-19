@@ -66,18 +66,14 @@ pub enum Attribute {
     None,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ElementType {
     Terminal(TerminalId),
     NonTerminal(NonTerminalId),
 }
 
 impl ElementType {
-    fn name<'d>(
-        &self,
-        lexer_grammar: &LexerGrammar,
-        grammar: &impl Grammar<'d>,
-    ) -> Rc<str> {
+    fn name<'d>(&self, lexer_grammar: &LexerGrammar, grammar: &impl Grammar<'d>) -> Rc<str> {
         match self {
             Self::Terminal(id) => lexer_grammar.name(*id).into(),
             Self::NonTerminal(id) => grammar.name_of(*id),
@@ -111,11 +107,7 @@ pub struct RuleElement {
 impl RuleElement {
     #![allow(unused)]
 
-    pub fn new(
-        attribute: Attribute,
-        key: Option<Key>,
-        element_type: ElementType,
-    ) -> Self {
+    pub fn new(attribute: Attribute, key: Option<Key>, element_type: ElementType) -> Self {
         Self {
             attribute,
             key,
@@ -285,27 +277,28 @@ impl ValueTemplate {
                 removed.insert(name.clone());
                 all_attributes[name].clone()
             }
-            ValueTemplate::InlineRule { nonterminal, attributes } => {
-                AST::Node {
-                    nonterminal: *nonterminal,
-                    attributes: attributes
-                        .iter()
-                        .map(|(key, value_template)| {
-                            (
-                                key.clone(),
-                                value_template.evaluate(
-                                    *nonterminal,
-                                    all_attributes,
-                                    removed,
-                                    id_of,
-                                    span,
-                                ),
-                            )
-                        })
-                        .collect(),
-                    span: span.clone(),
-                }
-            }
+            ValueTemplate::InlineRule {
+                nonterminal,
+                attributes,
+            } => AST::Node {
+                nonterminal: *nonterminal,
+                attributes: attributes
+                    .iter()
+                    .map(|(key, value_template)| {
+                        (
+                            key.clone(),
+                            value_template.evaluate(
+                                *nonterminal,
+                                all_attributes,
+                                removed,
+                                id_of,
+                                span,
+                            ),
+                        )
+                    })
+                    .collect(),
+                span: span.clone(),
+            },
         }
     }
 }
@@ -327,10 +320,10 @@ impl MacroInvocation {
             if let Some(id) = reader.lexer.grammar().id(&self.name) {
                 ElementType::Terminal(id)
             } else {
-                context.get(&self.name).cloned().unwrap_or_else(|| {
-                    println!("{}", self.name);
-                    ElementType::NonTerminal(reader.id_of[&self.name])
-                })
+                context
+                    .get(&self.name)
+                    .cloned()
+                    .unwrap_or_else(|| ElementType::NonTerminal(reader.id_of[&self.name]))
             }
         } else {
             let MacroInvocation { name, args } = self;
@@ -345,8 +338,7 @@ impl MacroInvocation {
             if !reader.invoked_macros.contains_key(&invoked) {
                 invoked.instanciate(rules, reader);
             }
-            let invoked_name =
-                reader.name_of[reader.invoked_macros[&invoked]].clone();
+            let invoked_name = reader.name_of[reader.invoked_macros[&invoked]].clone();
             ElementType::NonTerminal(reader.id_of[&invoked_name])
         }
     }
@@ -368,11 +360,7 @@ struct InvokedMacro {
 }
 
 impl InvokedMacro {
-    fn instanciate(
-        &self,
-        rules: &mut GrammarRules,
-        reader: &mut GrammarReader<'_, '_>,
-    ) {
+    fn instanciate(&self, rules: &mut GrammarRules, reader: &mut GrammarReader<'_, '_>) {
         let id = reader.name_of.len_as();
         let full_name = self.full_name(reader);
         reader.name_of.push(full_name.clone());
@@ -406,8 +394,7 @@ impl InvokedMacro {
                     .map(|argument| match argument {
                         ElementType::Terminal(id) =>
                             reader.lexer.grammar().name(*id).to_string(),
-                        ElementType::NonTerminal(id) =>
-                            reader.name_of[*id].to_string(),
+                        ElementType::NonTerminal(id) => reader.name_of[*id].to_string(),
                     })
                     .intersperse(", ".to_string())
                     .collect::<String>()
@@ -433,10 +420,7 @@ struct GrammarReader<'lexer, 'stream> {
 }
 
 impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
-    fn new(
-        lexer: &'lexer Lexer,
-        lexed_input: LexedStream<'lexer, 'stream>,
-    ) -> Self {
+    fn new(lexer: &'lexer Lexer, lexed_input: LexedStream<'lexer, 'stream>) -> Self {
         Self {
             lexer,
             lexed_input,
@@ -490,11 +474,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
                 if token.name() == name {
                     Ok(token)
                 } else {
-                    return self.generate_error(
-                        token.location().clone(),
-                        name,
-                        token.name(),
-                    );
+                    return self.generate_error(token.location().clone(), name, token.name());
                 }
             }
             None => {
@@ -507,9 +487,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         }
     }
 
-    fn read_macro_arguments(
-        &mut self,
-    ) -> std::result::Result<Vec<Rc<str>>, Error> {
+    fn read_macro_arguments(&mut self) -> std::result::Result<Vec<Rc<str>>, Error> {
         let mut args = Vec::new();
         if self.peek_token(token::MACRO_ARGS_START)? {
             let mut cont = true;
@@ -522,9 +500,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         Ok(args)
     }
 
-    fn read_proxy_value(
-        &mut self,
-    ) -> std::result::Result<ValueTemplate, Error> {
+    fn read_proxy_value(&mut self) -> std::result::Result<ValueTemplate, Error> {
         let token = if let Some(token) = self.next_token()? {
             token
         } else {
@@ -539,8 +515,8 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
             token::IDENTIFIER => {
                 let name = token.content().into();
                 if self.peek_token(token::INLINE_RULE_START)? {
-                    ValueTemplate::InlineRule {  
-			nonterminal: todo!(),
+                    ValueTemplate::InlineRule {
+                        nonterminal: todo!(),
                         attributes: self.read_proxy(token::INLINE_RULE_END)?,
                     }
                 } else {
@@ -558,16 +534,15 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         Ok(value)
     }
 
-    fn read_proxy_element(
-        &mut self,
-    ) -> std::result::Result<(Key, ValueTemplate), Error> {
+    fn read_proxy_element(&mut self) -> std::result::Result<(Key, ValueTemplate), Error> {
         let key_token = self.read_token(token::IDENTIFIER)?;
         let key: Rc<str> = key_token.content().into();
         if self.peek_token(token::PROXY_ASSIGN)? {
             if &*key == keyword::VARIANT_NAME {
                 return ErrorKind::GrammarVariantKey {
                     span: key_token.location().into(),
-                }.err();
+                }
+                .err();
             }
             let value = self.read_proxy_value()?;
             Ok((key, value))
@@ -602,8 +577,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         if self.peek_token(token::MACRO_ARGS_START)? {
             let mut cont = true;
             while cont {
-                let arg_name =
-                    self.read_token(token::IDENTIFIER)?.content().into();
+                let arg_name = self.read_token(token::IDENTIFIER)?.content().into();
                 let (arg, _) = self.read_macro_invocation(arg_name)?;
                 args.push(arg);
                 cont = self.peek_token(token::MACRO_ARGS_SEPARATOR)?;
@@ -613,9 +587,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         Ok((MacroInvocation { name, args }, span))
     }
 
-    fn read_rule_element_attribute(
-        &mut self,
-    ) -> std::result::Result<Attribute, Error> {
+    fn read_rule_element_attribute(&mut self) -> std::result::Result<Attribute, Error> {
         if self.peek_token(token::ATTRIBUTE_START)? {
             if let Some(token) = self.next_token()? {
                 match token.name() {
@@ -623,16 +595,10 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
                         let name = token.content().into();
                         Ok(Attribute::Named(name))
                     }
-                    token::INTEGER => {
-                        Ok(Attribute::Indexed(token.content().parse().unwrap()))
-                    }
+                    token::INTEGER => Ok(Attribute::Indexed(token.content().parse().unwrap())),
                     found_token => self.generate_error(
                         token.location().clone(),
-                        formatcp!(
-                            "{} or {}",
-                            token::IDENTIFIER,
-                            token::INTEGER
-                        ),
+                        formatcp!("{} or {}", token::IDENTIFIER, token::INTEGER),
                         found_token,
                     ),
                 }
@@ -648,9 +614,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         }
     }
 
-    fn read_rule_element_key(
-        &mut self,
-    ) -> std::result::Result<Option<Key>, Error> {
+    fn read_rule_element_key(&mut self) -> std::result::Result<Option<Key>, Error> {
         if self.peek_token(token::KEY_START)? {
             Ok(Some(self.read_token(token::IDENTIFIER)?.content().into()))
         } else {
@@ -668,7 +632,8 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
                 return ErrorKind::GrammarTerminalInvocation {
                     terminal: name.to_string(),
                     span: Fragile::new(span),
-                }.err();
+                }
+                .err();
             }
             PartialElementType::Terminal(id)
         } else {
@@ -699,11 +664,7 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
                 found => {
                     return self.generate_error(
                         token.location().clone(),
-                        formatcp!(
-                            "{} or {}",
-                            token::LEFT_ASSOC,
-                            token::RIGHT_ASSOC
-                        ),
+                        formatcp!("{} or {}", token::LEFT_ASSOC, token::RIGHT_ASSOC),
                         found,
                     )
                 }
@@ -724,18 +685,13 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
                     });
                 }
                 token::IDENTIFIER => {
-                    let element =
-                        self.read_rule_element(token.content().into())?;
+                    let element = self.read_rule_element(token.content().into())?;
                     rule_elements.push(element);
                 }
                 found_token => {
                     return self.generate_error(
                         token.location().clone(),
-                        formatcp!(
-                            "{} or {}",
-                            token::IDENTIFIER,
-                            token::PROXY_START
-                        ),
+                        formatcp!("{} or {}", token::IDENTIFIER, token::PROXY_START),
                         found_token,
                     )
                 }
@@ -758,32 +714,25 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
             }
         });
         let axiom = self.peek_token(token::KEY_START)?;
-        let definition_name_token = match self
-            .lexed_input
-            .next_any()?
-            .unpack_into(&mut self.warnings)
-        {
-            Some(token) => {
-                if token.name() == token::IDENTIFIER {
-                    token
-                } else {
-                    let location = token.location().clone();
-                    let name = token.name().to_string();
-                    return self.generate_error(
-                        location,
-                        token::IDENTIFIER,
-                        name.as_str(),
-                    );
+        let definition_name_token =
+            match self.lexed_input.next_any()?.unpack_into(&mut self.warnings) {
+                Some(token) => {
+                    if token.name() == token::IDENTIFIER {
+                        token
+                    } else {
+                        let location = token.location().clone();
+                        let name = token.name().to_string();
+                        return self.generate_error(location, token::IDENTIFIER, name.as_str());
+                    }
                 }
-            }
-            None => {
-                if axiom {
-                    todo!()
-                } else {
-                    return Ok(false);
+                None => {
+                    if axiom {
+                        todo!()
+                    } else {
+                        return Ok(false);
+                    }
                 }
-            }
-        };
+            };
         let definition_name: Rc<str> = definition_name_token.content().into();
         if let Some(_old_location) = self.found_declarations.insert(
             definition_name.clone(),
@@ -842,12 +791,8 @@ impl<'lexer, 'stream> GrammarReader<'lexer, 'stream> {
         while self.read_definition()? {}
         let mut rules = GrammarRules::new();
         while let Some((id, partial_rule)) = self.rules.pop() {
-            let rule = partial_rule.complete_to_rule(
-                id,
-                &mut rules,
-                &mut self,
-                &HashMap::new(),
-            );
+            let rule =
+                partial_rule.complete_to_rule(id, &mut rules, &mut self, &HashMap::new());
             rules.push(rule);
         }
         self.warnings.with_ok((
@@ -870,10 +815,7 @@ pub trait GrammarBuilder<'deserializer>: Sized {
     fn with_file(self, file: impl Into<Rc<Path>>) -> Result<Self> {
         let file = file.into();
         let warnings = WarningSet::empty();
-        Ok(
-            warnings
-                .on(StringStream::from_file(file)?, |x| self.with_stream(x)),
-        )
+        Ok(warnings.on(StringStream::from_file(file)?, |x| self.with_stream(x)))
     }
     /// Build with the given stream.
     fn with_stream(self, stream: StringStream) -> Self;
@@ -897,9 +839,8 @@ pub trait GrammarBuilder<'deserializer>: Sized {
                 .unpack_into(&mut warnings);
         let number_of_nonterminals = name_of.len_as();
         let axioms = Axioms::from_vec(number_of_nonterminals, axioms_vec);
-        let grammar =
-            Self::Grammar::new(rules, axioms, id_of, name_of, description_of)?
-                .unpack_into(&mut warnings);
+        let grammar = Self::Grammar::new(rules, axioms, id_of, name_of, description_of)?
+            .unpack_into(&mut warnings);
 
         warnings.with_ok(grammar)
     }
@@ -916,9 +857,7 @@ pub trait Grammar<'d>: Sized + Serialize + Deserialize<'d> {
     ) -> Result<Self>;
 
     fn deserialize(bytes: &'d [u8]) -> Result<Self> {
-        WarningSet::empty_with_ok(bincode::deserialize::<'d, Self>(
-            bytes,
-        )?)
+        WarningSet::empty_with_ok(bincode::deserialize::<'d, Self>(bytes)?)
     }
 
     fn name_of(&self, id: NonTerminalId) -> Rc<str>;

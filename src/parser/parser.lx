@@ -6,8 +6,8 @@ keyword RIGHT ::= right-assoc
 keyword SELF ::= Self
 
 AT ::= @
-ID ::= (\w+)
 INT ::= (\d+)
+ID ::= (\w+)
 DEF ::= ::=
 
 SEMICOLON ::= ;

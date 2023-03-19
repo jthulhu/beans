@@ -162,7 +162,7 @@ impl Tree for Element {
         let mut node = node!(ast);
         Self {
             item: Item::read(get!(node => item)),
-            attribute: Option::read(get!(node => attr)),
+            attribute: Option::read(get!(node => attribute)),
             key: Option::read(get!(node => key)),
         }
     }
@@ -179,7 +179,7 @@ impl Tree for Item {
     fn read(ast: AST) -> Self {
         let mut node = node!(ast);
         match_variant! {(node) {
-	    SelfNonTerminal => Self::SelfNonTerminal,
+        SelfNonTerminal => Self::SelfNonTerminal,
             Regular => Self::Regular { name: value!(node => name) },
             MacroInvocation => Self::MacroInvocation {
             name: value!(node => name),
@@ -198,11 +198,14 @@ pub(super) struct Attribute {
 impl Tree for Attribute {
     fn read(ast: AST) -> Self {
         let mut node = node!(ast);
-	let named = match_variant! [(node) {
-	    Named => true,
-	    Indexed => false,
-	}];
-	Self { attribute: value!(node => attribute), named }
+        let named = match_variant! [(node) {
+            Named => true,
+            Indexed => false,
+        }];
+        Self {
+            attribute: value!(node => attribute),
+            named,
+        }
     }
 }
 
@@ -225,10 +228,7 @@ pub(super) struct Proxy {
 impl Tree for Proxy {
     fn read(ast: AST) -> Self {
         let mut node = node!(ast);
-	println!("Reading proxy...");
-	println!("{node:#?}");
         let vec_items: Vec<ProxyItem> = Vec::read(get!(node => through));
-	println!("Done reading proxy.");
         let mut items = HashMap::new();
         let mut variant = None;
         for item in vec_items {
@@ -250,9 +250,8 @@ pub(super) enum ProxyItem {
 impl Tree for ProxyItem {
     fn read(ast: AST) -> Self {
         let mut node = node!(ast);
-	println!("{node:#?}");
         match_variant! {(node) {
-            Variant => Self::Variant(value!(node => variant)),
+            Variant => Self::Variant(value!(node => var)),
             Entry => Self::Entry {
             key: value!(node => key),
             value: Expression::read(get!(node => value)),
@@ -275,16 +274,15 @@ pub(super) enum Expression {
 impl Tree for Expression {
     fn read(ast: AST) -> Self {
         let mut node = node!(ast);
-	println!("Reading expression...");
         let res = match_variant! {(node) {
             String => Self::String(value!(node => value)),
-	    Id => Self::Id(value!(node => name)),
+        Id => Self::Id(value!(node => name)),
             Instanciation => {
             let mut variant = None;
             let mut children = HashMap::new();
             for item in Vec::read(get!(node => children)) {
                 match item {
-                ProxyItem::Variant(var) => variant = Some(var), 
+                ProxyItem::Variant(var) => variant = Some(var),
                 ProxyItem::Entry { key, value } =>
                     drop(children.insert(key, value)),
                 }
@@ -296,7 +294,6 @@ impl Tree for Expression {
             }
             }
         }};
-	println!("Done expression");
-	res
+        res
     }
 }

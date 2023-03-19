@@ -62,13 +62,10 @@ mod tests {
                 .build()
         );
         assert_eq!(
-            *LexerGrammar::build_from_plain(StringStream::new(
-                Path::new("whatever"),
-                ""
-            ))
-            .unwrap()
-            .unwrap()
-            .pattern(),
+            *LexerGrammar::build_from_plain(StringStream::new(Path::new("whatever"), ""))
+                .unwrap()
+                .unwrap()
+                .pattern(),
             RegexBuilder::new().build()
         );
     }
@@ -158,7 +155,7 @@ newty! {
 //             Some("clx") => {
 //                 let mut file = File::open(path)?;
 //                 let mut buffer = Vec::new();
-//                 file.read(&mut buffer)?;
+//                 file.read_to_end(&mut buffer)?;
 //                 return warnings.with_ok(deserialize(&buffer)?);
 //             }
 //             Some("lx") => {
@@ -542,11 +539,12 @@ impl LexerGrammar {
 impl Buildable for LexerGrammar {
     const RAW_EXTENSION: &'static str = "lx";
     const COMPILED_EXTENSION: &'static str = "clx";
+    const AST_EXTENSION: &'static str = "lx.ast";
 
     fn build_from_ast(ast: AST) -> Result<Self> {
         let typed_ast = Ast::read(ast);
 
-        let mut warnings = WarningSet::empty();
+        let warnings = WarningSet::empty();
         let mut ignores = Ignores::with_raw_capacity(typed_ast.terminals.len());
         let mut errors = Errors::new();
         let mut descriptions = Descriptions::new();
@@ -575,9 +573,7 @@ impl Buildable for LexerGrammar {
             }
             names.push(terminal.name.to_string());
 
-            if let Some(_span) =
-                found_identifiers.insert(terminal.name.clone(), ())
-            {
+            if let Some(_span) = found_identifiers.insert(terminal.name.clone(), ()) {
                 return ErrorKind::GrammarDuplicateDefinition {
                     message: terminal.name.to_string(),
                     span: todo!(),
@@ -587,11 +583,7 @@ impl Buildable for LexerGrammar {
             }
 
             regex_builder = regex_builder
-                .with_named_regex(
-                    &terminal.regex,
-                    terminal.name.to_string(),
-                    terminal.keyword,
-                )
+                .with_named_regex(&terminal.regex, terminal.name.to_string(), terminal.keyword)
                 .map_err(|error| {
                     Error::new(ErrorKind::RegexError {
                         message: error.message,
@@ -608,17 +600,15 @@ impl Buildable for LexerGrammar {
     }
 
     fn build_from_plain(mut source: StringStream) -> Result<Self> {
-	println!("build_from_plain: {:?}", source);
         let mut warnings = WarningSet::empty();
         let (lexer, parser) = build_system!(
-            lexer => "lexer.lx.ast",
-            parser => "lexer.gr.ast",
+            lexer => "lexer.clx",
+            parser => "lexer.cgr",
         )?
         .unpack_into(&mut warnings);
         let mut input = lexer.lex(&mut source);
         let result = parser.parse(&mut input)?.unpack_into(&mut warnings);
-        let grammar =
-            Self::build_from_ast(result.tree)?.unpack_into(&mut warnings);
+        let grammar = Self::build_from_ast(result.tree)?.unpack_into(&mut warnings);
         warnings.with_ok(grammar)
     }
 }

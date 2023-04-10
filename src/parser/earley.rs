@@ -1,12 +1,19 @@
 use super::ast::{
     Ast, Attribute as AstAttribute, Proxy as AstProxy, Rule as AstRule, ToplevelDeclaration,
 };
-use super::grammarparser::{
-    Axioms, ElementType, Grammar, GrammarBuilder, NonTerminalDescription, NonTerminalName,
-    Rule, RuleElement,
+// use super::grammarparser::{
+//     Axioms, NonTerminalDescription, NonTerminalName,
+//     Rule, Element,
+// };
+use super::grammar::{
+    Attribute, Axioms, Element, ElementType, NonTerminalDescription, NonTerminalName,
+    Nullables, Proxy, Rule, RuleId, Rules, ValueTemplate,
 };
-use super::parser::{NonTerminalId, ParseResult, Parser, RuleId};
+// use crate::parser::grammarparser::{Attribute, Proxy, ValueTemplate};
+use super::ast::{Element as AstElement, Expression, Item};
+use super::parser::{NonTerminalId, ParseResult, Parser};
 use super::parser::{Value, AST};
+use crate::build_system;
 use crate::builder::{select_format, Buildable, FileResult, Format};
 use crate::error::{Error, Result};
 use crate::error::{ErrorKind, WarningSet};
@@ -14,12 +21,9 @@ use crate::lexer::Token;
 use crate::lexer::{LexedStream, Lexer};
 use crate::lexer::{LexerGrammar, TerminalId};
 use crate::list::List;
-use crate::parser::ast::{Element, Expression, Item};
-use crate::parser::grammarparser::{Attribute, Proxy, ValueTemplate};
 use crate::regex::Allowed;
 use crate::stream::StringStream;
 use crate::typed::Tree;
-use crate::build_system;
 use bincode::deserialize;
 use fragile::Fragile;
 use itertools::Itertools;
@@ -126,15 +130,6 @@ impl fmt::Display for FinalItem {
     }
 }
 
-newty! {
-    #[derive(serde::Serialize, serde::Deserialize)]
-    pub vec GrammarRules(Rule)[RuleId]
-}
-
-newty! {
-    pub set Nullables[NonTerminalId]
-}
-
 /// # Summary
 /// `EarleyGrammar` is a grammar that uses the Earley algorithm.
 /// The general worst-time complexity for a context-free grammar is `O(n³)`.
@@ -146,7 +141,7 @@ pub struct EarleyGrammar {
     /// The axioms, indexed by RuleId.
     axioms: Axioms,
     /// The rules. The rule index is its identifier.
-    rules: GrammarRules,
+    rules: Rules,
     /// The nullables, indexed by NonTerminalId.
     nullables: Nullables,
     /// Maps the name of a non-terminal to its identifier.
@@ -165,9 +160,9 @@ impl EarleyGrammar {
     }
 }
 
-impl Grammar<'_> for EarleyGrammar {
-    fn new(
-        rules: GrammarRules,
+impl EarleyGrammar {
+    pub fn new(
+        rules: Rules,
         axioms: Axioms,
         id_of: HashMap<Rc<str>, NonTerminalId>,
         name_of: NonTerminalName,
@@ -225,15 +220,15 @@ impl Grammar<'_> for EarleyGrammar {
         })
     }
 
-    fn name_of(&self, id: NonTerminalId) -> Rc<str> {
+    pub fn name_of(&self, id: NonTerminalId) -> Rc<str> {
         self.name_of[id].clone()
     }
 
-    fn description_of(&self, id: NonTerminalId) -> Option<Rc<str>> {
+    pub fn description_of(&self, id: NonTerminalId) -> Option<Rc<str>> {
         self.description_of[id].as_ref().cloned()
     }
 
-    fn id_of(&self, name: Rc<str>) -> NonTerminalId {
+    pub fn id_of(&self, name: Rc<str>) -> NonTerminalId {
         self.id_of[&name]
     }
 }
@@ -243,11 +238,11 @@ impl EarleyGrammar {
     const COMPILED_EXTENSION: &str = "cgr";
     const AST_EXTENSION: &str = "gr.ast";
 
-    fn build_from_compiled(blob: &[u8]) -> Result<Self> {
+    pub fn build_from_compiled(blob: &[u8]) -> Result<Self> {
         WarningSet::empty_with_ok(deserialize(blob)?)
     }
 
-    fn build_from_ast(ast: AST, lexer_grammar: &LexerGrammar) -> Result<Self> {
+    pub fn build_from_ast(ast: AST, lexer_grammar: &LexerGrammar) -> Result<Self> {
         type InvokedMacros = HashMap<(Rc<str>, Rc<[ElementType]>), NonTerminalId>;
         type MacroDeclarations = HashMap<Rc<str>, (Vec<Rc<str>>, Vec<AstRule>)>;
 
@@ -303,7 +298,7 @@ impl EarleyGrammar {
             rule: &AstRule,
             macro_id: NonTerminalId,
             available_id: &mut NonTerminalId,
-            rules: &mut GrammarRules,
+            rules: &mut Rules,
             invoked_macros: &mut InvokedMacros,
             name_of: &mut NonTerminalName,
             description_of: &mut NonTerminalDescription,
@@ -357,7 +352,7 @@ impl EarleyGrammar {
             args: Rc<[ElementType]>,
             macro_id: NonTerminalId,
             available_id: &mut NonTerminalId,
-            rules: &mut GrammarRules,
+            rules: &mut Rules,
             invoked_macros: &mut InvokedMacros,
             name_of: &mut NonTerminalName,
             description_of: &mut NonTerminalDescription,
@@ -416,7 +411,7 @@ impl EarleyGrammar {
             expr: &Item,
             self_id: NonTerminalId,
             available_id: &mut NonTerminalId,
-            rules: &mut GrammarRules,
+            rules: &mut Rules,
             invoked_macros: &mut InvokedMacros,
             name_of: &mut NonTerminalName,
             description_of: &mut NonTerminalDescription,
@@ -508,10 +503,10 @@ impl EarleyGrammar {
         }
 
         fn eval_element(
-            element: &Element,
+            element: &AstElement,
             id: NonTerminalId,
             available_id: &mut NonTerminalId,
-            rules: &mut GrammarRules,
+            rules: &mut Rules,
             invoked_macros: &mut InvokedMacros,
             name_of: &mut NonTerminalName,
             description_of: &mut NonTerminalDescription,
@@ -520,7 +515,7 @@ impl EarleyGrammar {
             macro_declarations: &MacroDeclarations,
             scope: &HashMap<Rc<str>, ElementType>,
             lexer_grammar: &LexerGrammar,
-        ) -> Result<RuleElement> {
+        ) -> Result<Element> {
             let mut warnings = WarningSet::empty();
             let attribute = match &element.attribute {
                 Some(AstAttribute {
@@ -554,14 +549,14 @@ impl EarleyGrammar {
                 lexer_grammar,
             )?
             .unpack_into(&mut warnings);
-            warnings.with_ok(RuleElement::new(attribute, key, element_type))
+            warnings.with_ok(Element::new(attribute, key, element_type))
         }
 
         fn eval_proxy(
             proxy: &AstProxy,
             id: NonTerminalId,
             available_id: &mut NonTerminalId,
-            rules: &mut GrammarRules,
+            rules: &mut Rules,
             invoked_macros: &mut InvokedMacros,
             found_nonterminals: &HashMap<Rc<str>, NonTerminalId>,
             macro_declarations: &MacroDeclarations,
@@ -570,12 +565,12 @@ impl EarleyGrammar {
             let mut warnings = WarningSet::empty();
             let mut actual_proxy = HashMap::new();
             if let Some(ref variant) = proxy.variant {
-                actual_proxy.insert("variant".into(), ValueTemplate::Str(variant.clone()));
+                actual_proxy.insert("variant".into(), ValueTemplate::String(variant.clone()));
             }
             for (key, expression) in proxy.items.iter() {
                 let value = match expression {
-                    Expression::String(string) => ValueTemplate::Str(string.clone()),
-                    Expression::Id(id) => ValueTemplate::Id(id.clone()),
+                    Expression::String(string) => ValueTemplate::String(string.clone()),
+                    Expression::Id(id) => ValueTemplate::Variable(id.clone()),
                     Expression::Instanciation {
                         name,
                         children,
@@ -601,7 +596,7 @@ impl EarleyGrammar {
                         )?
                         .unpack_into(&mut warnings);
                         ValueTemplate::InlineRule {
-                            nonterminal: *nonterminal,
+                            non_terminal: *nonterminal,
                             attributes,
                         }
                     }
@@ -613,7 +608,7 @@ impl EarleyGrammar {
 
         let mut invoked_macros: InvokedMacros = HashMap::new();
         let mut found_axioms = Vec::new();
-        let mut rules = GrammarRules::new();
+        let mut rules = Rules::new();
         let empty_scope = HashMap::new();
         for (declaration, id) in non_terminal_declarations {
             if declaration.axiom {
@@ -647,7 +642,7 @@ impl EarleyGrammar {
         warnings.with_ok(res)
     }
 
-    fn build_from_plain(
+    pub fn build_from_plain(
         mut source: StringStream,
         lexer_grammar: &LexerGrammar,
     ) -> Result<Self> {
@@ -664,7 +659,7 @@ impl EarleyGrammar {
         warnings.with_ok(grammar)
     }
 
-    fn build_from_path(path: &Path, lexer_grammar: &LexerGrammar) -> Result<Self> {
+    pub fn build_from_path(path: &Path, lexer_grammar: &LexerGrammar) -> Result<Self> {
         let mut warnings = WarningSet::empty();
         let ast: AST = match select_format(
             path,
@@ -712,7 +707,11 @@ impl EarleyGrammar {
         warnings.with_ok(parser)
     }
 
-    fn build_from_blob(blob: &[u8], path: &Path, lexer_grammar: &LexerGrammar) -> Result<Self> {
+    pub fn build_from_blob(
+        blob: &[u8],
+        path: &Path,
+        lexer_grammar: &LexerGrammar,
+    ) -> Result<Self> {
         let mut warnings = WarningSet::empty();
         let ast: AST = match select_format(
             path,
@@ -1011,7 +1010,7 @@ impl EarleyParser {
             SyntaxicItemKind::Token(_) => Vec::new(),
         }
     }
-    
+
     fn build_ast(&self, item: SyntaxicItem, forest: &[FinalSet], raw_input: &[Token]) -> AST {
         match item.kind {
             SyntaxicItemKind::Rule(rule) => {
@@ -1061,13 +1060,7 @@ impl EarleyParser {
                     .map(|(key, wanted)| {
                         (
                             key.clone(),
-                            wanted.evaluate(
-                                nonterminal,
-                                &all_attributes,
-                                &mut removed,
-                                &self.grammar().id_of,
-                                &span,
-                            ),
+                            wanted.evaluate(&all_attributes, &mut removed, &span),
                         )
                     })
                     .collect();
@@ -1229,7 +1222,7 @@ impl EarleyParser {
                     // Completion
                     None => {
                         for &parent in sets[item.origin].slice() {
-                            if let Some(RuleElement {
+                            if let Some(Element {
                                 element_type: ElementType::NonTerminal(nonterminal),
                                 ..
                             }) = self.grammar().rules[parent.rule]
@@ -1327,7 +1320,6 @@ impl EarleyParser {
 }
 
 impl Parser<'_> for EarleyParser {
-    type GrammarBuilder = EarleyGrammarBuilder;
     type Grammar = EarleyGrammar;
 
     fn new(grammar: Self::Grammar) -> Self {
@@ -1380,8 +1372,6 @@ mod tests {
     use crate::lexer::LexerGrammar;
     // use crate::printer::print_ast;
     use crate::rules;
-
-    use crate::parser::grammarparser::{Attribute, ElementType, Key, Proxy, Rule, RuleElement};
 
     const GRAMMAR_NUMBERS_LEXER: &str = r#"
 NUMBER ::= ([0-9])
@@ -1791,7 +1781,7 @@ RPAR ::= \)
 
     #[inline]
     fn verify(
-        rules1: &GrammarRules,
+        rules1: &Rules,
         rules2: &[TestRule],
         parser_grammar: &EarleyGrammar,
         lexer_grammar: &LexerGrammar,

@@ -108,7 +108,7 @@ impl Tree for Declaration {
 pub(super) struct At;
 
 impl Tree for At {
-    fn read(ast: AST) -> Self {
+    fn read(_: AST) -> Self {
         Self
     }
 }

@@ -82,7 +82,7 @@ pub trait Buildable: Sized {
                 let result = Self::build_from_compiled(&blob)?.unpack_into(&mut warnings);
                 return warnings.with_ok(result);
             }
-            FileResult::Valid((actual_path, Format::Ast)) => {
+            FileResult::Valid((_, Format::Ast)) => {
                 let string = std::str::from_utf8(blob).map_err(|_| -> Error { todo!() })?;
                 serde_json::from_str(string).map_err(|_err| Error::new(todo!()))?
             }

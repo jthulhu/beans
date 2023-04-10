@@ -1,4 +1,3 @@
-use super::grammarparser::{Grammar, GrammarBuilder};
 use crate::error::Result;
 use crate::lexer::{LexedStream, Token};
 use crate::span::Span;
@@ -7,10 +6,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::rc::Rc;
 
-newty! {
-    #[derive(PartialOrd, Ord)]
-    pub id RuleId
-}
 newty! {
     pub id NonTerminalId
     impl {
@@ -53,9 +48,7 @@ pub struct ParseResult {
 /// parse a [`LexedStream`] following the grammar.
 pub trait Parser<'deserializer> {
     /// The grammar given to the parser.
-    type Grammar: Grammar<'deserializer>;
-    /// The builder type for the grammar.
-    type GrammarBuilder: GrammarBuilder<'deserializer, Grammar = Self::Grammar>;
+    type Grammar;
     /// Getter to the grammar.
     fn grammar(&self) -> &Self::Grammar;
     /// Create a new parser.

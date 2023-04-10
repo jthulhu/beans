@@ -2,8 +2,7 @@ use anyhow::Context;
 use beans::builder::Buildable;
 use beans::error::{ErrorKind, WarningSet, WithWarnings};
 use beans::lexer::{Lexer, LexerGrammar};
-use beans::parser::earley::{print_final_sets, print_sets, EarleyGrammarBuilder, EarleyParser};
-use beans::parser::GrammarBuilder;
+use beans::parser::earley::{print_final_sets, print_sets, EarleyGrammar, EarleyParser};
 use beans::parser::Parser;
 use beans::printer::print_ast;
 use beans::regex::Allowed;
@@ -100,11 +99,11 @@ fn compile(compile_action: CompileAction) -> anyhow::Result<WithWarnings<()>> {
             lexer_path,
         } => {
             let lexer = Lexer::build_from_path(&lexer_path)?.unpack_into(&mut warnings);
-            let parser_grammar = EarleyGrammarBuilder::default()
-                .with_file(parser_grammar_path.as_path())?
-                .unpack_into(&mut warnings)
-                .build(&lexer)?
-                .unpack_into(&mut warnings);
+            let parser_grammar = EarleyGrammar::build_from_path(
+                &parser_grammar_path.as_path(),
+                lexer.grammar(),
+            )?
+            .unpack_into(&mut warnings);
             let output = match output_path {
                 Some(output) => output,
                 None => {
@@ -152,19 +151,17 @@ fn main() -> anyhow::Result<()> {
             source,
         } => {
             let lexer = Lexer::build_from_path(&lexer_grammar_path)?.unpack_into(&mut warnings);
-            let parser_grammar =
-                if let Some("cgr") = parser_grammar_path.extension().and_then(|x| x.to_str()) {
-                    let mut buffer = Vec::new();
-                    let mut fd = File::open(parser_grammar_path.as_path())?;
-                    fd.read_to_end(&mut buffer)?;
-                    deserialize(&buffer)?
-                } else {
-                    EarleyGrammarBuilder::default()
-                        .with_file(parser_grammar_path.as_path())?
-                        .unpack_into(&mut warnings)
-                        .build(&lexer)?
-                        .unpack_into(&mut warnings)
-                };
+            let parser_grammar = if let Some("cgr") =
+                parser_grammar_path.extension().and_then(|x| x.to_str())
+            {
+                let mut buffer = Vec::new();
+                let mut fd = File::open(parser_grammar_path.as_path())?;
+                fd.read_to_end(&mut buffer)?;
+                deserialize(&buffer)?
+            } else {
+                EarleyGrammar::build_from_path(parser_grammar_path.as_path(), lexer.grammar())?
+                    .unpack_into(&mut warnings)
+            };
             let parser = EarleyParser::new(parser_grammar);
             // let (table, raw_input) =
             //     EarleyParser::recognise(

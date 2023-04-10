@@ -24,65 +24,9 @@ use serde::{Deserialize, Serialize};
 /// and the one of `i` is `(1, 2)`.
 pub type Location = (usize, usize);
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn location() {
-        let input: Rc<str> = Rc::from(
-            "01234
-56789abcdef",
-        );
-        let lines: Rc<[usize]> = vec![0, 6].into();
-        let span = Span::new(
-            Path::new("a cool filename"),
-            (0, 3),
-            (1, 6),
-            3,
-            11,
-            input.clone(),
-            lines.clone(),
-        );
-        assert_eq!(&*span.file(), Path::new("a cool filename"));
-        assert_eq!(span.start(), (0, 3));
-        assert_eq!(span.end(), (1, 6));
-        assert_eq!(span.start_byte(), 3);
-        assert_eq!(span.end_byte(), 11);
-        // assert_eq!(span.text(), &*input);
-        // assert_eq!(span.lines(), &*lines);
-        let span = Span::new(
-            Path::new(""),
-            (0, 0),
-            (0, 0),
-            0,
-            0,
-            input.clone(),
-            lines.clone(),
-        );
-        assert_eq!(&*span.file(), Path::new(""));
-        assert_eq!(span.start(), (0, 0));
-        assert_eq!(span.end(), (0, 0));
-        assert_eq!(span.start_byte(), 0);
-        assert_eq!(span.end_byte(), 0);
-        // assert_eq!(span.text(), &*input);
-        // assert_eq!(span.lines(), &*lines);
-    }
-
-    #[test]
-    #[should_panic]
-    fn wrong_location() {
-        Span::new(Path::new("some file"), (1, 0), (0, 0), 1, 0, "", Vec::new());
-    }
-    #[test]
-    #[should_panic]
-    fn wrong_location2() {
-        Span::new(Path::new("some file"), (1, 5), (1, 3), 8, 6, "", Vec::new());
-    }
-}
-
 /// # Summary
 ///
-/// Stores the location of any bit of information that is bound to a file.
+/// Stores the span of any bit of information that is bound to a file.
 /// Asks a start position (inclusive) and an end position (inclusive).
 /// This means that if my chunk of data is one character long,
 /// and starts at the beginning of the file `myfile`, the location
@@ -101,8 +45,8 @@ mod tests {
 ///     (0, 0),
 ///     0,
 ///     0,
-///     "a",
-///     vec![0],
+/// # //    "a",
+/// # //    vec![0],
 /// );
 /// ```
 ///
@@ -113,7 +57,7 @@ mod tests {
 /// ghi
 /// ```
 ///
-/// Here, the location of `c def/gh` is
+/// Here, the span of `c def/gh` is
 ///
 /// ```rust
 /// # use beans::span::Span;
@@ -124,8 +68,8 @@ mod tests {
 ///   (1, 2),
 ///   4,
 ///   8,
-///   "abcde\nbel",
-///   vec![0, 6],
+/// # //  "abcde\nbel",
+/// # //  vec![0, 6],
 /// )
 /// # ;
 /// ```
@@ -264,5 +208,61 @@ impl Span {
 impl From<&Span> for Fragile<Span> {
     fn from(location: &Span) -> Fragile<Span> {
         Fragile::new(location.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn location() {
+        let input: Rc<str> = Rc::from(
+            "01234
+56789abcdef",
+        );
+        let lines: Rc<[usize]> = vec![0, 6].into();
+        let span = Span::new(
+            Path::new("a cool filename"),
+            (0, 3),
+            (1, 6),
+            3,
+            11,
+            input.clone(),
+            lines.clone(),
+        );
+        assert_eq!(&*span.file(), Path::new("a cool filename"));
+        assert_eq!(span.start(), (0, 3));
+        assert_eq!(span.end(), (1, 6));
+        assert_eq!(span.start_byte(), 3);
+        assert_eq!(span.end_byte(), 11);
+        // assert_eq!(span.text(), &*input);
+        // assert_eq!(span.lines(), &*lines);
+        let span = Span::new(
+            Path::new(""),
+            (0, 0),
+            (0, 0),
+            0,
+            0,
+            input.clone(),
+            lines.clone(),
+        );
+        assert_eq!(&*span.file(), Path::new(""));
+        assert_eq!(span.start(), (0, 0));
+        assert_eq!(span.end(), (0, 0));
+        assert_eq!(span.start_byte(), 0);
+        assert_eq!(span.end_byte(), 0);
+        // assert_eq!(span.text(), &*input);
+        // assert_eq!(span.lines(), &*lines);
+    }
+
+    #[test]
+    #[should_panic]
+    fn wrong_location() {
+        Span::new(Path::new("some file"), (1, 0), (0, 0), 1, 0, "", Vec::new());
+    }
+    #[test]
+    #[should_panic]
+    fn wrong_location2() {
+        Span::new(Path::new("some file"), (1, 5), (1, 3), 8, 6, "", Vec::new());
     }
 }

@@ -19,7 +19,7 @@ use crate::parser::grammarparser::{Attribute, Proxy, ValueTemplate};
 use crate::regex::Allowed;
 use crate::stream::StringStream;
 use crate::typed::Tree;
-use crate::{build_system, retrieve};
+use crate::build_system;
 use bincode::deserialize;
 use fragile::Fragile;
 use itertools::Itertools;
@@ -92,67 +92,6 @@ newty! {
 
 newty! {
     pub vec IsIn(Vec<RuleId>)[NonTerminalId]
-}
-
-/// A builder for the Earley grammar.
-#[derive(Debug)]
-pub struct EarleyGrammarBuilder {
-    stream: Option<StringStream>,
-    grammar_lexer: Option<Lexer>,
-}
-
-impl EarleyGrammarBuilder {
-    /// Create a new builder. It takes an Rc of a string refearing to the grammar.
-    pub fn new() -> Self {
-        Self {
-            stream: None,
-            grammar_lexer: None,
-        }
-    }
-}
-
-impl GrammarBuilder<'_> for EarleyGrammarBuilder {
-    type Grammar = EarleyGrammar;
-
-    fn with_stream(mut self, stream: StringStream) -> Self {
-        self.stream = Some(stream);
-        self
-    }
-
-    fn with_grammar_file(mut self, grammar: impl Into<Rc<Path>>) -> Result<Self> {
-        let mut warnings = WarningSet::empty();
-        self.grammar_lexer =
-            Some(Lexer::build_from_path(&grammar.into())?.unpack_into(&mut warnings));
-        warnings.with_ok(self)
-    }
-
-    fn with_grammar_stream(mut self, grammar_stream: StringStream) -> Result<Self> {
-        let mut warnings = WarningSet::empty();
-        self.grammar_lexer =
-            Some(Lexer::build_from_plain(grammar_stream)?.unpack_into(&mut warnings));
-        warnings.with_ok(self)
-    }
-
-    fn stream<'ws>(&mut self) -> Result<StringStream> {
-        let stream = retrieve!(self.stream);
-        Ok(WarningSet::empty_with(stream))
-    }
-
-    fn grammar_lexer(&mut self) -> Result<Lexer> {
-        Ok(WarningSet::empty_with(retrieve!(self.grammar_lexer)))
-    }
-}
-
-impl Default for EarleyGrammarBuilder {
-    fn default() -> Self {
-        Self::new()
-            .with_grammar_stream(StringStream::new(
-                Path::new("gmrs/earley.lx"),
-                include_str!("gmrs/earley.lx"),
-            ))
-            .unwrap()
-            .unwrap()
-    }
 }
 
 /// # Summary
@@ -784,17 +723,14 @@ impl EarleyGrammar {
             ],
         ) {
             FileResult::Valid((_, Format::Compiled)) => {
-		println!("Parser: compiled");
                 let result = Self::build_from_compiled(&blob)?.unpack_into(&mut warnings);
                 return warnings.with_ok(result);
             }
-            FileResult::Valid((actual_path, Format::Ast)) => {
-		println!("Parser: ast");
+            FileResult::Valid((_, Format::Ast)) => {
                 let string = std::str::from_utf8(blob).map_err(|_| Error::new(todo!()))?;
                 serde_json::from_str(string).map_err(|_| Error::new(todo!()))?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
-		println!("Parser: plain");
                 let string =
                     String::from_utf8(blob.to_vec()).map_err(|_err| Error::new(todo!()))?;
                 let stream = StringStream::new(actual_path, string);
@@ -820,54 +756,6 @@ impl EarleyGrammar {
         warnings.with_ok(grammar)
     }
 }
-
-// impl Buildable for EarleyGrammar {
-//     const RAW_EXTENSION: &'static str = "gr";
-//     const COMPILED_EXTENSION: &'static str = "cgr";
-
-//     fn build_from_ast(ast: AST) -> Result<Self> {
-//         let typed_ast = Ast::read(ast);
-//         let mut declarations = HashMap::new();
-//         let mut rules_declarations = Vec::new();
-//         for decl in typed_ast.decls {
-//             match decl {
-//                 ToplevelDeclaration::Macro(macro_decl) => {
-//                     if declarations
-//                         .insert(
-//                             macro_decl.name,
-//                             (macro_decl.args, macro_decl.rules),
-//                         )
-//                         .is_some()
-//                     {
-//                         return todo!(); // fail
-//                     }
-//                 }
-//                 ToplevelDeclaration::Decl(decl) => {
-// 		    rules_declarations.push(decl);
-// 		}
-//             }
-//         }
-//         todo!()
-//     }
-
-//     fn build_from_compiled(blob: &[u8]) -> Result<Self> {
-//         WarningSet::empty().with_ok(deserialize(blob)?)
-//     }
-
-//     fn build_from_plain(mut source: StringStream) -> Result<Self> {
-//         let mut warnings = WarningSet::empty();
-//         let (lexer, parser) = build_system!(
-//             lexer => "parser.clx",
-//             parser => "parser.cgr",
-//         )?
-//         .unpack_into(&mut warnings);
-//         let mut input = lexer.lex(&mut source);
-//         let result = parser.parse(&mut input)?.unpack_into(&mut warnings);
-//         let grammar =
-//             Self::build_from_ast(result.tree)?.unpack_into(&mut warnings);
-//         warnings.with_ok(grammar)
-//     }
-// }
 
 newty! {
     id FinalItemId
@@ -1123,6 +1011,7 @@ impl EarleyParser {
             SyntaxicItemKind::Token(_) => Vec::new(),
         }
     }
+    
     fn build_ast(&self, item: SyntaxicItem, forest: &[FinalSet], raw_input: &[Token]) -> AST {
         match item.kind {
             SyntaxicItemKind::Rule(rule) => {
@@ -1824,7 +1713,6 @@ RPAR ::= \)
     }
 
     impl TestToken {
-        #![allow(unused)]
         fn new(name: &'static str, attributes: Vec<&'static str>) -> Self {
             Self {
                 name,

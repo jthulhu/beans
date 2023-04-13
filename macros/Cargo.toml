@@ -4,6 +4,9 @@ version = "7.0.0"
 authors = ["Adrien Mathieu <adrien.lc.mathieu@gmail.com"]
 license = "MIT OR GPL-3.0-or-later"
 edition = "2021"
+description = "Derive macro crate for beans"
+homepage = "https://github.com/jthulhu/beans"
+repository = "https://github.com/jthulhu/beans"
 
 [lib]
 proc-macro = true

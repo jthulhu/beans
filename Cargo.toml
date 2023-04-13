@@ -25,4 +25,4 @@ itertools = "0.10"
 ptree = "0.4"
 const_format = "0.2"
 serde_json = "1"
-macros = { path = "macros" }
+beans-derive = "7"

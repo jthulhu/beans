@@ -94,19 +94,39 @@ name = "beans"
 version = "7.0.0"
 dependencies = [
  "anyhow",
+ "beans-derive 7.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "bincode",
  "clap",
  "const_format",
  "fixedbitset",
  "fragile",
  "itertools",
- "macros",
  "newty",
  "ptree",
  "serde 1.0.159",
  "serde_json",
  "thiserror",
  "unbounded-interval-tree",
+]
+
+[[package]]
+name = "beans-derive"
+version = "7.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "beans-derive"
+version = "7.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f87459b3d5e8d2eb767c95084bb4cfeb7973cdab69eff747505a2dcec0a2f38f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
 ]
 
 [[package]]
@@ -419,15 +439,6 @@ name = "linux-raw-sys"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d59d8c75012853d2e872fb56bc8a2e53718e2cafe1a4c823143141c6d90c322f"
-
-[[package]]
-name = "macros"
-version = "7.0.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
 
 [[package]]
 name = "memchr"

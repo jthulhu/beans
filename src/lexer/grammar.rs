@@ -1,42 +1,38 @@
-use super::ast::Ast;
-use crate::build_system;
-use crate::builder::Buildable;
-use crate::error::{Error, ErrorKind, Result, WarningSet};
-use crate::lexer::TerminalId;
-use crate::parser::{Parser, AST};
-use crate::regex::{CompiledRegex, RegexBuilder};
-use crate::stream::StringStream;
-use crate::typed::Tree;
+use super::{ast::Ast, TerminalId};
+use crate::{
+    build_system,
+    builder::Buildable,
+    error::{Error, ErrorKind, Result, WarningSet},
+    parser::{AST, Parser},
+    regex::{CompiledRegex, RegexBuilder},
+    stream::StringStream, typed::Tree,
+};
 use bincode::deserialize;
 use newty::newty;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::rc::Rc;
+use std::{collections::HashMap, rc::Rc};
 
 newty! {
     pub id TokenId
 }
 
 newty! {
-    pub set Ignores [TerminalId]
+    pub set Ignores[TerminalId]
 }
 
 newty! {
     #[derive(Serialize, Deserialize)]
-    pub map Errors(Rc<str>) [TerminalId]
+    pub map Errors(Rc<str>)[TerminalId]
 }
 
 newty! {
     #[derive(Serialize, Deserialize)]
-    pub map Descriptions(Rc<str>) [TerminalId]
+    pub map Descriptions(Rc<str>)[TerminalId]
 }
 
-/// # Summary
-///
-/// `LexerGrammar` is a grammar for a lexer. It is already setup.
-/// Should be built with a `LexerGrammarBuilder`.
+/// A grammar for a Beans lexer.
 #[derive(Debug, Serialize, Deserialize)]
-pub struct LexerGrammar {
+pub struct Grammar {
     pattern: CompiledRegex,
     names: Vec<String>,
     ignores: Ignores,
@@ -46,7 +42,7 @@ pub struct LexerGrammar {
     name_map: HashMap<String, TerminalId>,
 }
 
-impl LexerGrammar {
+impl Grammar {
     pub fn new(
         pattern: CompiledRegex,
         names: Vec<String>,
@@ -76,7 +72,7 @@ impl LexerGrammar {
     }
 
     pub fn name(&self, idx: TerminalId) -> &str {
-        &self.names[idx.0][..]
+        &self.names[idx.0]
     }
 
     pub fn contains(&self, name: &str) -> bool {
@@ -108,7 +104,7 @@ impl LexerGrammar {
     }
 }
 
-impl Buildable for LexerGrammar {
+impl Buildable for Grammar {
     const RAW_EXTENSION: &'static str = "lx";
     const COMPILED_EXTENSION: &'static str = "clx";
     const AST_EXTENSION: &'static str = "lx.ast";
@@ -193,20 +189,17 @@ mod tests {
     #[test]
     fn grammar_parser_regex() {
         assert_eq!(
-            *LexerGrammar::build_from_plain(StringStream::new(
-                Path::new("whatever"),
-                "A ::= wot!"
-            ))
-            .unwrap()
-            .unwrap()
-            .pattern(),
+            *Grammar::build_from_plain(StringStream::new(Path::new("whatever"), "A ::= wot!"))
+                .unwrap()
+                .unwrap()
+                .pattern(),
             RegexBuilder::new()
                 .with_named_regex("wot!", String::from("A"), false)
                 .unwrap()
                 .build(),
         );
         assert_eq!(
-            *LexerGrammar::build_from_plain(StringStream::new(
+            *Grammar::build_from_plain(StringStream::new(
                 Path::new("whatever"),
                 "B ::= wot!  "
             ))
@@ -219,7 +212,7 @@ mod tests {
                 .build()
         );
         assert_eq!(
-            *LexerGrammar::build_from_plain(StringStream::new(
+            *Grammar::build_from_plain(StringStream::new(
                 Path::new("whatever"),
                 "A ::= wot!\n\nB ::= wheel"
             ))
@@ -234,7 +227,7 @@ mod tests {
                 .build()
         );
         assert_eq!(
-            *LexerGrammar::build_from_plain(StringStream::new(Path::new("whatever"), ""))
+            *Grammar::build_from_plain(StringStream::new(Path::new("whatever"), ""))
                 .unwrap()
                 .unwrap()
                 .pattern(),
@@ -243,7 +236,7 @@ mod tests {
     }
     #[test]
     fn lexer_grammar() {
-        let grammar = LexerGrammar::build_from_plain(StringStream::new(
+        let grammar = Grammar::build_from_plain(StringStream::new(
             Path::new("whatever"),
             "ignore A ::= [ ]\nignore B ::= bbb\nC ::= ccc",
         ))
@@ -259,7 +252,7 @@ mod tests {
 
     #[test]
     fn grammar_report() {
-        let grammar = LexerGrammar::build_from_plain(StringStream::new(
+        let grammar = Grammar::build_from_plain(StringStream::new(
             Path::new("<grammar report>"),
             r#"ignore COMMENT ::= /\*([^*]|\*[^/])\*/
 (unclosed comment) unwanted ECOMMENT ::= /\*([^*]|\*[^/])"#,

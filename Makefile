@@ -54,10 +54,10 @@ target/release/beans: $(SOURCES)
 target/debug/beans: $(SOURCES)
 	cargo build
 
-src/parser/gmrs/%.clx: src/parser/gmrs/%.lx $(TARGET)
+%.clx: %.lx $(TARGET)
 	$(TARGET) compile lexer -o $@ $<
 
-src/parser/gmrs/%.cgr: src/parser/gmrs/%.gr src/parser/gmrs/%.clx $(TARGET)
+%.cgr: %.gr %.clx $(TARGET)
 	$(TARGET) compile parser --lexer $(word 2,$^) -o $@ $<
 
 .PHONY: all build check clean grammars run test

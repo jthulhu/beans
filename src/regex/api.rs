@@ -1,7 +1,7 @@
+use super::matching::InstructionPointer;
 use super::matching::{self, AllowedTerminals, Instruction, Program};
 use super::parsing::{build, read, Regex, RegexError};
 use crate::lexer::TerminalId;
-use crate::regex::matching::InstructionPointer;
 use newty::newty;
 use serde::{Deserialize, Serialize};
 

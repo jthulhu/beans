@@ -13,17 +13,17 @@ use super::grammar::{
 use super::ast::{Element as AstElement, Expression, Item};
 use super::parser::{NonTerminalId, ParseResult, Parser};
 use super::parser::{Value, AST};
-use crate::build_system;
-use crate::builder::{select_format, Buildable, FileResult, Format};
-use crate::error::{Error, Result};
-use crate::error::{ErrorKind, WarningSet};
-use crate::lexer::Token;
-use crate::lexer::{LexedStream, Lexer};
-use crate::lexer::{LexerGrammar, TerminalId};
-use crate::list::List;
-use crate::regex::Allowed;
-use crate::stream::StringStream;
-use crate::typed::Tree;
+use crate::span::Span;
+use crate::{
+    build_system,
+    builder::{select_format, Buildable, FileResult, Format},
+    error::{Error, ErrorKind, Result, WarningSet},
+    lexer::{Grammar as LexerGrammar, LexedStream, Lexer, TerminalId, Token},
+    list::List,
+    regex::Allowed,
+    stream::StringStream,
+    typed::Tree,
+};
 use bincode::deserialize;
 use fragile::Fragile;
 use itertools::Itertools;
@@ -1011,10 +1011,18 @@ impl EarleyParser {
         }
     }
 
-    fn build_ast(&self, item: SyntaxicItem, forest: &[FinalSet], raw_input: &[Token]) -> AST {
+    fn build_ast(
+        &self,
+        item: SyntaxicItem,
+        forest: &[FinalSet],
+        raw_input: &[Token],
+        last_span: &Span,
+    ) -> AST {
         match item.kind {
             SyntaxicItemKind::Rule(rule) => {
-                let span = if item.end == item.start {
+                let span = if raw_input.is_empty() {
+                    last_span.clone()
+                } else if item.end == item.start {
                     raw_input[item.start].location().clone()
                 } else {
                     raw_input[item.start]
@@ -1024,7 +1032,7 @@ impl EarleyParser {
                 let all_attributes = self
                     .find_children(item, forest, raw_input)
                     .into_iter()
-                    .map(|item| self.build_ast(item, forest, raw_input))
+                    .map(|item| self.build_ast(item, forest, raw_input, last_span))
                     .zip(self.grammar.rules[rule].elements.iter())
                     .filter_map(|(item, element)| {
                         element.key.as_ref().map(|key| match &element.attribute {
@@ -1080,7 +1088,12 @@ impl EarleyParser {
     }
 
     /// Select one AST, assuming there is one.
-    pub fn select_ast(&self, forest: &[FinalSet], raw_input: &[Token]) -> AST {
+    pub fn select_ast(
+        &self,
+        forest: &[FinalSet],
+        raw_input: &[Token],
+        last_span: &Span,
+    ) -> AST {
         forest[0]
             .iter()
             .filter(|item| {
@@ -1096,7 +1109,7 @@ impl EarleyParser {
                 end: raw_input.len(),
                 kind: SyntaxicItemKind::Rule(item.rule),
             })
-            .map(|item| self.build_ast(item, forest, raw_input))
+            .map(|item| self.build_ast(item, forest, raw_input, last_span))
             .next()
             .unwrap()
     }
@@ -1131,9 +1144,9 @@ impl EarleyParser {
         warnings.with_ok(forest)
     }
 
-    pub fn recognise<'input>(
+    pub fn recognise<'input, 'linput: 'input>(
         &self,
-        input: &'input mut LexedStream<'input, 'input>,
+        input: &'input mut LexedStream<'linput, 'linput>,
     ) -> Result<(Table, Vec<Token>)> {
         let mut warnings = WarningSet::empty();
         let mut sets = Vec::new();
@@ -1284,7 +1297,7 @@ impl EarleyParser {
                         }
                     } else {
                         ErrorKind::SyntaxErrorValidPrefix {
-                            span: input.last_location().into(),
+                            span: input.last_span().into(),
                         }
                     };
                     return error.err();
@@ -1308,7 +1321,7 @@ impl EarleyParser {
                 break 'outer warnings.with_ok((sets, raw_input));
             } else {
                 return ErrorKind::SyntaxErrorValidPrefix {
-                    span: input.last_location().into(),
+                    span: input.last_span().into(),
                 }
                 .err();
             };
@@ -1344,7 +1357,7 @@ impl Parser<'_> for EarleyParser {
             .to_forest(&table, &raw_input)?
             .unpack_into(&mut warnings);
         // print_final_sets(&forest, self);
-        let tree = self.select_ast(&forest, &raw_input);
+        let tree = self.select_ast(&forest, &raw_input, input.last_span());
         warnings.with_ok(ParseResult { tree })
     }
 }
@@ -1369,9 +1382,7 @@ impl Parser<'_> for EarleyParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lexer::LexerGrammar;
-    // use crate::printer::print_ast;
-    use crate::rules;
+    use crate::{lexer::Grammar as LexerGrammar, rules};
 
     const GRAMMAR_NUMBERS_LEXER: &str = r#"
 NUMBER ::= ([0-9])
@@ -1409,18 +1420,18 @@ RPAR ::= \)
 @Expression ::=
   NUMBER.0@value <Literal>
   Expression@left OP Expression@right <Operation>
-  OP Expression@right <Operation left: Expression {Literal value: "0"}>
+  OP Expression@right <Operation, left: Expression {Literal, value: "0"}>
   LPAR Expression@value RPAR <Parenthesized>;
 "#;
     const GRAMMAR_PROXY_WRONG_1: &str = r#"
 @Expression ::=
-  NUMBER.0@value <variant: Literal>
-  Expression@left OP Expression@right <variant: Operation>
+  NUMBER.0@value <Literal>
+  Expression@left OP Expression@right <Operation>
   OP Expression@right <
-    variant: Operation
+    Operation,
     left: Expression {variant: Literal value: "0"}
   >
-  LPAR Expression@value RPAR <variant: Parenthesized>;
+  LPAR Expression@value RPAR <Parenthesized>;
 "#;
     const GRAMMAR_PROXY_WRONG_2: &str = r#"
 @Expression ::=
@@ -1428,16 +1439,6 @@ RPAR ::= \)
   Expression@left OP Expression@right <Operation>
   OP Expression@right <
     Operation
-    left: Expression {variant: Literal value: "0"}
-  >
-  LPAR Expression@value RPAR <Parenthesized>;
-"#;
-    const GRAMMAR_PROXY_WRONG_3: &str = r#"
-@Expression ::=
-  NUMBER.0@value <Literal>
-  Expression@left OP Expression@right <Operation>
-  OP Expression@right <
-    Operation,
     left: Expression {Literal value: "0"}
   >
   LPAR Expression@value RPAR <Parenthesized>;
@@ -1569,7 +1570,7 @@ RPAR ::= \)
 	) => {{
 	    #[allow(unused_mut)]
 	    let mut sets = Vec::new();
-	    fn find_item(grammar: &EarleyGrammar, lexer_grammar: &$crate::lexer::LexerGrammar, name: &str, elements: &[&str], end: usize) -> FinalItem {
+	    fn find_item(grammar: &EarleyGrammar, lexer_grammar: &$crate::lexer::Grammar, name: &str, elements: &[&str], end: usize) -> FinalItem {
 		for &rule_identifier in grammar
 		    .id_of
 		    .get(&Rc::from(name))
@@ -1626,14 +1627,14 @@ RPAR ::= \)
     struct TestElement {
         name: String,
         attribute: Attribute,
-        key: Option<Key>,
+        key: Option<Rc<str>>,
         element_type: TestElementType,
     }
 
     impl TestElement {
         fn matches(
             &self,
-            other: &RuleElement,
+            other: &Element,
             parser_grammar: &EarleyGrammar,
             lexer_grammar: &LexerGrammar,
         ) -> bool {
@@ -1786,14 +1787,14 @@ RPAR ::= \)
         parser_grammar: &EarleyGrammar,
         lexer_grammar: &LexerGrammar,
     ) {
-        let length1 = rules1.0.len();
+        let length1 = rules1.len();
         let length2 = rules2.len();
         match length1.cmp(&length2) {
             std::cmp::Ordering::Greater => panic!("Grammar 1 is longer"),
             std::cmp::Ordering::Less => panic!("Grammar 2 is longer"),
             std::cmp::Ordering::Equal => {}
         }
-        for (i, (r1, r2)) in rules1.0.iter().zip(rules2.iter()).enumerate() {
+        for (i, (r1, r2)) in rules1.iter().zip(rules2.iter()).enumerate() {
             assert!(
                 r2.matches(r1, parser_grammar, lexer_grammar),
                 "rules #{} differ.\nExpected: {:?}\nGot: {:?}",
@@ -1804,105 +1805,31 @@ RPAR ::= \)
         }
     }
 
-    #[test]
-    fn earley_grammar_builder() {
-        use crate::lexer::LexerBuilder;
-        let lexer_grammar =
-            LexerGrammarBuilder::from_file(Path::new("src/parser/gmrs/dummy.lx"))
-                .unwrap()
-                .unwrap()
-                .build()
-                .unwrap()
-                .unwrap();
-        let lexer = LexerBuilder::from_grammar(lexer_grammar).build();
-        let grammar = EarleyGrammarBuilder::default()
-            .with_file(Path::new("src/parser/gmrs/dummy.gr"))
-            .unwrap()
-            .unwrap()
-            .build(&lexer)
-            .unwrap()
-            .unwrap();
-        let expected_rules = rules!(
-        (&grammar)
-                StatementList ::=
-            StatementList@left Statement@right <variant = str "Concat">
-            Statement@this <variant = str "Through">;
-
-        Statement ::=
-            Assignment@this !t SEMICOLON <variant = str "Assign">
-            IfStatement@this <variant = str "If">
-            WhileStatement@this <variant = str "While">;
-
-                Expression ::=
-            Expression@left !t PLUS Expression@right <variant = str "Add">
-            Expression@left !t ASTERISK Expression@right <variant = str "Mul">
-            Atom@this <variant = str "Through">;
-
-                Atom ::=
-            BuiltinType@this <variant = str "Builtin">
-            !t LPAR Expression@this !t RPAR <variant = str "Through">;
-
-                BuiltinType ::=
-            !t INT.idx 0@value <variant = str "Int">
-            !t STRING.idx 0@value <variant = str "String">
-            !t ID.idx 0@value <variant = str "Id">
-            !t TRUE <variant = str "True">
-            !t FALSE <variant = str "False">;
-
-                Assignment ::=
-            !t ID.idx 0@key !t EQUALS Expression@value <>;
-
-                WhileStatement ::=
-            !t WHILE Expression@condition !t LBRACE StatementList@do !t RBRACE <>;
-
-                IfStatement ::=
-            !t IF Expression@condition !t LBRACE
-              StatementList@then !t
-            RBRACE <variant = str "NoElse">
-            !t IF Expression@condition !t LBRACE
-              StatementList@then !t
-            RBRACE !t ELSE !t LBRACE
-              StatementList@else !t
-            RBRACE <variant = str "Else">
-            );
-        verify(&grammar.rules, &expected_rules, &grammar, lexer.grammar());
-    }
 
     #[test]
     fn complex_proxy() {
-        let lexer = LexerBuilder::from_stream(StringStream::new(
+        let lexer = Lexer::build_from_plain(StringStream::new(
             Path::new("<PROXY>"),
             GRAMMAR_PROXY_LEXER,
         ))
         .unwrap()
+        .unwrap();
+        EarleyGrammar::build_from_plain(
+            StringStream::new(Path::new("<PROXY>"), GRAMMAR_PROXY),
+            lexer.grammar(),
+        )
         .unwrap()
-        .build();
-        EarleyGrammarBuilder::default()
-            .with_stream(StringStream::new(Path::new("<PROXY>"), GRAMMAR_PROXY))
-            .build(&lexer)
-            .unwrap()
-            .unwrap();
-        assert!(EarleyGrammarBuilder::default()
-            .with_stream(StringStream::new(
-                Path::new("<PROXY>"),
-                GRAMMAR_PROXY_WRONG_1
-            ))
-            .build(&lexer)
-            .is_err());
-        assert!(EarleyGrammarBuilder::default()
-            .with_stream(StringStream::new(
-                Path::new("<PROXY>"),
-                GRAMMAR_PROXY_WRONG_2
-            ))
-            .build(&lexer)
-            .is_err());
-        assert!(EarleyGrammarBuilder::default()
-            .with_stream(StringStream::new(
-                Path::new("<PROXY>"),
-                GRAMMAR_PROXY_WRONG_3
-            ))
-            .build(&lexer)
-            .is_err());
+        .unwrap();
+        assert!(EarleyGrammar::build_from_plain(
+            StringStream::new(Path::new("<PROXY>"), GRAMMAR_PROXY_WRONG_1),
+            lexer.grammar()
+        )
+        .is_err());
+        assert!(EarleyGrammar::build_from_plain(
+            StringStream::new(Path::new("<PROXY>"), GRAMMAR_PROXY_WRONG_2),
+            lexer.grammar()
+        )
+        .is_err());
     }
 
     #[test]
@@ -1913,21 +1840,16 @@ RPAR ::= \)
  B <>;
 B ::= A <>;"#;
         let input = r#""#;
-        let lexer = LexerBuilder::from_stream(StringStream::new(
-            Path::new("<lexer input>"),
-            lexer_input,
-        ))
+        let lexer =
+            Lexer::build_from_plain(StringStream::new(Path::new("<lexer input>"), lexer_input))
+                .unwrap()
+                .unwrap();
+        let grammar = EarleyGrammar::build_from_plain(
+            StringStream::new(Path::new("<grammar input>"), grammar_input),
+            lexer.grammar(),
+        )
         .unwrap()
-        .unwrap()
-        .build();
-        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
-            .with_stream(StringStream::new(
-                Path::new("<grammar input>"),
-                grammar_input,
-            ))
-            .build(&lexer)
-            .unwrap()
-            .unwrap();
+        .unwrap();
         let parser = EarleyParser::new(grammar);
         let sets = sets!(
             ==
@@ -1956,19 +1878,17 @@ int main() {
   return sizeof(bool ****);
 }
 "#;
-        let lexer = LexerBuilder::from_stream(StringStream::new(
-            Path::new("petitc.lx"),
-            GRAMMAR_C_LEXER,
-        ))
-        .unwrap()
-        .unwrap()
-        .build();
+        let lexer =
+            Lexer::build_from_plain(StringStream::new(Path::new("petitc.lx"), GRAMMAR_C_LEXER))
+                .unwrap()
+                .unwrap();
 
-        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
-            .with_stream(StringStream::new(Path::new("petitc.gr"), GRAMMAR_C))
-            .build(&lexer)
-            .unwrap()
-            .unwrap();
+        let grammar = EarleyGrammar::build_from_plain(
+            StringStream::new(Path::new("petitc.gr"), GRAMMAR_C),
+            lexer.grammar(),
+        )
+        .unwrap()
+        .unwrap();
         let parser = EarleyParser::new(grammar);
         let _ast = parser
             .parse(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
@@ -1990,18 +1910,16 @@ int main() {
   a = a < b > a < b > a;
 }
 "#;
-        let lexer = LexerBuilder::from_stream(StringStream::new(
-            Path::new("petitc.lx"),
-            GRAMMAR_C_LEXER,
-        ))
+        let lexer =
+            Lexer::build_from_plain(StringStream::new(Path::new("petitc.lx"), GRAMMAR_C_LEXER))
+                .unwrap()
+                .unwrap();
+        let grammar = EarleyGrammar::build_from_plain(
+            StringStream::new(Path::new("petitc.gr"), GRAMMAR_C),
+            lexer.grammar(),
+        )
         .unwrap()
-        .unwrap()
-        .build();
-        let grammar = EarleyGrammarBuilder::default()
-            .with_stream(StringStream::new(Path::new("petitc.gr"), GRAMMAR_C))
-            .build(&lexer)
-            .unwrap()
-            .unwrap();
+        .unwrap();
         let parser = EarleyParser::new(grammar);
         let _ast = parser
             .parse(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
@@ -2013,18 +1931,18 @@ int main() {
     #[test]
     fn valid_prefix() {
         let input = r#"1+2+"#;
-        let lexer = LexerBuilder::from_stream(StringStream::new(
+        let lexer = Lexer::build_from_plain(StringStream::new(
             Path::new("<NUMBERS LEXER>"),
             GRAMMAR_NUMBERS_LEXER,
         ))
         .unwrap()
+        .unwrap();
+        let grammar = EarleyGrammar::build_from_plain(
+            StringStream::new(Path::new("<NUMBERS>"), GRAMMAR_NUMBERS),
+            lexer.grammar(),
+        )
         .unwrap()
-        .build();
-        let grammar = EarleyGrammarBuilder::default()
-            .with_stream(StringStream::new(Path::new("<NUMBERS>"), GRAMMAR_NUMBERS))
-            .build(&lexer)
-            .unwrap()
-            .unwrap();
+        .unwrap();
         let parser = EarleyParser::new(grammar);
         assert!(parser
             .parse(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)),)
@@ -2037,21 +1955,18 @@ int main() {
         // 1+(2+(((3*4)*5)+(6+(7*8))))
         //
         let input = r"1+2+3*4*5+6+7*8";
-        let lexer = LexerBuilder::from_stream(StringStream::new(
+        let lexer = Lexer::build_from_plain(StringStream::new(
             Path::new("<NUMBERS LEXER>"),
             GRAMMAR_NUMBERS_LEXER,
         ))
         .unwrap()
+        .unwrap();
+        let grammar = EarleyGrammar::build_from_plain(
+            StringStream::new(Path::new("<NUMBERS IMPROVED>"), GRAMMAR_NUMBERS_IMPROVED),
+            lexer.grammar(),
+        )
         .unwrap()
-        .build();
-        let grammar = EarleyGrammarBuilder::default()
-            .with_stream(StringStream::new(
-                Path::new("<NUMBERS IMPROVED>"),
-                GRAMMAR_NUMBERS_IMPROVED,
-            ))
-            .build(&lexer)
-            .unwrap()
-            .unwrap();
+        .unwrap();
         let parser = EarleyParser::new(grammar);
         let ast = parser
             .parse(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
@@ -2242,28 +2157,27 @@ int main() {
     fn ast_builder() {
         let input = r#"1+(2*3-4)"#;
 
-        let lexer = LexerBuilder::from_stream(StringStream::new(
+        let lexer = Lexer::build_from_plain(StringStream::new(
             Path::new("<lexer input>"),
             GRAMMAR_NUMBERS_LEXER,
         ))
         .unwrap()
+        .unwrap();
+        let grammar = EarleyGrammar::build_from_plain(
+            StringStream::new(Path::new("<grammar input>"), GRAMMAR_NUMBERS),
+            lexer.grammar(),
+        )
         .unwrap()
-        .build();
-        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
-            .with_stream(StringStream::new(
-                Path::new("<grammar input>"),
-                GRAMMAR_NUMBERS,
-            ))
-            .build(&lexer)
-            .unwrap()
-            .unwrap();
+        .unwrap();
         let parser = EarleyParser::new(grammar);
+	let mut input_stream = StringStream::new(Path::new("<input>"), input);
+	let mut lexed_input = lexer.lex(&mut input_stream);
         let (table, raw_input) = parser
-            .recognise(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
+            .recognise(&mut lexed_input)
             .unwrap()
             .unwrap();
         let forest = parser.to_forest(&table, &raw_input).unwrap().unwrap();
-        let ast = parser.select_ast(&forest, &raw_input);
+        let ast = parser.select_ast(&forest, &raw_input, lexed_input.last_span());
 
         let test_ast = {
             use super::super::parser::Value::*;
@@ -2366,21 +2280,18 @@ int main() {
     fn forest_builder() {
         let input = r#"1+(2*3-4)"#;
 
-        let lexer = LexerBuilder::from_stream(StringStream::new(
+        let lexer = Lexer::build_from_plain(StringStream::new(
             Path::new("<lexer input>"),
             GRAMMAR_NUMBERS_LEXER,
         ))
         .unwrap()
+        .unwrap();
+        let grammar = EarleyGrammar::build_from_plain(
+            StringStream::new(Path::new("<grammar input>"), GRAMMAR_NUMBERS),
+            lexer.grammar(),
+        )
         .unwrap()
-        .build();
-        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
-            .with_stream(StringStream::new(
-                Path::new("<grammar input>"),
-                GRAMMAR_NUMBERS,
-            ))
-            .build(&lexer)
-            .unwrap()
-            .unwrap();
+        .unwrap();
 
         let parser = EarleyParser::new(grammar);
         let sets = final_sets!(
@@ -2447,21 +2358,18 @@ int main() {
     fn recogniser() {
         let input = r#"1+(2*3-4)"#;
 
-        let lexer = LexerBuilder::from_stream(StringStream::new(
+        let lexer = Lexer::build_from_plain(StringStream::new(
             Path::new("<lexer input>"),
             GRAMMAR_NUMBERS_LEXER,
         ))
         .unwrap()
+        .unwrap();
+        let grammar = EarleyGrammar::build_from_plain(
+            StringStream::new(Path::new("<grammar input>"), GRAMMAR_NUMBERS),
+            lexer.grammar(),
+        )
         .unwrap()
-        .build();
-        let grammar = <EarleyParser as Parser<'_>>::GrammarBuilder::default()
-            .with_stream(StringStream::new(
-                Path::new("<grammar input>"),
-                GRAMMAR_NUMBERS,
-            ))
-            .build(&lexer)
-            .unwrap()
-            .unwrap();
+        .unwrap();
         let parser = EarleyParser::new(grammar);
         let sets = sets!(
             ==

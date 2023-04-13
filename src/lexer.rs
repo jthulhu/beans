@@ -12,9 +12,9 @@
 //!  [`StringStream`]: crate::stream::StringStream
 
 mod ast;
-mod grammarparser;
+mod grammar;
 #[allow(clippy::module_inception)]
 mod lexer;
 
-pub use grammarparser::{Ignores, LexerGrammar};
+pub use grammar::{Ignores, Grammar};
 pub use lexer::{LexedStream, Lexer, TerminalId, Token};

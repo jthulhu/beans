@@ -1,12 +1,9 @@
 #[macro_export]
 macro_rules! rules {
-    (@rule($grammar:expr) proxy insert $proxy: ident $key: ident bool $value: literal) => {
-	$proxy.insert(stringify!($key).into(), $crate::parser::grammarparser::ValueTemplate::Bool($value));
-    };
     (@rule($grammar:expr) proxy insert $proxy: ident $key: ident str $value: literal) => {
 	$proxy.insert(
 	    stringify!($key).into(),
-	    $crate::parser::grammarparser::ValueTemplate::Str(
+	    $crate::parser::grammar::ValueTemplate::String(
 		Rc::from($value)
 	    )
 	);
@@ -18,7 +15,7 @@ macro_rules! rules {
 	    $(
 		rules!(@rule($grammar) proxy insert proxy $key $type $value);
 	    )*
-		proxy
+	    proxy
 	}
     };
     (@rule($grammar:expr) key) => { None };

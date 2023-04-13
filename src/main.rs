@@ -1,7 +1,7 @@
 use anyhow::Context;
 use beans::builder::Buildable;
 use beans::error::{ErrorKind, WarningSet, WithWarnings};
-use beans::lexer::{Lexer, LexerGrammar};
+use beans::lexer::{Lexer, Grammar as LexerGrammar};
 use beans::parser::earley::{print_final_sets, print_sets, EarleyGrammar, EarleyParser};
 use beans::parser::Parser;
 use beans::printer::print_ast;
@@ -187,7 +187,7 @@ fn main() -> anyhow::Result<()> {
                 println!(" ### FINAL TABLE ###");
                 print_final_sets(&forest, &parser, &lexer);
             }
-            let ast = parser.select_ast(&forest, &raw_input);
+            let ast = parser.select_ast(&forest, &raw_input, input.last_span());
             print_ast(&ast)?;
         }
     }

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use crate::{
-    lexer::{LexerGrammar, TerminalId},
+    lexer::{Grammar as LexerGrammar, TerminalId},
     span::Span,
 };
 use newty::newty;

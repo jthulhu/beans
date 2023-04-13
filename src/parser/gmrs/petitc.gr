@@ -60,11 +60,11 @@ Expr ::=
   SIZEOF LPAR Type@type RPAR <Sizeof>
   IDENT.0@name LPAR List[Expr, COMMA]@args RPAR <Call>
   Expr@array LBRACKET Expr@index RBRACKET <
-    Deref
+    Deref,
     value: Expr {
-      BinOp
-      op: AddSubOp { Add }
-      left: array
+      BinOp,
+      op: AddSubOp { Add },
+      left: array,
       right: index
     }
   >

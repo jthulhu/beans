@@ -5,7 +5,7 @@ keyword UNWANTED ::= unwanted
 ID ::= (\w+)
 REGEX ::= ([^\n ][^\n]*|)
 DEF ::= ::=
-COMMENT ::= \((([^)\\]|\\\))*)\)
+COMMENT ::= \((([^)\\]|\\\)|\\\\)*)\)
 
 ignore NEWLINE ::= \n
 ignore SPACE ::= \s+

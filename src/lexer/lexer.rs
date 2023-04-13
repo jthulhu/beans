@@ -1,4 +1,4 @@
-use super::grammarparser::LexerGrammar;
+use super::grammar::Grammar;
 use crate::builder::Buildable;
 use crate::error::Result;
 use crate::error::{ErrorKind, WarningSet};
@@ -112,52 +112,6 @@ impl Token {
     }
 }
 
-// /// # Summary
-// ///
-// /// A builder for a `Lexer` object.
-// ///
-// /// # Attribute specificators
-// ///
-// /// `with_grammar`: specify the grammar the lexer will use to lex.
-// /// `with_grammar_file`: specify the grammar file to build a grammar the lexer will use to lex.
-// #[derive(Debug)]
-// pub struct LexerBuilder {
-//     grammar: LexerGrammar,
-// }
-
-// impl LexerBuilder {
-//     /// Instantiate a new `LexerBuilder`, giving a grammar.
-//     pub fn from_grammar(grammar: LexerGrammar) -> Self {
-//         Self { grammar }
-//     }
-
-//     /// Instantiate a new `LexerBuilder`, giving a stream defining the grammar.
-//     /// Since the stream may be an ill-defined grammar, this might fail.
-//     pub fn from_stream(stream: StringStream) -> Result<Self> {
-//         let mut warnings = WarningSet::empty();
-//         let grammar = LexerGrammarBuilder::from_stream(stream)
-//             .build()?
-//             .unpack_into(&mut warnings);
-//         warnings.with_ok(Self { grammar })
-//     }
-
-//     /// Instantiate a new `LexerBuilder`, giving the path to the grammar.
-//     /// Since the grammar may be ill-defined, this might fail.
-//     pub fn from_file(file: impl Into<Rc<Path>>) -> Result<Self> {
-//         let mut warnings = WarningSet::default();
-//         let file = file.into();
-//         let builder =
-//             LexerGrammarBuilder::from_file(file)?.unpack_into(&mut warnings);
-//         let grammar = builder.build()?.unpack_into(&mut warnings);
-//         warnings.with_ok(Self { grammar })
-//     }
-
-//     /// Build the lexer, consuming the builder.
-//     pub fn build(self) -> Lexer {
-//         Lexer::new(self.grammar)
-//     }
-// }
-
 /// # Summary
 ///
 /// [`LexedStream`] is the interface used to tokenize a stream. To do
@@ -176,14 +130,14 @@ pub struct LexedStream<'lexer, 'stream> {
     stream: &'stream mut StringStream,
     pos: usize,
     tokens: Vec<(usize, Token)>,
-    last_location: Span,
+    last_span: Span,
 }
 
 impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
     /// Create a new [`LexedStream`] instance.
     pub fn new(lexer: &'lexer Lexer, stream: &'stream mut StringStream) -> Self {
         Self {
-            last_location: Span::new(
+            last_span: Span::new(
                 stream.origin(),
                 (0, 0),
                 (0, 0),
@@ -233,7 +187,7 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
                 }
                 let id = self.lexer.grammar.id(&name).unwrap();
                 let token = Token::new(name, id, attributes, span.clone());
-                self.last_location = span;
+                self.last_span = span;
                 self.tokens.push((start, token));
                 break 'lex warnings.with_ok(true);
             } else {
@@ -246,8 +200,8 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
     }
 
     /// Get the last location lexed. Useful if you want to know where you failed to find a token.
-    pub fn last_location(&self) -> &Span {
-        &self.last_location
+    pub fn last_span(&self) -> &Span {
+        &self.last_span
     }
 }
 
@@ -295,7 +249,7 @@ impl LexedStream<'_, '_> {
 /// # Summary
 ///
 /// `Lexer` is the main object that is used for lexing.
-/// It is given a `StringStream`, and a `LexerGrammarBuilder`, and it
+/// It is given a `StringStream`, and a `GrammarBuilder`, and it
 /// consumes the `StringStream`, producing a `Stream` of `Token`s.
 ///
 /// It is better to access the tokens through the `Stream` interface
@@ -308,13 +262,11 @@ impl LexedStream<'_, '_> {
 ///      or raise an error.
 #[derive(Debug)]
 pub struct Lexer {
-    grammar: LexerGrammar,
+    grammar: Grammar,
 }
 
 impl Lexer {
-    /// Create a new `Lexer` object.
-    /// You may want to use the `LexerBuilder` instead.
-    pub fn new(grammar: LexerGrammar) -> Self {
+    pub fn new(grammar: Grammar) -> Self {
         Self { grammar }
     }
 
@@ -326,38 +278,38 @@ impl Lexer {
         LexedStream::new(self, stream)
     }
 
-    /// Get the [`LexerGrammar`] bound to the lexer.
-    pub fn grammar(&self) -> &LexerGrammar {
+    /// Get the [`Grammar`] bound to the lexer.
+    pub fn grammar(&self) -> &Grammar {
         &self.grammar
     }
 
     pub fn from_path(path: &Path) -> Result<Self> {
         let mut warnings = WarningSet::empty();
-        let grammar = LexerGrammar::build_from_path(path)?.unpack_into(&mut warnings);
+        let grammar = Grammar::build_from_path(path)?.unpack_into(&mut warnings);
         warnings.with_ok(Self { grammar })
     }
 }
 
 impl Buildable for Lexer {
-    const RAW_EXTENSION: &'static str = LexerGrammar::RAW_EXTENSION;
-    const COMPILED_EXTENSION: &'static str = LexerGrammar::COMPILED_EXTENSION;
-    const AST_EXTENSION: &'static str = LexerGrammar::AST_EXTENSION;
+    const RAW_EXTENSION: &'static str = Grammar::RAW_EXTENSION;
+    const COMPILED_EXTENSION: &'static str = Grammar::COMPILED_EXTENSION;
+    const AST_EXTENSION: &'static str = Grammar::AST_EXTENSION;
 
     fn build_from_ast(ast: AST) -> Result<Self> {
         let mut warnings = WarningSet::empty();
-        let grammar = LexerGrammar::build_from_ast(ast)?.unpack_into(&mut warnings);
+        let grammar = Grammar::build_from_ast(ast)?.unpack_into(&mut warnings);
         warnings.with_ok(Self { grammar })
     }
 
     fn build_from_compiled(blob: &[u8]) -> Result<Self> {
         let mut warnings = WarningSet::empty();
-        let grammar = LexerGrammar::build_from_compiled(blob)?.unpack_into(&mut warnings);
+        let grammar = Grammar::build_from_compiled(blob)?.unpack_into(&mut warnings);
         warnings.with_ok(Self { grammar })
     }
 
     fn build_from_plain(raw: StringStream) -> Result<Self> {
         let mut warnings = WarningSet::empty();
-        let grammar = LexerGrammar::build_from_plain(raw)?.unpack_into(&mut warnings);
+        let grammar = Grammar::build_from_plain(raw)?.unpack_into(&mut warnings);
         warnings.with_ok(Self { grammar })
     }
 }
@@ -429,24 +381,22 @@ mod tests {
 
     #[test]
     fn lexer_builder() {
-        // A grammar: succeeds
-        Lexer::build_from_stream(StringStream::new(Path::new("grammar file"), "A ::= blu"))
-            .unwrap()
-            .unwrap();
+        Lexer::build_from_plain(StringStream::new(
+            Path::new("<building the lexer>"),
+            "A ::= blu",
+        ))
+        .unwrap()
+        .unwrap();
     }
 
     #[test]
     fn lex_basic() {
-        let lexer = LexerBuilder::from_grammar(
-            LexerGrammarBuilder::from_stream(StringStream::new(
-                Path::new("a file name"),
-                "A ::= blu",
-            ))
-            .build()
-            .unwrap()
-            .unwrap(),
-        )
-        .build();
+        let lexer = Lexer::build_from_plain(StringStream::new(
+            Path::new("<basic lexing>"),
+            "A ::= blu",
+        ))
+        .unwrap()
+        .unwrap();
         let mut input = StringStream::new(Path::new("input file"), "blu");
         let mut lexed_input = lexer.lex(&mut input);
 
@@ -458,22 +408,18 @@ mod tests {
 
     #[test]
     fn unwantend_token() {
-        let lexer = LexerBuilder::from_grammar(
-            LexerGrammarBuilder::from_stream(StringStream::new(
-                Path::new("<unwanted token>"),
-                r#"ignore COMMENT ::= /\*([^*]|\*[^/])\*/
+        let lexer = Lexer::build_from_plain(StringStream::new(
+            Path::new("<unwanted token>"),
+            r#"ignore COMMENT ::= /\*([^*]|\*[^/])\*/
 (unclosed comment) unwanted ECOMMENT ::= /\*([^*]|\*[^/])"#,
-            ))
-            .build()
-            .unwrap()
-            .unwrap(),
-        )
-        .build();
+        ))
+        .unwrap()
+        .unwrap();
         let mut input = StringStream::new(Path::new("<unwanted input>"), "/* hello /");
         let mut lexed_input = lexer.lex(&mut input);
 
         let ErrorKind::UnwantedToken { message, .. } =
-            lexed_input.next(Allowed::All).unwrap_err()
+            *lexed_input.next(Allowed::All).unwrap_err().kind
 	else {
 	    panic!("wrong error");
 	};

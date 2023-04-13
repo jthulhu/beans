@@ -1,5 +1,5 @@
 [package]
-name = "macros"
+name = "beans-derive"
 version = "7.0.0"
 authors = ["Adrien Mathieu <adrien.lc.mathieu@gmail.com"]
 license = "MIT OR GPL-3.0-or-later"

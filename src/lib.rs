@@ -3,7 +3,6 @@
     unstable_name_collisions
 )]
 #![warn(missing_debug_implementations)]
-#![feature(box_patterns, try_blocks)]
 
 //! # Beans
 //!

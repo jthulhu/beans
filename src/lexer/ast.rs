@@ -1,7 +1,7 @@
 use std::rc::Rc;
-
 use crate::{parser::AST, typed::*};
 
+#[derive(Debug)]
 pub(crate) struct Ast {
     pub terminals: Vec<Terminal>,
 }
@@ -15,6 +15,7 @@ impl Tree for Ast {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct Terminal {
     pub ignore: bool,
     pub keyword: bool,

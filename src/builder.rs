@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-use crate::error::{Error, ErrorKind, Result as BResult, WarningSet};
+use crate::error::{Error, ErrorKind, Result as BResult};
 use crate::parser::AST;
 use crate::stream::StringStream;
 
@@ -69,7 +69,6 @@ pub trait Buildable: Sized {
     fn build_from_compiled(blob: &[u8]) -> BResult<Self>;
     fn build_from_plain(raw: StringStream) -> BResult<Self>;
     fn build_from_blob(blob: &[u8], path: &Path) -> BResult<Self> {
-        let mut warnings = WarningSet::empty();
         let ast: AST = match select_format(
             path,
             &[
@@ -79,8 +78,8 @@ pub trait Buildable: Sized {
             ],
         ) {
             FileResult::Valid((_, Format::Compiled)) => {
-                let result = Self::build_from_compiled(&blob)?.unpack_into(&mut warnings);
-                return warnings.with_ok(result);
+                let result = Self::build_from_compiled(&blob)?;
+                return Ok(result);
             }
             FileResult::Valid((_, Format::Ast)) => {
                 let string = std::str::from_utf8(blob).map_err(|_| -> Error { todo!() })?;
@@ -90,8 +89,8 @@ pub trait Buildable: Sized {
                 let string =
                     String::from_utf8(blob.to_vec()).map_err(|_| -> Error { todo!() })?;
                 let stream = StringStream::new(actual_path, string);
-                let result = Self::build_from_plain(stream)?.unpack_into(&mut warnings);
-                return warnings.with_ok(result);
+                let result = Self::build_from_plain(stream)?;
+                return Ok(result);
             }
             FileResult::NonExisting => {
                 return ErrorKind::GrammarNotFound {
@@ -107,11 +106,10 @@ pub trait Buildable: Sized {
                 .err();
             }
         };
-        let grammar = Self::build_from_ast(ast)?.unpack_into(&mut warnings);
-        warnings.with_ok(grammar)
+        let grammar = Self::build_from_ast(ast)?;
+        Ok(grammar)
     }
     fn build_from_path(path: &Path) -> BResult<Self> {
-        let mut warnings = WarningSet::empty();
         let ast: AST = match select_format(
             path,
             &[
@@ -126,8 +124,8 @@ pub trait Buildable: Sized {
                 let mut buffer = Vec::new();
                 file.read_to_end(&mut buffer)
                     .map_err(|err| Error::with_file(err, &actual_path))?;
-                let result = Self::build_from_compiled(&buffer)?.unpack_into(&mut warnings);
-                return warnings.with_ok(result);
+                let result = Self::build_from_compiled(&buffer)?;
+                return Ok(result);
             }
             FileResult::Valid((actual_path, Format::Ast)) => {
                 let file = File::open(&actual_path)
@@ -135,9 +133,9 @@ pub trait Buildable: Sized {
                 serde_json::from_reader(file).map_err(|_err| Error::new(todo!()))?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
-                let stream = StringStream::from_file(actual_path)?.unpack_into(&mut warnings);
-                let result = Self::build_from_plain(stream)?.unpack_into(&mut warnings);
-                return warnings.with_ok(result);
+                let stream = StringStream::from_file(actual_path)?;
+                let result = Self::build_from_plain(stream)?;
+                return Ok(result);
             }
             FileResult::NonExisting => {
                 return ErrorKind::GrammarNotFound {
@@ -153,8 +151,8 @@ pub trait Buildable: Sized {
                 .err();
             }
         };
-        let grammar = Self::build_from_ast(ast)?.unpack_into(&mut warnings);
-        warnings.with_ok(grammar)
+        let grammar = Self::build_from_ast(ast)?;
+        Ok(grammar)
     }
 }
 
@@ -162,24 +160,20 @@ pub trait Buildable: Sized {
 macro_rules! build_system {
     (lexer => $lexer_path:literal, parser => $parser_path:literal $(,)?) => {
         (|| -> $crate::error::Result<($crate::lexer::Lexer, $crate::parser::earley::EarleyParser)> {
-            let mut warnings =
-                $crate::error::WarningSet::empty();
             let lexer_source = include_bytes!($lexer_path);
             let parser_source = include_bytes!($parser_path);
             let lexer =
                 $crate::lexer::Lexer::build_from_blob(
                     lexer_source,
                     ::std::path::Path::new($lexer_path),
-                )?
-                .unpack_into(&mut warnings);
+                )?;
             let parser =
                 $crate::parser::earley::EarleyParser::build_from_blob(
                     parser_source,
                     ::std::path::Path::new($parser_path),
 		    lexer.grammar(),
-                )?
-                .unpack_into(&mut warnings);
-            warnings.with_ok((lexer, parser))
+                )?;
+            Ok((lexer, parser))
         })()
     };
 }

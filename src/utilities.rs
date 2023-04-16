@@ -24,27 +24,6 @@ macro_rules! retrieve {
     }};
 }
 
-/// # Summary
-///
-/// `ask_case!` generates a warning when the given string does not comply
-/// to the given case.
-#[macro_export]
-macro_rules! ask_case {
-    ($string: expr, $case: ident, $warnings: expr) => {
-        use std::rc::Rc;
-        match $crate::case::CaseProcess::case($string) {
-            $crate::case::Case::$case => {}
-            c => $warnings.add($crate::error::Warning::new(
-                $crate::error::WarningType::CaseConvention(
-                    Rc::from($string.as_str()),
-                    c,
-                    $crate::case::Case::$case,
-                ),
-            )),
-        }
-    };
-}
-
 #[macro_export]
 macro_rules! unwrap_or_continue {
     ($value:expr) => {

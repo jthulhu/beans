@@ -2,10 +2,11 @@ use super::{ast::Ast, TerminalId};
 use crate::{
     build_system,
     builder::Buildable,
-    error::{Error, ErrorKind, Result, WarningSet},
-    parser::{AST, Parser},
+    error::{Error, ErrorKind, Result},
+    parser::{Parser, AST},
     regex::{CompiledRegex, RegexBuilder},
-    stream::StringStream, typed::Tree,
+    stream::StringStream,
+    typed::Tree,
 };
 use bincode::deserialize;
 use newty::newty;
@@ -111,8 +112,6 @@ impl Buildable for Grammar {
 
     fn build_from_ast(ast: AST) -> Result<Self> {
         let typed_ast = Ast::read(ast);
-
-        let warnings = WarningSet::empty();
         let mut ignores = Ignores::with_raw_capacity(typed_ast.terminals.len());
         let mut errors = Errors::new();
         let mut descriptions = Descriptions::new();
@@ -160,24 +159,22 @@ impl Buildable for Grammar {
                 })?;
         }
         let re = regex_builder.build();
-        warnings.with_ok(Self::new(re, names, ignores, errors, descriptions))
+        Ok(Self::new(re, names, ignores, errors, descriptions))
     }
 
     fn build_from_compiled(blob: &[u8]) -> Result<Self> {
-        WarningSet::empty().with_ok(deserialize(blob)?)
+        Ok(deserialize(blob)?)
     }
 
     fn build_from_plain(mut source: StringStream) -> Result<Self> {
-        let mut warnings = WarningSet::empty();
         let (lexer, parser) = build_system!(
             lexer => "lexer.clx",
             parser => "lexer.cgr",
-        )?
-        .unpack_into(&mut warnings);
+        )?;
         let mut input = lexer.lex(&mut source);
-        let result = parser.parse(&mut input)?.unpack_into(&mut warnings);
-        let grammar = Self::build_from_ast(result.tree)?.unpack_into(&mut warnings);
-        warnings.with_ok(grammar)
+        let result = parser.parse(&mut input)?;
+        let grammar = Self::build_from_ast(result.tree)?;
+        Ok(grammar)
     }
 }
 
@@ -191,7 +188,6 @@ mod tests {
         assert_eq!(
             *Grammar::build_from_plain(StringStream::new(Path::new("whatever"), "A ::= wot!"))
                 .unwrap()
-                .unwrap()
                 .pattern(),
             RegexBuilder::new()
                 .with_named_regex("wot!", String::from("A"), false)
@@ -203,7 +199,6 @@ mod tests {
                 Path::new("whatever"),
                 "B ::= wot!  "
             ))
-            .unwrap()
             .unwrap()
             .pattern(),
             RegexBuilder::new()
@@ -217,7 +212,6 @@ mod tests {
                 "A ::= wot!\n\nB ::= wheel"
             ))
             .unwrap()
-            .unwrap()
             .pattern(),
             RegexBuilder::new()
                 .with_named_regex("wot!", String::from("A"), false)
@@ -229,7 +223,6 @@ mod tests {
         assert_eq!(
             *Grammar::build_from_plain(StringStream::new(Path::new("whatever"), ""))
                 .unwrap()
-                .unwrap()
                 .pattern(),
             RegexBuilder::new().build()
         );
@@ -240,7 +233,6 @@ mod tests {
             Path::new("whatever"),
             "ignore A ::= [ ]\nignore B ::= bbb\nC ::= ccc",
         ))
-        .unwrap()
         .unwrap();
         assert_eq!(grammar.name(TerminalId(0)), "A");
         assert!(grammar.ignored(0.into()));
@@ -257,7 +249,6 @@ mod tests {
             r#"ignore COMMENT ::= /\*([^*]|\*[^/])\*/
 (unclosed comment) unwanted ECOMMENT ::= /\*([^*]|\*[^/])"#,
         ))
-        .unwrap()
         .unwrap();
         assert_eq!(1, grammar.errors.len());
         assert_eq!(

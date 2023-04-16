@@ -1,9 +1,8 @@
 #![allow(
     clippy::upper_case_acronyms,
-    unstable_name_collisions,
-    unreachable_code
+    unstable_name_collisions
 )]
-#![warn(rust_2018_idioms, missing_debug_implementations)]
+#![warn(missing_debug_implementations)]
 #![feature(box_patterns, try_blocks)]
 
 //! # Beans

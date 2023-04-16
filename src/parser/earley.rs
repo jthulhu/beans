@@ -1023,11 +1023,11 @@ impl EarleyParser {
                 let span = if raw_input.is_empty() {
                     last_span.clone()
                 } else if item.end == item.start {
-                    raw_input[item.start].location().clone()
+                    raw_input[item.start].span().clone()
                 } else {
                     raw_input[item.start]
-                        .location()
-                        .sup(raw_input[item.end - 1].location())
+                        .span()
+                        .sup(raw_input[item.end - 1].span())
                 };
                 let all_attributes = self
                     .find_children(item, forest, raw_input)
@@ -1052,7 +1052,7 @@ impl EarleyParser {
                                         value: Value::Str(Rc::from(
                                             token.attributes()[idx].as_str(),
                                         )),
-                                        span: Some(token.location().clone()),
+                                        span: Some(token.span().clone()),
                                     },
                                 )
                             }
@@ -1124,7 +1124,7 @@ impl EarleyParser {
                     message: format!(
                         "While creating the forest, could not find any item in set {}, at {}",
                         i,
-                        raw_input[i].location(),
+                        raw_input[i].span(),
                     ),
                 }
                 .err();
@@ -1274,7 +1274,7 @@ impl EarleyParser {
                     let error = if let Some(token) =
                         input.next(Allowed::All)?.unpack_into(&mut warnings)
                     {
-                        let location = token.location().clone();
+                        let span = token.span().clone();
                         let name = {
                             let id = token.id();
                             let name = token.name().to_string();
@@ -1293,7 +1293,7 @@ impl EarleyParser {
                                 .map(|x| x.to_string())
                                 .chain(possible_first_terminals.drain())
                                 .collect(),
-                            span: Fragile::new(location),
+                            span: Fragile::new(span),
                         }
                     } else {
                         ErrorKind::SyntaxErrorValidPrefix {

@@ -1,6 +1,6 @@
 use anyhow::Context;
 use beans::builder::Buildable;
-use beans::error::{ErrorKind, WarningSet, WithWarnings};
+use beans::error::ErrorKind;
 use beans::lexer::{Lexer, Grammar as LexerGrammar};
 use beans::parser::earley::{print_final_sets, print_sets, EarleyGrammar, EarleyParser};
 use beans::parser::Parser;
@@ -69,15 +69,14 @@ enum CompileAction {
     },
 }
 
-fn compile(compile_action: CompileAction) -> anyhow::Result<WithWarnings<()>> {
-    let mut warnings = WarningSet::default();
+fn compile(compile_action: CompileAction) -> anyhow::Result<()> {
     match compile_action {
         CompileAction::Lexer {
             lexer_grammar: mut lexer_grammar_path,
             output_path,
         } => {
             let lexer_grammar = LexerGrammar::build_from_path(lexer_grammar_path.as_path())?
-                .unpack_into(&mut warnings);
+                ;
             let res = serialize(&lexer_grammar)?;
             let output = match output_path {
                 Some(output) => output,
@@ -98,12 +97,12 @@ fn compile(compile_action: CompileAction) -> anyhow::Result<WithWarnings<()>> {
             output_path,
             lexer_path,
         } => {
-            let lexer = Lexer::build_from_path(&lexer_path)?.unpack_into(&mut warnings);
+            let lexer = Lexer::build_from_path(&lexer_path)?;
             let parser_grammar = EarleyGrammar::build_from_path(
                 &parser_grammar_path.as_path(),
                 lexer.grammar(),
             )?
-            .unpack_into(&mut warnings);
+            ;
             let output = match output_path {
                 Some(output) => output,
                 None => {
@@ -117,23 +116,22 @@ fn compile(compile_action: CompileAction) -> anyhow::Result<WithWarnings<()>> {
             output_fd.write_all(&serialize(&parser_grammar)?)?;
         }
     }
-    warnings.with_ok(())
+    Ok(())
 }
 
 fn main() -> anyhow::Result<()> {
     let Cli { action } = Cli::parse();
-    let mut warnings = WarningSet::default();
     match action {
-        Action::Compile(compile_action) => compile(compile_action)?.unpack_into(&mut warnings),
+        Action::Compile(compile_action) => compile(compile_action)?,
         Action::Lex {
             lexer_grammar: lexer_grammar_path,
             source,
         } => {
-            let lexer = Lexer::build_from_path(&lexer_grammar_path)?.unpack_into(&mut warnings);
-            let mut stream = StringStream::from_file(source)?.unpack_into(&mut warnings);
+            let lexer = Lexer::build_from_path(&lexer_grammar_path)?;
+            let mut stream = StringStream::from_file(source)?;
             let mut lexed_stream = lexer.lex(&mut stream);
             let mut output_buffer = BufWriter::new(stdout());
-            while let Some(token) = lexed_stream.next(Allowed::All)?.unpack_into(&mut warnings)
+            while let Some(token) = lexed_stream.next(Allowed::All)?
             {
                 write!(output_buffer, "{} {{ ", token.name())?;
                 for (key, value) in token.attributes().iter() {
@@ -150,7 +148,7 @@ fn main() -> anyhow::Result<()> {
             parser_grammar: parser_grammar_path,
             source,
         } => {
-            let lexer = Lexer::build_from_path(&lexer_grammar_path)?.unpack_into(&mut warnings);
+            let lexer = Lexer::build_from_path(&lexer_grammar_path)?;
             let parser_grammar = if let Some("cgr") =
                 parser_grammar_path.extension().and_then(|x| x.to_str())
             {
@@ -160,7 +158,7 @@ fn main() -> anyhow::Result<()> {
                 deserialize(&buffer)?
             } else {
                 EarleyGrammar::build_from_path(parser_grammar_path.as_path(), lexer.grammar())?
-                    .unpack_into(&mut warnings)
+                    
             };
             let parser = EarleyParser::new(parser_grammar);
             // let (table, raw_input) =
@@ -168,21 +166,21 @@ fn main() -> anyhow::Result<()> {
             // 	    &parser,
             //         &mut lexer.lex(
             //             &mut StringStream::from_file(source)?
-            //                 .unpack_into(&mut warnings),
+            //                 ,
             //         ),
             //     )?
-            //     .unpack_into(&mut warnings);
+            //     ;
             // println!("{:#?}\n{}", table, raw_input.len());
-            let mut stream = StringStream::from_file(source)?.unpack_into(&mut warnings);
+            let mut stream = StringStream::from_file(source)?;
             let mut input = lexer.lex(&mut stream);
-            let (table, raw_input) = parser.recognise(&mut input)?.unpack_into(&mut warnings);
+            let (table, raw_input) = parser.recognise(&mut input)?;
             if print_table {
                 println!(" ### TABLE ###");
                 print_sets(&table, &parser, &lexer);
             }
             let forest = parser
                 .to_forest(&table, &raw_input)?
-                .unpack_into(&mut warnings);
+                ;
             if print_final_table {
                 println!(" ### FINAL TABLE ###");
                 print_final_sets(&forest, &parser, &lexer);
@@ -190,9 +188,6 @@ fn main() -> anyhow::Result<()> {
             let ast = parser.select_ast(&forest, &raw_input, input.last_span());
             print_ast(&ast)?;
         }
-    }
-    for warning in warnings.iter() {
-        println!("{}", warning);
     }
     Ok(())
 }

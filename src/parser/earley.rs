@@ -17,7 +17,7 @@ use crate::span::Span;
 use crate::{
     build_system,
     builder::{select_format, Buildable, FileResult, Format},
-    error::{Error, ErrorKind, Result, WarningSet},
+    error::{Error, ErrorKind, Result},
     lexer::{Grammar as LexerGrammar, LexedStream, Lexer, TerminalId, Token},
     list::List,
     regex::Allowed,
@@ -168,7 +168,6 @@ impl EarleyGrammar {
         name_of: NonTerminalName,
         description_of: NonTerminalDescription,
     ) -> Result<Self> {
-        let warnings = WarningSet::empty();
         let nb_non_terminals = axioms.len_as(); // Number of non terminals
                                                 // nullables[non_term_id]: bool is whether non terminal with this id is nullable, meaning it can match ε (empty string).
         let mut nullables = Nullables::with_capacity(nb_non_terminals);
@@ -209,7 +208,7 @@ impl EarleyGrammar {
             }
         }
 
-        warnings.with_ok(Self {
+        Ok(Self {
             axioms,
             rules,
             nullables,
@@ -239,14 +238,12 @@ impl EarleyGrammar {
     const AST_EXTENSION: &str = "gr.ast";
 
     pub fn build_from_compiled(blob: &[u8]) -> Result<Self> {
-        WarningSet::empty_with_ok(deserialize(blob)?)
+        Ok(deserialize(blob)?)
     }
 
     pub fn build_from_ast(ast: AST, lexer_grammar: &LexerGrammar) -> Result<Self> {
         type InvokedMacros = HashMap<(Rc<str>, Rc<[ElementType]>), NonTerminalId>;
         type MacroDeclarations = HashMap<Rc<str>, (Vec<Rc<str>>, Vec<AstRule>)>;
-
-        let mut warnings = WarningSet::empty();
 
         let typed_ast = Ast::read(ast);
         // `macro_declarations` holds every macro declaration found in a grammar. This will be
@@ -308,7 +305,6 @@ impl EarleyGrammar {
             scope: &HashMap<Rc<str>, ElementType>,
             lexer_grammar: &LexerGrammar,
         ) -> Result<Rule> {
-            let mut warnings = WarningSet::empty();
             let mut new_elements = Vec::with_capacity(rule.elements.len());
             for element in rule.elements.iter() {
                 let el = eval_element(
@@ -324,8 +320,7 @@ impl EarleyGrammar {
                     macro_declarations,
                     scope,
                     lexer_grammar,
-                )?
-                .unpack_into(&mut warnings);
+                )?;
                 new_elements.push(el);
             }
             let proxy = eval_proxy(
@@ -337,9 +332,8 @@ impl EarleyGrammar {
                 found_nonterminals,
                 macro_declarations,
                 lexer_grammar,
-            )?
-            .unpack_into(&mut warnings);
-            warnings.with_ok(Rule::new(
+            )?;
+            Ok(Rule::new(
                 macro_id,
                 new_elements,
                 proxy,
@@ -361,7 +355,6 @@ impl EarleyGrammar {
             macro_declarations: &MacroDeclarations,
             lexer_grammar: &LexerGrammar,
         ) -> Result<()> {
-            let mut warnings = WarningSet::empty();
             let Some((arg_names, macro_rules)) = macro_declarations.get(&name) else {
 		return ErrorKind::GrammarUndefinedMacro {
 		    name: name.to_string(),
@@ -400,11 +393,10 @@ impl EarleyGrammar {
                     macro_declarations,
                     &scope,
                     lexer_grammar,
-                )?
-                .unpack_into(&mut warnings);
+                )?;
                 rules.push(actual_rule);
             }
-            warnings.with_ok(())
+            Ok(())
         }
 
         fn eval_expression(
@@ -421,7 +413,6 @@ impl EarleyGrammar {
             scope: &HashMap<Rc<str>, ElementType>,
             lexer_grammar: &LexerGrammar,
         ) -> Result<ElementType> {
-            let mut warnings = WarningSet::empty();
             let res = match expr {
                 Item::SelfNonTerminal => ElementType::NonTerminal(self_id),
                 Item::Regular { name } => {
@@ -457,8 +448,7 @@ impl EarleyGrammar {
                             macro_declarations,
                             scope,
                             lexer_grammar,
-                        )?
-                        .unpack_into(&mut warnings);
+                        )?;
                         args.push(evaled);
                     }
                     let args: Rc<[_]> = Rc::from(args);
@@ -493,13 +483,12 @@ impl EarleyGrammar {
                             found_nonterminals,
                             macro_declarations,
                             lexer_grammar,
-                        )?
-                        .unpack_into(&mut warnings);
+                        )?;
                     }
                     ElementType::NonTerminal(invoked_macros[&(name.clone(), args)])
                 }
             };
-            warnings.with_ok(res)
+            Ok(res)
         }
 
         fn eval_element(
@@ -516,7 +505,6 @@ impl EarleyGrammar {
             scope: &HashMap<Rc<str>, ElementType>,
             lexer_grammar: &LexerGrammar,
         ) -> Result<Element> {
-            let mut warnings = WarningSet::empty();
             let attribute = match &element.attribute {
                 Some(AstAttribute {
                     attribute,
@@ -547,9 +535,8 @@ impl EarleyGrammar {
                 macro_declarations,
                 scope,
                 lexer_grammar,
-            )?
-            .unpack_into(&mut warnings);
-            warnings.with_ok(Element::new(attribute, key, element_type))
+            )?;
+            Ok(Element::new(attribute, key, element_type))
         }
 
         fn eval_proxy(
@@ -562,7 +549,6 @@ impl EarleyGrammar {
             macro_declarations: &MacroDeclarations,
             lexer_grammar: &LexerGrammar,
         ) -> Result<Proxy> {
-            let mut warnings = WarningSet::empty();
             let mut actual_proxy = HashMap::new();
             if let Some(ref variant) = proxy.variant {
                 actual_proxy.insert("variant".into(), ValueTemplate::String(variant.clone()));
@@ -593,8 +579,7 @@ impl EarleyGrammar {
                             found_nonterminals,
                             macro_declarations,
                             lexer_grammar,
-                        )?
-                        .unpack_into(&mut warnings);
+                        )?;
                         ValueTemplate::InlineRule {
                             non_terminal: *nonterminal,
                             attributes,
@@ -603,7 +588,7 @@ impl EarleyGrammar {
                 };
                 actual_proxy.insert(key.clone(), value);
             }
-            warnings.with_ok(actual_proxy)
+            Ok(actual_proxy)
         }
 
         let mut invoked_macros: InvokedMacros = HashMap::new();
@@ -628,8 +613,7 @@ impl EarleyGrammar {
                     &macro_declarations,
                     &empty_scope,
                     lexer_grammar,
-                )?
-                .unpack_into(&mut warnings);
+                )?;
                 rules.push(parsed_rule);
             }
         }
@@ -637,30 +621,25 @@ impl EarleyGrammar {
         for axiom in found_axioms {
             axioms.put(axiom);
         }
-        let res = Self::new(rules, axioms, id_of, name_of, description_of)?
-            .unpack_into(&mut warnings);
-        warnings.with_ok(res)
+        let res = Self::new(rules, axioms, id_of, name_of, description_of)?;
+        Ok(res)
     }
 
     pub fn build_from_plain(
         mut source: StringStream,
         lexer_grammar: &LexerGrammar,
     ) -> Result<Self> {
-        let mut warnings = WarningSet::empty();
         let (lexer, parser) = build_system!(
             lexer => "parser.clx",
             parser => "parser.cgr",
-        )?
-        .unpack_into(&mut warnings);
+        )?;
         let mut input = lexer.lex(&mut source);
-        let result = parser.parse(&mut input)?.unpack_into(&mut warnings);
-        let grammar =
-            Self::build_from_ast(result.tree, lexer_grammar)?.unpack_into(&mut warnings);
-        warnings.with_ok(grammar)
+        let result = parser.parse(&mut input)?;
+        let grammar = Self::build_from_ast(result.tree, lexer_grammar)?;
+        Ok(grammar)
     }
 
     pub fn build_from_path(path: &Path, lexer_grammar: &LexerGrammar) -> Result<Self> {
-        let mut warnings = WarningSet::empty();
         let ast: AST = match select_format(
             path,
             &[
@@ -675,10 +654,9 @@ impl EarleyGrammar {
                 serde_json::from_reader(file).map_err(|_err| Error::new(todo!()))?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
-                let stream = StringStream::from_file(actual_path)?.unpack_into(&mut warnings);
-                let result =
-                    Self::build_from_plain(stream, lexer_grammar)?.unpack_into(&mut warnings);
-                return warnings.with_ok(result);
+                let stream = StringStream::from_file(actual_path)?;
+                let result = Self::build_from_plain(stream, lexer_grammar)?;
+                return Ok(result);
             }
             FileResult::Valid((actual_path, Format::Compiled)) => {
                 let mut file = File::open(&actual_path)
@@ -686,8 +664,8 @@ impl EarleyGrammar {
                 let mut buffer = Vec::new();
                 file.read_to_end(&mut buffer)
                     .map_err(|err| Error::with_file(err, &actual_path))?;
-                let result = Self::build_from_compiled(&buffer)?.unpack_into(&mut warnings);
-                return warnings.with_ok(result);
+                let result = Self::build_from_compiled(&buffer)?;
+                return Ok(result);
             }
             FileResult::WrongExtension(extension) => {
                 return ErrorKind::UnrecognisedExtension {
@@ -703,8 +681,8 @@ impl EarleyGrammar {
                 .err();
             }
         };
-        let parser = Self::build_from_ast(ast, lexer_grammar)?.unpack_into(&mut warnings);
-        warnings.with_ok(parser)
+        let parser = Self::build_from_ast(ast, lexer_grammar)?;
+        Ok(parser)
     }
 
     pub fn build_from_blob(
@@ -712,7 +690,6 @@ impl EarleyGrammar {
         path: &Path,
         lexer_grammar: &LexerGrammar,
     ) -> Result<Self> {
-        let mut warnings = WarningSet::empty();
         let ast: AST = match select_format(
             path,
             &[
@@ -722,8 +699,8 @@ impl EarleyGrammar {
             ],
         ) {
             FileResult::Valid((_, Format::Compiled)) => {
-                let result = Self::build_from_compiled(&blob)?.unpack_into(&mut warnings);
-                return warnings.with_ok(result);
+                let result = Self::build_from_compiled(&blob)?;
+                return Ok(result);
             }
             FileResult::Valid((_, Format::Ast)) => {
                 let string = std::str::from_utf8(blob).map_err(|_| Error::new(todo!()))?;
@@ -733,9 +710,8 @@ impl EarleyGrammar {
                 let string =
                     String::from_utf8(blob.to_vec()).map_err(|_err| Error::new(todo!()))?;
                 let stream = StringStream::new(actual_path, string);
-                let result =
-                    Self::build_from_plain(stream, lexer_grammar)?.unpack_into(&mut warnings);
-                return warnings.with_ok(result);
+                let result = Self::build_from_plain(stream, lexer_grammar)?;
+                return Ok(result);
             }
             FileResult::NonExisting => {
                 return ErrorKind::GrammarNotFound {
@@ -751,8 +727,8 @@ impl EarleyGrammar {
                 .err();
             }
         };
-        let grammar = Self::build_from_ast(ast, lexer_grammar)?.unpack_into(&mut warnings);
-        warnings.with_ok(grammar)
+        let grammar = Self::build_from_ast(ast, lexer_grammar)?;
+        Ok(grammar)
     }
 }
 
@@ -909,10 +885,8 @@ impl EarleyParser {
         path: &Path,
         lexer_grammar: &LexerGrammar,
     ) -> Result<Self> {
-        let mut warnings = WarningSet::empty();
-        let grammar = EarleyGrammar::build_from_blob(blob, path, lexer_grammar)?
-            .unpack_into(&mut warnings);
-        warnings.with_ok(Self { grammar })
+        let grammar = EarleyGrammar::build_from_blob(blob, path, lexer_grammar)?;
+        Ok(Self { grammar })
     }
 
     fn find_children(
@@ -1115,7 +1089,6 @@ impl EarleyParser {
     }
 
     pub fn to_forest(&self, table: &[StateSet], raw_input: &[Token]) -> Result<Forest> {
-        let warnings = WarningSet::default();
         let mut forest = vec![FinalSet::default(); table.len()];
         for (i, set) in table.iter().enumerate() {
             forest[i].position = i;
@@ -1141,14 +1114,13 @@ impl EarleyParser {
                     )
                 });
         }
-        warnings.with_ok(forest)
+        Ok(forest)
     }
 
     pub fn recognise<'input, 'linput: 'input>(
         &self,
         input: &'input mut LexedStream<'linput, 'linput>,
     ) -> Result<(Table, Vec<Token>)> {
-        let mut warnings = WarningSet::empty();
         let mut sets = Vec::new();
         let mut first_state = StateSet::default();
         let mut possible_first_nonterminals = HashSet::new();
@@ -1271,9 +1243,7 @@ impl EarleyParser {
                 Err(Error {
                     kind: box ErrorKind::LexingError { .. },
                 }) => {
-                    let error = if let Some(token) =
-                        input.next(Allowed::All)?.unpack_into(&mut warnings)
-                    {
+                    let error = if let Some(token) = input.next(Allowed::All)? {
                         let span = token.span().clone();
                         let name = {
                             let id = token.id();
@@ -1307,7 +1277,7 @@ impl EarleyParser {
             };
             possible_first_nonterminals.clear();
             possible_first_terminals.clear();
-            if let Some(token) = next_token.unpack_into(&mut warnings) {
+            if let Some(token) = next_token {
                 for item in scans.entry(token.id()).or_default() {
                     next_state.add(*item);
                 }
@@ -1318,7 +1288,7 @@ impl EarleyParser {
                     && self.grammar.axioms.contains(rule.id)
                     && rule.elements.len() == item.position
             }) {
-                break 'outer warnings.with_ok((sets, raw_input));
+                break 'outer Ok((sets, raw_input));
             } else {
                 return ErrorKind::SyntaxErrorValidPrefix {
                     span: input.last_span().into(),
@@ -1351,14 +1321,11 @@ impl Parser<'_> for EarleyParser {
         &self,
         input: &'input mut LexedStream<'input, 'input>,
     ) -> Result<ParseResult> {
-        let mut warnings = WarningSet::default();
-        let (table, raw_input) = self.recognise(input)?.unpack_into(&mut warnings);
-        let forest = self
-            .to_forest(&table, &raw_input)?
-            .unpack_into(&mut warnings);
+        let (table, raw_input) = self.recognise(input)?;
+        let forest = self.to_forest(&table, &raw_input)?;
         // print_final_sets(&forest, self);
         let tree = self.select_ast(&forest, &raw_input, input.last_span());
-        warnings.with_ok(ParseResult { tree })
+        Ok(ParseResult { tree })
     }
 }
 
@@ -1382,7 +1349,7 @@ impl Parser<'_> for EarleyParser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{lexer::Grammar as LexerGrammar, rules};
+    use crate::lexer::Grammar as LexerGrammar;
 
     const GRAMMAR_NUMBERS_LEXER: &str = r#"
 NUMBER ::= ([0-9])
@@ -1805,20 +1772,17 @@ RPAR ::= \)
         }
     }
 
-
     #[test]
     fn complex_proxy() {
         let lexer = Lexer::build_from_plain(StringStream::new(
             Path::new("<PROXY>"),
             GRAMMAR_PROXY_LEXER,
         ))
-        .unwrap()
         .unwrap();
         EarleyGrammar::build_from_plain(
             StringStream::new(Path::new("<PROXY>"), GRAMMAR_PROXY),
             lexer.grammar(),
         )
-        .unwrap()
         .unwrap();
         assert!(EarleyGrammar::build_from_plain(
             StringStream::new(Path::new("<PROXY>"), GRAMMAR_PROXY_WRONG_1),
@@ -1842,13 +1806,11 @@ B ::= A <>;"#;
         let input = r#""#;
         let lexer =
             Lexer::build_from_plain(StringStream::new(Path::new("<lexer input>"), lexer_input))
-                .unwrap()
                 .unwrap();
         let grammar = EarleyGrammar::build_from_plain(
             StringStream::new(Path::new("<grammar input>"), grammar_input),
             lexer.grammar(),
         )
-        .unwrap()
         .unwrap();
         let parser = EarleyParser::new(grammar);
         let sets = sets!(
@@ -1861,7 +1823,6 @@ B ::= A <>;"#;
         );
         let (recognised, _) = parser
             .recognise(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
-            .unwrap()
             .unwrap();
         print_sets(&recognised, &parser, &lexer);
         verify_sets(sets, recognised, &parser, &lexer);
@@ -1880,19 +1841,16 @@ int main() {
 "#;
         let lexer =
             Lexer::build_from_plain(StringStream::new(Path::new("petitc.lx"), GRAMMAR_C_LEXER))
-                .unwrap()
                 .unwrap();
 
         let grammar = EarleyGrammar::build_from_plain(
             StringStream::new(Path::new("petitc.gr"), GRAMMAR_C),
             lexer.grammar(),
         )
-        .unwrap()
         .unwrap();
         let parser = EarleyParser::new(grammar);
         let _ast = parser
             .parse(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
-            .unwrap()
             .unwrap();
     }
 
@@ -1912,18 +1870,15 @@ int main() {
 "#;
         let lexer =
             Lexer::build_from_plain(StringStream::new(Path::new("petitc.lx"), GRAMMAR_C_LEXER))
-                .unwrap()
                 .unwrap();
         let grammar = EarleyGrammar::build_from_plain(
             StringStream::new(Path::new("petitc.gr"), GRAMMAR_C),
             lexer.grammar(),
         )
-        .unwrap()
         .unwrap();
         let parser = EarleyParser::new(grammar);
         let _ast = parser
             .parse(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
-            .unwrap()
             .unwrap();
         // print_ast(&_ast.tree).unwrap();
     }
@@ -1935,13 +1890,11 @@ int main() {
             Path::new("<NUMBERS LEXER>"),
             GRAMMAR_NUMBERS_LEXER,
         ))
-        .unwrap()
         .unwrap();
         let grammar = EarleyGrammar::build_from_plain(
             StringStream::new(Path::new("<NUMBERS>"), GRAMMAR_NUMBERS),
             lexer.grammar(),
         )
-        .unwrap()
         .unwrap();
         let parser = EarleyParser::new(grammar);
         assert!(parser
@@ -1959,18 +1912,15 @@ int main() {
             Path::new("<NUMBERS LEXER>"),
             GRAMMAR_NUMBERS_LEXER,
         ))
-        .unwrap()
         .unwrap();
         let grammar = EarleyGrammar::build_from_plain(
             StringStream::new(Path::new("<NUMBERS IMPROVED>"), GRAMMAR_NUMBERS_IMPROVED),
             lexer.grammar(),
         )
-        .unwrap()
         .unwrap();
         let parser = EarleyParser::new(grammar);
         let ast = parser
             .parse(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
-            .unwrap()
             .unwrap();
         let test_ast = {
             use super::super::parser::Value::*;
@@ -2161,22 +2111,17 @@ int main() {
             Path::new("<lexer input>"),
             GRAMMAR_NUMBERS_LEXER,
         ))
-        .unwrap()
         .unwrap();
         let grammar = EarleyGrammar::build_from_plain(
             StringStream::new(Path::new("<grammar input>"), GRAMMAR_NUMBERS),
             lexer.grammar(),
         )
-        .unwrap()
         .unwrap();
         let parser = EarleyParser::new(grammar);
-	let mut input_stream = StringStream::new(Path::new("<input>"), input);
-	let mut lexed_input = lexer.lex(&mut input_stream);
-        let (table, raw_input) = parser
-            .recognise(&mut lexed_input)
-            .unwrap()
-            .unwrap();
-        let forest = parser.to_forest(&table, &raw_input).unwrap().unwrap();
+        let mut input_stream = StringStream::new(Path::new("<input>"), input);
+        let mut lexed_input = lexer.lex(&mut input_stream);
+        let (table, raw_input) = parser.recognise(&mut lexed_input).unwrap();
+        let forest = parser.to_forest(&table, &raw_input).unwrap();
         let ast = parser.select_ast(&forest, &raw_input, lexed_input.last_span());
 
         let test_ast = {
@@ -2284,13 +2229,11 @@ int main() {
             Path::new("<lexer input>"),
             GRAMMAR_NUMBERS_LEXER,
         ))
-        .unwrap()
         .unwrap();
         let grammar = EarleyGrammar::build_from_plain(
             StringStream::new(Path::new("<grammar input>"), GRAMMAR_NUMBERS),
             lexer.grammar(),
         )
-        .unwrap()
         .unwrap();
 
         let parser = EarleyParser::new(grammar);
@@ -2335,9 +2278,8 @@ int main() {
 
         let (table, raw_input) = parser
             .recognise(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
-            .unwrap()
             .unwrap();
-        let forest = parser.to_forest(&table, &raw_input).unwrap().unwrap();
+        let forest = parser.to_forest(&table, &raw_input).unwrap();
         assert_eq!(
             forest,
             sets,
@@ -2362,13 +2304,11 @@ int main() {
             Path::new("<lexer input>"),
             GRAMMAR_NUMBERS_LEXER,
         ))
-        .unwrap()
         .unwrap();
         let grammar = EarleyGrammar::build_from_plain(
             StringStream::new(Path::new("<grammar input>"), GRAMMAR_NUMBERS),
             lexer.grammar(),
         )
-        .unwrap()
         .unwrap();
         let parser = EarleyParser::new(grammar);
         let sets = sets!(
@@ -2448,7 +2388,6 @@ int main() {
         );
         let (recognised, _) = parser
             .recognise(&mut lexer.lex(&mut StringStream::new(Path::new("<input>"), input)))
-            .unwrap()
             .unwrap();
         verify_sets(sets, recognised, &parser, &lexer);
     }

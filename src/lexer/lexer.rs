@@ -1,7 +1,7 @@
 use super::grammar::Grammar;
 use crate::builder::Buildable;
+use crate::error::ErrorKind;
 use crate::error::Result;
-use crate::error::{ErrorKind, WarningSet};
 use crate::parser::AST;
 use crate::regex::Allowed;
 use crate::span::Span;
@@ -153,10 +153,9 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
     }
 
     fn lex_next(&mut self, allowed: Allowed) -> Result<bool> {
-        let warnings = WarningSet::empty();
         'lex: loop {
             if self.stream.is_empty() {
-                break 'lex warnings.with_ok(false);
+                break 'lex Ok(false);
             } else if let Some(result) = self
                 .lexer
                 .grammar()
@@ -188,7 +187,7 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
                 let token = Token::new(name, id, attributes, span.clone());
                 self.last_span = span;
                 self.tokens.push((start, token));
-                break 'lex warnings.with_ok(true);
+                break 'lex Ok(true);
             } else {
                 break 'lex ErrorKind::LexingError {
                     span: Fragile::new(self.stream.curr_span()),
@@ -212,12 +211,11 @@ impl LexedStream<'_, '_> {
 
     /// Lex any allowed token.
     pub fn next(&mut self, allowed: Allowed) -> Result<Option<&Token>> {
-        let mut warnings = WarningSet::empty();
         self.pos += 1;
-        if self.lex_next(allowed)?.unpack_into(&mut warnings) {
-            warnings.with_ok(self.tokens.last().map(|(_, token)| token))
+        if self.lex_next(allowed)? {
+            Ok(self.tokens.last().map(|(_, token)| token))
         } else {
-            warnings.with_ok(None)
+            Ok(None)
         }
     }
 
@@ -283,9 +281,8 @@ impl Lexer {
     }
 
     pub fn from_path(path: &Path) -> Result<Self> {
-        let mut warnings = WarningSet::empty();
-        let grammar = Grammar::build_from_path(path)?.unpack_into(&mut warnings);
-        warnings.with_ok(Self { grammar })
+        let grammar = Grammar::build_from_path(path)?;
+        Ok(Self { grammar })
     }
 }
 
@@ -295,21 +292,18 @@ impl Buildable for Lexer {
     const AST_EXTENSION: &'static str = Grammar::AST_EXTENSION;
 
     fn build_from_ast(ast: AST) -> Result<Self> {
-        let mut warnings = WarningSet::empty();
-        let grammar = Grammar::build_from_ast(ast)?.unpack_into(&mut warnings);
-        warnings.with_ok(Self { grammar })
+        let grammar = Grammar::build_from_ast(ast)?;
+        Ok(Self { grammar })
     }
 
     fn build_from_compiled(blob: &[u8]) -> Result<Self> {
-        let mut warnings = WarningSet::empty();
-        let grammar = Grammar::build_from_compiled(blob)?.unpack_into(&mut warnings);
-        warnings.with_ok(Self { grammar })
+        let grammar = Grammar::build_from_compiled(blob)?;
+        Ok(Self { grammar })
     }
 
     fn build_from_plain(raw: StringStream) -> Result<Self> {
-        let mut warnings = WarningSet::empty();
-        let grammar = Grammar::build_from_plain(raw)?.unpack_into(&mut warnings);
-        warnings.with_ok(Self { grammar })
+        let grammar = Grammar::build_from_plain(raw)?;
+        Ok(Self { grammar })
     }
 }
 
@@ -384,7 +378,6 @@ mod tests {
             Path::new("<building the lexer>"),
             "A ::= blu",
         ))
-        .unwrap()
         .unwrap();
     }
 
@@ -394,15 +387,14 @@ mod tests {
             Path::new("<basic lexing>"),
             "A ::= blu",
         ))
-        .unwrap()
         .unwrap();
         let mut input = StringStream::new(Path::new("input file"), "blu");
         let mut lexed_input = lexer.lex(&mut input);
 
-        let token = lexed_input.next(Allowed::All).unwrap().unwrap().unwrap(); // nice...
+        let token = lexed_input.next(Allowed::All).unwrap().unwrap();
         assert_eq!(token.span().start(), (0, 0));
         assert_eq!(token.span().end(), (0, 2));
-        assert!(lexed_input.next(Allowed::All).unwrap().unwrap().is_none());
+        assert!(lexed_input.next(Allowed::All).unwrap().is_none());
     }
 
     #[test]
@@ -412,7 +404,6 @@ mod tests {
             r#"ignore COMMENT ::= /\*([^*]|\*[^/])\*/
 (unclosed comment) unwanted ECOMMENT ::= /\*([^*]|\*[^/])"#,
         ))
-        .unwrap()
         .unwrap();
         let mut input = StringStream::new(Path::new("<unwanted input>"), "/* hello /");
         let mut lexed_input = lexer.lex(&mut input);
@@ -431,7 +422,7 @@ mod tests {
     ) {
         let origin = &*lexed_input.stream.origin();
         let mut i = 0;
-        while let Some(token) = lexed_input.next_any().unwrap().unwrap() {
+        while let Some(token) = lexed_input.next_any().unwrap() {
             let (start, end, name) = result[i];
             assert_eq!(
                 token.span().start(),
@@ -466,7 +457,6 @@ mod tests {
     #[test]
     fn default_lex_grammar() {
         let lexer = Lexer::build_from_path(Path::new("src/parser/gmrs/dummy.lx"))
-            .unwrap()
             .unwrap();
 
         let result = [
@@ -503,10 +493,8 @@ mod tests {
     #[test]
     fn default_parser_grammar() {
         let lexer = Lexer::build_from_path(Path::new("src/parser/gmrs/earley.lx"))
-            .unwrap()
             .unwrap();
         let mut input = StringStream::from_file(Path::new("src/parser/gmrs/dummy.gr"))
-            .unwrap()
             .unwrap();
         let mut lexed_input = lexer.lex(&mut input);
 
@@ -708,7 +696,6 @@ mod tests {
             let token = lexed_input
                 .next(Allowed::All)
                 .unwrap()
-                .unwrap()
                 .unwrap_or_else(|| panic!("Expected token named {}, found EOF", tok.name));
             assert_eq!(
                 tok,
@@ -720,7 +707,7 @@ mod tests {
                 i
             );
         }
-        if let Some(token) = lexed_input.next(Allowed::All).unwrap().unwrap() {
+        if let Some(token) = lexed_input.next(Allowed::All).unwrap() {
             panic!(
                 "Lexer error @{} {}:{} does not match token EOF",
                 token.span().file().display(),

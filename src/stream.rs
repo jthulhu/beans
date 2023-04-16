@@ -1,4 +1,4 @@
-use crate::error::{Error, Result, WarningSet};
+use crate::error::{Error, Result};
 use crate::span::{Location, Span};
 use std::fs::File;
 use std::io::prelude::*;
@@ -29,7 +29,7 @@ impl RawStream {
         file_stream
             .read_to_end(&mut stream_buffer)
             .map_err(|error| Error::with_file(error, &*path))?;
-        WarningSet::empty().with_ok(Self {
+        Ok(Self {
             origin: path,
             stream: stream_buffer,
         })
@@ -147,10 +147,10 @@ impl StringStream {
         file_stream
             .read_to_string(&mut stream_buffer)
             .map_err(|err| Error::with_file(err, &*file))?;
-        Ok(WarningSet::empty_with(StringStream::new(
+        Ok(StringStream::new(
             file,
             stream_buffer,
-        )))
+        ))
     }
 
     pub fn pos(&self) -> usize {

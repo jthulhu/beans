@@ -104,7 +104,7 @@ pub enum ErrorKind {
     LexerGrammarEofString,
     /// `LexingError(message: String)`: error while transforming a string stream into a token stream.
     LexingError {
-        /// The `Location` that made the error occur. It's a hint a what should
+        /// The `Span` that made the error occur. It's a hint a what should
         /// be patched.
         span: Fragile<Span>,
     },
@@ -350,7 +350,7 @@ pub enum WarningType {
 /// `Warning` is a non-fatal error.
 #[derive(Debug, PartialEq, Eq)]
 pub struct Warning {
-    location: Option<Span>,
+    span: Option<Span>,
     warn_type: WarningType,
 }
 
@@ -359,14 +359,14 @@ impl Warning {
     pub fn new(warn_type: WarningType) -> Self {
         Self {
             warn_type,
-            location: None,
+            span: None,
         }
     }
-    /// Build a new warning of type `warn_type` with `location`.
-    pub fn with_location(warn_type: WarningType, location: Span) -> Self {
+    /// Build a new warning of type `warn_type` with `Span`.
+    pub fn with_span(warn_type: WarningType, span: Span) -> Self {
         Self {
             warn_type,
-            location: Some(location),
+            span: Some(span),
         }
     }
 
@@ -375,9 +375,9 @@ impl Warning {
         &self.warn_type
     }
 
-    /// Get the optional location of the warning.
-    pub fn location(&self) -> Option<&Span> {
-        self.location.as_ref()
+    /// Get the optional span of the warning.
+    pub fn span(&self) -> Option<&Span> {
+        self.span.as_ref()
     }
 }
 
@@ -403,16 +403,16 @@ impl fmt::Display for Warning {
                 message = Box::new("Empty warning");
             }
         };
-        if let Some(location) = self.location.as_ref() {
+        if let Some(span) = self.span.as_ref() {
             write!(
                 f,
                 "{}\n @{}, from {}:{} to {}:{}\n{}",
                 r#type,
-                location.file().display(),
-                location.start().0,
-                location.start().1,
-                location.end().0,
-                location.end().1,
+                span.file().display(),
+                span.start().0,
+                span.start().1,
+                span.end().0,
+                span.end().1,
                 (*message).as_ref()
             )
         } else {

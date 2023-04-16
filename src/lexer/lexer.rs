@@ -26,13 +26,12 @@ newty! {
 ///  - `name`: the identifier of the token;
 ///  - `attributes`: the attributes of the token;
 ///  - `location`: the location of the substring that generated this token.
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Token {
     name: String,
     id: TerminalId,
     attributes: HashMap<usize, String>,
-    location: Span,
+    span: Span,
 }
 
 impl fmt::Display for Token {
@@ -55,13 +54,13 @@ impl Token {
         name: String,
         id: TerminalId,
         attributes: HashMap<usize, String>,
-        location: Span,
+        span: Span,
     ) -> Self {
         Self {
             name,
             id,
             attributes,
-            location,
+            span,
         }
     }
 
@@ -107,8 +106,8 @@ impl Token {
     }
 
     /// Return the `location` of the token.
-    pub fn location(&self) -> &Span {
-        &self.location
+    pub fn span(&self) -> &Span {
+        &self.span
     }
 }
 
@@ -199,7 +198,7 @@ impl<'lexer, 'stream> LexedStream<'lexer, 'stream> {
         }
     }
 
-    /// Get the last location lexed. Useful if you want to know where you failed to find a token.
+    /// Get the last span lexed. Useful if you want to know where you failed to find a token.
     pub fn last_span(&self) -> &Span {
         &self.last_span
     }
@@ -374,9 +373,9 @@ mod tests {
 
         assert_eq!(token.name(), "wow");
         assert_eq!(token.id(), 0.into());
-        assert_eq!(&*token.location().file(), Path::new("test_file"));
-        assert_eq!(token.location().start(), (3, 0));
-        assert_eq!(token.location().end(), (3, 2));
+        assert_eq!(&*token.span().file(), Path::new("test_file"));
+        assert_eq!(token.span().start(), (3, 0));
+        assert_eq!(token.span().end(), (3, 2));
     }
 
     #[test]
@@ -401,8 +400,8 @@ mod tests {
         let mut lexed_input = lexer.lex(&mut input);
 
         let token = lexed_input.next(Allowed::All).unwrap().unwrap().unwrap(); // nice...
-        assert_eq!(token.location().start(), (0, 0));
-        assert_eq!(token.location().end(), (0, 2));
+        assert_eq!(token.span().start(), (0, 0));
+        assert_eq!(token.span().end(), (0, 2));
         assert!(lexed_input.next(Allowed::All).unwrap().unwrap().is_none());
     }
 
@@ -435,7 +434,7 @@ mod tests {
         while let Some(token) = lexed_input.next_any().unwrap().unwrap() {
             let (start, end, name) = result[i];
             assert_eq!(
-                token.location().start(),
+                token.span().start(),
                 start,
                 "Token #{} {} differ by start location in stream {}.",
                 i,
@@ -443,7 +442,7 @@ mod tests {
                 origin.display()
             );
             assert_eq!(
-                token.location().end(),
+                token.span().end(),
                 end,
                 "Token #{} {} differ by end location in stream {}.",
                 i,
@@ -715,18 +714,18 @@ mod tests {
                 tok,
                 token,
                 "Lexer error @{} {}:{} does not match token #{}",
-                token.location().file().display(),
-                token.location().start().0 + 1,
-                token.location().end().0 + 1,
+                token.span().file().display(),
+                token.span().start().0 + 1,
+                token.span().end().0 + 1,
                 i
             );
         }
         if let Some(token) = lexed_input.next(Allowed::All).unwrap().unwrap() {
             panic!(
                 "Lexer error @{} {}:{} does not match token EOF",
-                token.location().file().display(),
-                token.location().start().0 + 1,
-                token.location().end().0 + 1
+                token.span().file().display(),
+                token.span().start().0 + 1,
+                token.span().end().0 + 1
             );
         }
     }

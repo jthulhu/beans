@@ -206,8 +206,8 @@ impl Span {
 }
 
 impl From<&Span> for Fragile<Span> {
-    fn from(location: &Span) -> Fragile<Span> {
-        Fragile::new(location.clone())
+    fn from(span: &Span) -> Fragile<Span> {
+        Fragile::new(span.clone())
     }
 }
 
@@ -215,7 +215,7 @@ impl From<&Span> for Fragile<Span> {
 mod tests {
     use super::*;
     #[test]
-    fn location() {
+    fn span() {
         let input: Rc<str> = Rc::from(
             "01234
 56789abcdef",
@@ -257,12 +257,12 @@ mod tests {
 
     #[test]
     #[should_panic]
-    fn wrong_location() {
+    fn wrong_span() {
         Span::new(Path::new("some file"), (1, 0), (0, 0), 1, 0, "", Vec::new());
     }
     #[test]
     #[should_panic]
-    fn wrong_location2() {
+    fn wrong_span2() {
         Span::new(Path::new("some file"), (1, 5), (1, 3), 8, 6, "", Vec::new());
     }
 }

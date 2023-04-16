@@ -1240,40 +1240,40 @@ impl EarleyParser {
             let allowed = Allowed::Some(possible_scans.clone());
             let next_token = match input.next(allowed) {
                 Ok(r) => r,
-                Err(Error {
-                    kind: box ErrorKind::LexingError { .. },
-                }) => {
-                    let error = if let Some(token) = input.next(Allowed::All)? {
-                        let span = token.span().clone();
-                        let name = {
-                            let id = token.id();
-                            let name = token.name().to_string();
-                            if let Some(description) =
-                                input.lexer().grammar().description_of(id)
-                            {
-                                description.to_string()
-                            } else {
-                                name
+                Err(error) => {
+                    if let ErrorKind::LexingError { .. } = *error.kind {
+                        let error = if let Some(token) = input.next(Allowed::All)? {
+                            let span = token.span().clone();
+                            let name = {
+                                let id = token.id();
+                                let name = token.name().to_string();
+                                if let Some(description) =
+                                    input.lexer().grammar().description_of(id)
+                                {
+                                    description.to_string()
+                                } else {
+                                    name
+                                }
+                            };
+                            ErrorKind::SyntaxError {
+                                name,
+                                alternatives: possible_first_nonterminals
+                                    .drain()
+                                    .map(|x| x.to_string())
+                                    .chain(possible_first_terminals.drain())
+                                    .collect(),
+                                span: Fragile::new(span),
+                            }
+                        } else {
+                            ErrorKind::SyntaxErrorValidPrefix {
+                                span: input.last_span().into(),
                             }
                         };
-                        ErrorKind::SyntaxError {
-                            name,
-                            alternatives: possible_first_nonterminals
-                                .drain()
-                                .map(|x| x.to_string())
-                                .chain(possible_first_terminals.drain())
-                                .collect(),
-                            span: Fragile::new(span),
-                        }
+                        return error.err();
                     } else {
-                        ErrorKind::SyntaxErrorValidPrefix {
-                            span: input.last_span().into(),
-                        }
-                    };
-                    return error.err();
+                        return Err(error);
+                    }
                 }
-                // Reallocation is necessary, because the type differs
-                Err(error) => return Err(error),
             };
             possible_first_nonterminals.clear();
             possible_first_terminals.clear();

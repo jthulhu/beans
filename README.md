@@ -15,8 +15,8 @@ phase.
 Installation
 ============
 
-Beans is not currently properly packaged, so unless you have [Nix](https://nixos.org),
-the installation is manual.
+Beans is not currently properly packaged, so unless you have [Nix](https://nixos.org) or 
+[cargo](https://github.com/rust-lang/cargo), the installation is manual.
 
 Manual Installation
 -------------------
@@ -83,6 +83,12 @@ Nix Flake installation
 Beans is provided as `github:jthulhu/beans#${system}.defaultPackage` as a package,
 and as `github:jthulhu/beans#${system}.defaultApp` as an application, where `${system}`
 can be `aarch64-darwin`, `aarch64-linux`, `x86_64-darwin` and `x86_64-linux`.
+
+Cargo installation
+------------------
+
+If you have cargo installed on your machine (which is highly likely if you want to use Beans), you
+can install the helper with `cargo install beans`.
 
 Usage
 =====

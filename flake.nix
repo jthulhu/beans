@@ -47,6 +47,8 @@
             rustfmt
             clippy
             rust-analyzer
+            mdbook
+            mdbook-man
           ];
         };
       });

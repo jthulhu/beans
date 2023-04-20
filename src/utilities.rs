@@ -75,13 +75,14 @@ macro_rules! node {
 #[macro_export]
 macro_rules! value {
     ($node:expr => $key:literal) => {
-	if let $crate::parser::AST::Literal {
-	    value: $crate::parser::Value::Str(result),
-	    ..
-	} = get!($node => $key) {
-	    result
-	} else {
-	    error!("expected to find value, got\n{:?}", $node)
-	}
+        if let $crate::parser::AST::Literal {
+            value: $crate::parser::Value::Str(result),
+            ..
+        } = get!($node => $key)
+        {
+            result
+        } else {
+            error!("expected to find value, got\n{:?}", $node)
+        }
     };
 }

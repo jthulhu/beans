@@ -147,10 +147,7 @@ impl StringStream {
         file_stream
             .read_to_string(&mut stream_buffer)
             .map_err(|err| Error::with_file(err, &*file))?;
-        Ok(StringStream::new(
-            file,
-            stream_buffer,
-        ))
+        Ok(StringStream::new(file, stream_buffer))
     }
 
     pub fn pos(&self) -> usize {
@@ -287,7 +284,7 @@ mod tests {
         let string = "What a nice content,\nall in a single stream!";
         let origin = Path::new("somewhere");
         let mut stream = StringStream::new(origin, string);
-        assert_eq!(stream.peek(), &*string);
+        assert_eq!(stream.peek(), string);
         for chr in string.chars() {
             let got_char = stream.get();
             match got_char {
@@ -306,7 +303,7 @@ mod tests {
         let string = "До́брый день.";
         let origin = Path::new("Russia");
         let mut stream = StringStream::new(origin, string);
-        assert_eq!(stream.peek(), &*string);
+        assert_eq!(stream.peek(), string);
         let mut curr_pos = 0;
         for chr in string.chars() {
             match stream.get() {
@@ -353,7 +350,7 @@ hij";
         assert_eq!(&string[0..22], "Добрый день\n");
         assert_eq!(&string[22..27], "defg\n");
         assert_eq!(&string[27..30], "hij");
-        for (expected_char, expected_location, byte, line_byte) in expected {
+        for (expected_char, expected_location, byte, _) in expected {
             let Char::Char(found_char) = stream.get() else {
 		panic!("Expected {expected_char:?}, found EOF")
 	    };

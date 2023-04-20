@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::ops::Index;
 use std::path::Path;
+use std::path::PathBuf;
 
 newty! {
     #[derive(PartialOrd, Ord)]
@@ -296,8 +297,8 @@ impl Buildable for Lexer {
         Ok(Self { grammar })
     }
 
-    fn build_from_compiled(blob: &[u8]) -> Result<Self> {
-        let grammar = Grammar::build_from_compiled(blob)?;
+    fn build_from_compiled(blob: &[u8], path: impl ToOwned<Owned = PathBuf>) -> Result<Self> {
+        let grammar = Grammar::build_from_compiled(blob, path)?;
         Ok(Self { grammar })
     }
 
@@ -328,9 +329,9 @@ mod tests {
     }
 
     macro_rules! id_token {
-	($content: ident) => {
-	    test_token!(ID 0=$content)
-	}
+        ($content: ident) => {
+            test_token!(ID 0=$content)
+        };
     }
 
     #[derive(Debug)]
@@ -456,8 +457,7 @@ mod tests {
 
     #[test]
     fn default_lex_grammar() {
-        let lexer = Lexer::build_from_path(Path::new("src/parser/gmrs/dummy.lx"))
-            .unwrap();
+        let lexer = Lexer::build_from_path(Path::new("src/parser/gmrs/dummy.lx")).unwrap();
 
         let result = [
             ((0, 0), (0, 2), "ID"),
@@ -492,10 +492,8 @@ mod tests {
 
     #[test]
     fn default_parser_grammar() {
-        let lexer = Lexer::build_from_path(Path::new("src/parser/gmrs/earley.lx"))
-            .unwrap();
-        let mut input = StringStream::from_file(Path::new("src/parser/gmrs/dummy.gr"))
-            .unwrap();
+        let lexer = Lexer::build_from_path(Path::new("src/parser/gmrs/earley.lx")).unwrap();
+        let mut input = StringStream::from_file(Path::new("src/parser/gmrs/dummy.gr")).unwrap();
         let mut lexed_input = lexer.lex(&mut input);
 
         let result = [

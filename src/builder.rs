@@ -66,7 +66,7 @@ pub trait Buildable: Sized {
     const COMPILED_EXTENSION: &'static str;
 
     fn build_from_ast(ast: AST) -> BResult<Self>;
-    fn build_from_compiled(blob: &[u8]) -> BResult<Self>;
+    fn build_from_compiled(blob: &[u8], path: impl ToOwned<Owned = PathBuf>) -> BResult<Self>;
     fn build_from_plain(raw: StringStream) -> BResult<Self>;
     fn build_from_blob(blob: &[u8], path: &Path) -> BResult<Self> {
         let ast: AST = match select_format(
@@ -77,13 +77,15 @@ pub trait Buildable: Sized {
                 (Self::RAW_EXTENSION, Format::Plain),
             ],
         ) {
-            FileResult::Valid((_, Format::Compiled)) => {
-                let result = Self::build_from_compiled(&blob)?;
+            FileResult::Valid((path, Format::Compiled)) => {
+                let result = Self::build_from_compiled(blob, path)?;
                 return Ok(result);
             }
-            FileResult::Valid((_, Format::Ast)) => {
-                let string = std::str::from_utf8(blob).map_err(|_| -> Error { todo!() })?;
-                serde_json::from_str(string).map_err(|_err| Error::new(todo!()))?
+            FileResult::Valid((path, Format::Ast)) => {
+                let string = std::str::from_utf8(blob)
+                    .map_err(|error| ErrorKind::NonUtf8Content { path: path.clone(), error })?;
+                serde_json::from_str(string)
+                    .map_err(|error| ErrorKind::IllformedAst { error, path })?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
                 let string =
@@ -124,13 +126,16 @@ pub trait Buildable: Sized {
                 let mut buffer = Vec::new();
                 file.read_to_end(&mut buffer)
                     .map_err(|err| Error::with_file(err, &actual_path))?;
-                let result = Self::build_from_compiled(&buffer)?;
+                let result = Self::build_from_compiled(&buffer, actual_path)?;
                 return Ok(result);
             }
             FileResult::Valid((actual_path, Format::Ast)) => {
                 let file = File::open(&actual_path)
-                    .map_err(|err| Error::with_file(err, actual_path))?;
-                serde_json::from_reader(file).map_err(|_err| Error::new(todo!()))?
+                    .map_err(|err| Error::with_file(err, actual_path.clone()))?;
+                serde_json::from_reader(file).map_err(|error| ErrorKind::IllformedAst {
+                    error,
+                    path: actual_path,
+                })?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
                 let stream = StringStream::from_file(actual_path)?;

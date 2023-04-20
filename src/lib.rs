@@ -1,7 +1,4 @@
-#![allow(
-    clippy::upper_case_acronyms,
-    unstable_name_collisions
-)]
+#![allow(clippy::upper_case_acronyms, unstable_name_collisions)]
 #![warn(missing_debug_implementations)]
 
 //! # Beans

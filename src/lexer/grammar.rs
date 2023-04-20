@@ -11,7 +11,7 @@ use crate::{
 use bincode::deserialize;
 use newty::newty;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, path::PathBuf, rc::Rc};
 
 newty! {
     pub id TokenId
@@ -111,7 +111,7 @@ impl Buildable for Grammar {
     const AST_EXTENSION: &'static str = "lx.ast";
 
     fn build_from_ast(ast: AST) -> Result<Self> {
-        let typed_ast = Ast::read(ast);
+        let typed_ast = Ast::read(ast)?;
         let mut ignores = Ignores::with_raw_capacity(typed_ast.terminals.len());
         let mut errors = Errors::new();
         let mut descriptions = Descriptions::new();
@@ -121,40 +121,46 @@ impl Buildable for Grammar {
 
         for terminal in typed_ast.terminals {
             let id = TerminalId(names.len());
-            if terminal.ignore || terminal.unwanted {
+            if terminal.ignore.inner || terminal.unwanted.inner {
                 ignores.put(id);
             }
-            if terminal.unwanted {
+            if terminal.unwanted.inner {
                 if let Some(ref message) = terminal.comment {
-                    errors.insert(id, message.clone());
+                    errors.insert(id, message.inner.clone());
                 } else {
                     return ErrorKind::LexerGrammarUnwantedNoDescription {
-                        token: terminal.name.to_string(),
-                        span: todo!(),
+                        token: terminal.name.inner.to_string(),
+                        span: terminal.unwanted.span.into(),
                     }
                     .err();
                 }
             }
             if let Some(comment) = terminal.comment {
-                descriptions.insert(id, comment);
+                descriptions.insert(id, comment.inner);
             }
-            names.push(terminal.name.to_string());
+            names.push(terminal.name.inner.to_string());
 
-            if let Some(_span) = found_identifiers.insert(terminal.name.clone(), ()) {
+            if let Some(span) =
+                found_identifiers.insert(terminal.name.inner.clone(), terminal.name.span.clone())
+            {
                 return ErrorKind::GrammarDuplicateDefinition {
-                    message: terminal.name.to_string(),
-                    span: todo!(),
-                    old_span: todo!(),
+                    name: terminal.name.inner.to_string(),
+                    span: terminal.name.span.into(),
+                    old_span: span.into(),
                 }
                 .err();
             }
 
             regex_builder = regex_builder
-                .with_named_regex(&terminal.regex, terminal.name.to_string(), terminal.keyword)
+                .with_named_regex(
+                    &terminal.regex.inner,
+                    terminal.name.inner.to_string(),
+                    terminal.keyword.inner,
+                )
                 .map_err(|error| {
                     Error::new(ErrorKind::RegexError {
                         message: error.message,
-                        span: todo!(),
+                        span: terminal.regex.span.into(),
                     })
                 })?;
         }
@@ -162,8 +168,8 @@ impl Buildable for Grammar {
         Ok(Self::new(re, names, ignores, errors, descriptions))
     }
 
-    fn build_from_compiled(blob: &[u8]) -> Result<Self> {
-        Ok(deserialize(blob)?)
+    fn build_from_compiled(blob: &[u8], path: impl ToOwned<Owned = PathBuf>) -> Result<Self> {
+        deserialize(blob).map_err(|error| Error::with_file(error, path.to_owned()))
     }
 
     fn build_from_plain(mut source: StringStream) -> Result<Self> {

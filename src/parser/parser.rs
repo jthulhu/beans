@@ -1,6 +1,7 @@
 use crate::error::Result;
 use crate::lexer::{LexedStream, Token};
 use crate::span::Span;
+use crate::typed::Tree;
 use newty::newty;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -38,6 +39,20 @@ pub enum AST {
     Terminal(Token),
 }
 
+impl AST {
+    pub fn span(&self) -> Option<&Span> {
+        match self {
+            Self::Node { span, .. } => Some(span),
+            Self::Literal { span, .. } => span.as_ref(),
+            Self::Terminal(token) => Some(token.span()),
+        }
+    }
+
+    pub fn to_tree<T: Tree>(self) -> Result<T> {
+        T::read(self)
+    }
+}
+
 /// Successful result of the parse of an input.
 #[derive(Debug)]
 pub struct ParseResult {
@@ -62,77 +77,4 @@ pub trait Parser<'deserializer> {
     fn is_valid<'input>(&self, input: &'input mut LexedStream<'input, 'input>) -> bool {
         self.parse(input).is_ok()
     }
-}
-
-/// Create a parser, shipping all the grammars into the binary.
-/// ```rust
-/// # use beans::parser::include_parser;
-/// let (lexer, parser) = include_parser!(
-///     lexer => compiled "gmrs/dummy.clx",
-///     parser => compiled "gmrs/dummy.cgr",
-///  ).unwrap().unwrap();
-#[macro_export]
-macro_rules! include_parser {
-    (lexer => compiled $path:literal, $($rest:tt)*) => {{
-	let driver_function =
-	    || -> $crate::error::Result<($crate::lexer::Lexer, $crate::parser::earley::EarleyParser)> {
-		let mut warnings = $crate::error::WarningSet::empty();
-		let lexer_grammar_source = include_bytes!($path);
-		let lexer_grammar =
-		    $crate::lexer::LexerGrammar::deserialize(lexer_grammar_source)?
-		    .unpack_into(&mut warnings);
-		let lexer =
-		    $crate::lexer::LexerBuilder::from_grammar(lexer_grammar).build();
-		let parser = include_parser!(@parser(&mut warnings, lexer) $($rest)*);
-		warnings.with_ok((lexer, parser))
-	    };
-	driver_function()
-    }};
-    (lexer => $path:literal, $($rest:tt)*) => {{
-	let driver_function =
-	    || -> $crate::error::Result<($crate::lexer::Lexer, $crate::parser::earley::EarleyParser)> {
-		let mut warnings = $crate::error::WarningSet::empty();
-		let lexer_grammar_source = include_str!($path);
-		let lexer_grammar_stream = StringStream::new(
-		    ::std::path::Path::new($path),
-		    lexer_grammar_source.to_string(),
-		);
-		let lexer_grammar =
-		    $crate::lexer::LexerGrammar::from_stream(lexer_grammar_stream)
-		    .build()?
-		    .unpack_into(&mut warnings);
-		let lexer =
-		    $crate::lexer::LexerBuilder::from_grammar(lexer_grammar).build();
-		let parser = include_parser!(@parser(&mut warnings, lexer) $($rest)*);
-		warnings.with_ok((lexer, parser))
-	    };
-	driver_function()
-    }};
-    (@parser($warnings:expr, $lexer:expr) parser => compiled $path:literal $(,)?) => {{
-	let parser_grammar_source = include_bytes!($path);
-	let parser_grammar =
-	    <$crate::parser::earley::EarleyGrammar
-	     as $crate::parser::Grammar>::deserialize(parser_grammar_source)?
-	    .unpack_into($warnings);
-	let parser =
-	    <$crate::parser::earley::EarleyParser
-	     as $crate::parser::Parser>::new(parser_grammar);
-	parser
-    }};
-    (@parser($warnings:expr, $lexer:expr) parser => $path:literal $(,)?) => {{
-	let parser_grammar_source = include_str!($path);
-	let parser_grammar_stream = StringStream::new(
-	    ::std::path::Path::new($path),
-	    parser_grammar_source.to_string(),
-	);
-	let parser_grammar =
-	    $crate::parser::earley::EarleyGrammarBuilder::default()
-	    .with_stream(parser_grammar_stream)
-	    .build(&lexer)?
-	    .unpack_into($warnings);
-	let parser =
-	    <$crate::parser::earley::EarleyParser
-	     as $crate::parser::Parser>::new(parser_grammar);
-	parser
-    }};
 }

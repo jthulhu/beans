@@ -16,5 +16,5 @@ mod grammar;
 #[allow(clippy::module_inception)]
 mod lexer;
 
-pub use grammar::{Ignores, Grammar};
+pub use grammar::{Grammar, Ignores};
 pub use lexer::{LexedStream, Lexer, TerminalId, Token};

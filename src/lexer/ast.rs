@@ -1,49 +1,68 @@
+use crate::{error::Result, parser::AST, span::Span, typed::*};
 use std::rc::Rc;
-use crate::{parser::AST, typed::*};
 
 #[derive(Debug)]
 pub(crate) struct Ast {
     pub terminals: Vec<Terminal>,
+    pub span: Span,
 }
 
 impl Tree for Ast {
-    fn read(ast: crate::parser::AST) -> Self {
+    fn read(ast: crate::parser::AST) -> Result<Self> {
         let mut node = node!(ast);
-        Self {
-            terminals: Vec::read(get!(node => terminals)),
-        }
+        Ok(Self {
+            terminals: get!(node => terminals).to_tree::<Spanned<_>>()?.inner,
+            span: span!(node),
+        })
+    }
+
+    fn span(&self) -> &Span {
+        &self.span
     }
 }
 
 #[derive(Debug)]
 pub(crate) struct Terminal {
-    pub ignore: bool,
-    pub keyword: bool,
-    pub unwanted: bool,
-    pub name: Rc<str>,
-    pub regex: Rc<str>,
-    pub comment: Option<Rc<str>>,
+    pub ignore: Spanned<bool>,
+    pub keyword: Spanned<bool>,
+    pub unwanted: Spanned<bool>,
+    pub name: Spanned<Rc<str>>,
+    pub regex: Spanned<Rc<str>>,
+    pub comment: Option<Spanned<Rc<str>>>,
+    pub span: Span,
 }
 
 impl Tree for Terminal {
-    fn read(ast: AST) -> Self {
+    fn read(ast: AST) -> Result<Self> {
         let mut node = node!(ast);
-        Self {
-            ignore: Option::<()>::read(get!(node => ignore)).is_some(),
-            keyword: Option::<()>::read(get!(node => keyword)).is_some(),
-            unwanted: Option::<()>::read(get!(node => unwanted)).is_some(),
-            comment: Option::read(get!(node => comment)).map(|x: Comment| x.0),
-            name: value!(node => name),
-            regex: value!(node => value),
-        }
+        Ok(Self {
+            ignore: get!(node => ignore).to_tree()?,
+            keyword: get!(node => keyword).to_tree()?,
+            unwanted: get!(node => unwanted).to_tree()?,
+            comment: get!(node => comment)
+                .to_tree::<Spanned<Option<Comment>>>()?
+                .transpose()
+                .map(|x| x.map(|y| y.0).merge()),
+            name: spanned_value!(node => name),
+            regex: spanned_value!(node => value),
+            span: span!(node),
+        })
+    }
+
+    fn span(&self) -> &Span {
+        &self.span
     }
 }
 
-struct Comment(Rc<str>);
+struct Comment(Spanned<Rc<str>>);
 
 impl Tree for Comment {
-    fn read(ast: AST) -> Self {
+    fn read(ast: AST) -> Result<Self> {
         let mut node = node!(ast);
-        Self(value!(node => value))
+        Ok(Self(spanned_value!(node => value)))
+    }
+
+    fn span(&self) -> &Span {
+        &self.0.span
     }
 }

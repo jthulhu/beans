@@ -73,7 +73,7 @@ pub type Location = (usize, usize);
 /// )
 /// # ;
 /// ```
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, Hash)]
 pub struct Span {
     file: Rc<Path>,
     start: Location,
@@ -136,8 +136,8 @@ impl Span {
     ) -> Self {
         assert!(start.0 < end.0 || (start.0 == end.0 && start.1 <= end.1)); // TODO: remove assert and add proper error handling.
         let file = file.into();
-        let text = text.into();
-        let lines = lines.into();
+        let _text = text.into();
+        let _lines = lines.into();
         Self {
             file,
             start,
@@ -243,8 +243,8 @@ mod tests {
             (0, 0),
             0,
             0,
-            input.clone(),
-            lines.clone(),
+            input,
+            lines,
         );
         assert_eq!(&*span.file(), Path::new(""));
         assert_eq!(span.start(), (0, 0));

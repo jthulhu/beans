@@ -7,6 +7,7 @@ use fragile::Fragile;
 use std::ffi::OsString;
 use std::fmt::{self, Display, Formatter};
 use std::path::PathBuf;
+use std::str::Utf8Error;
 use std::string::FromUtf8Error;
 
 /// `Result` is a shorthand for the usual `Result` type.
@@ -31,10 +32,6 @@ impl Error {
             kind: Box::new(kind),
         }
     }
-
-    pub fn integer_too_big(string: String) -> Self {
-        Self::new(ErrorKind::IntegerTooBig { string })
-    }
 }
 
 impl Display for Error {
@@ -56,11 +53,15 @@ pub enum ErrorKind {
     },
     IntegerTooBig {
         string: String,
+        span: Fragile<Span>,
     },
-    SerializationError(#[from] bincode::Error),
+    SerializationError {
+        error: bincode::Error,
+        path: PathBuf,
+    },
     IllformedAst {
         error: serde_json::Error,
-        file: PathBuf,
+        path: PathBuf,
     },
     UnrecognisedExtension {
         extension: OsString,
@@ -71,7 +72,7 @@ pub enum ErrorKind {
     },
     NonUtf8Content {
         path: PathBuf,
-        error: FromUtf8Error,
+        error: Utf8Error,
     },
     GrammarNotFound {
         path: PathBuf,
@@ -100,15 +101,21 @@ pub enum ErrorKind {
         message: String,
     },
     GrammarDuplicateDefinition {
-        message: String,
+        name: String,
         span: Fragile<Span>,
         old_span: Fragile<Span>,
     },
+    GrammarDuplicateProxyItem {
+        span: Fragile<Span>,
+        old_span: Fragile<Span>,
+        name: String,
+    },
     GrammarArityMismatch {
         macro_name: String,
-        first_arity: usize,
-        second_arity: usize,
-        span: Fragile<Span>,
+        definition_arity: usize,
+        call_arity: usize,
+        definition_span: Fragile<Span>,
+        call_span: Fragile<Span>,
     },
     GrammarUndefinedNonTerminal {
         name: String,
@@ -132,6 +139,11 @@ pub enum ErrorKind {
     },
     GrammarVariantKey {
         span: Fragile<Span>,
+    },
+    GrammarDuplicateMacroDefinition {
+        span: Fragile<Span>,
+        old_span: Fragile<Span>,
+        name: String,
     },
     SyntaxError {
         name: String,
@@ -166,9 +178,27 @@ impl From<(PathBuf, std::io::Error)> for ErrorKind {
     }
 }
 
-impl From<(PathBuf, FromUtf8Error)> for ErrorKind {
-    fn from((path, error): (PathBuf, FromUtf8Error)) -> Self {
+impl From<(PathBuf, Utf8Error)> for ErrorKind {
+    fn from((path, error): (PathBuf, Utf8Error)) -> Self {
         Self::NonUtf8Content { path, error }
+    }
+}
+
+impl From<(PathBuf, bincode::Error)> for ErrorKind {
+    fn from((path, error): (PathBuf, bincode::Error)) -> Self {
+        Self::SerializationError { error, path }
+    }
+}
+
+impl From<(PathBuf, FromUtf8Error)> for ErrorKind {
+    fn from((_path, _error): (PathBuf, FromUtf8Error)) -> Self {
+        todo!()
+    }
+}
+
+impl From<(PathBuf, serde_json::Error)> for ErrorKind {
+    fn from((path, error): (PathBuf, serde_json::Error)) -> Self {
+        Self::IllformedAst { error, path }
     }
 }
 
@@ -176,14 +206,15 @@ impl Display for ErrorKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::InternalError { message } => writeln!(f, "ICE: {message}"),
-            Self::SerializationError(error) => writeln!(
+            Self::SerializationError { error, path } => writeln!(
                 f,
-                "ICE: while trying to serialize, the following error occured\n{error}",
+                "ICE: while trying to serialize {}, the following error occured\n{error}",
+                path.display(),
             ),
-            Self::IllformedAst { error, file } => writeln!(
+            Self::IllformedAst { error, path } => writeln!(
                 f,
                 "File {} contains an illformed AST.\n{error}",
-                file.display(),
+                path.display(),
             ),
             Self::UnrecognisedExtension { extension, path } => {
                 write!(
@@ -227,7 +258,7 @@ impl Display for ErrorKind {
                 writeln!(f, "Lexing error {span}.\n{message}")
             }
             Self::GrammarDuplicateDefinition {
-                message,
+                name: message,
                 span,
                 old_span,
             } => {
@@ -236,13 +267,31 @@ impl Display for ErrorKind {
 		    "Found two definitions of the same non-terminal {span} and {old_span}.\n{message}"
 		)
             }
+            Self::GrammarDuplicateProxyItem {
+                span,
+                old_span,
+                name,
+            } => {
+                writeln!(
+		    f,
+		    "The proxy item {name} {span} was already defined {old_span}."
+		)
+            }
+            Self::GrammarDuplicateMacroDefinition {
+                span,
+                old_span,
+                name,
+            } => {
+                writeln!(f, "Macro {name} {span} was already defined {old_span}.")
+            }
             Self::GrammarArityMismatch {
                 macro_name,
-                first_arity,
-                second_arity,
-                span,
+                definition_arity,
+                call_arity,
+                definition_span,
+                call_span,
             } => {
-                writeln!(f, "The macro {macro_name} is called with the wrong number of argument {first_arity} (expected {second_arity}) {span}.")
+                writeln!(f, "The macro {macro_name} is called with the wrong number of argument {call_arity} (expected {definition_arity}, {definition_span}) {call_span}.")
             }
             Self::GrammarNonTerminalDuplicate { message, span } => {
                 writeln!(
@@ -272,8 +321,11 @@ impl Display for ErrorKind {
                     "Syntax error {name} {span}. You could have tried {alternatives:?}."
                 )
             }
-            Self::IntegerTooBig { string } => {
-                writeln!(f, "Integer {string} does not fit on a 64 bit integer. Why do you even need such a number?")
+            Self::IntegerTooBig { string, span } => {
+                writeln!(
+		    f,
+		    "Integer {string} does not fit on a 64 bit integer, {span}.\nWhy do you even need such a number?"
+		)
             }
             Self::GrammarUndefinedMacro { name, span } => {
                 writeln!(f, "Macro {name} is undefined {span}.")

@@ -1,7 +1,7 @@
 use anyhow::Context;
 use beans::builder::Buildable;
 use beans::error::ErrorKind;
-use beans::lexer::{Lexer, Grammar as LexerGrammar};
+use beans::lexer::{Grammar as LexerGrammar, Lexer};
 use beans::parser::earley::{print_final_sets, print_sets, EarleyGrammar, EarleyParser};
 use beans::parser::Parser;
 use beans::printer::print_ast;
@@ -75,8 +75,7 @@ fn compile(compile_action: CompileAction) -> anyhow::Result<()> {
             lexer_grammar: mut lexer_grammar_path,
             output_path,
         } => {
-            let lexer_grammar = LexerGrammar::build_from_path(lexer_grammar_path.as_path())?
-                ;
+            let lexer_grammar = LexerGrammar::build_from_path(lexer_grammar_path.as_path())?;
             let res = serialize(&lexer_grammar)?;
             let output = match output_path {
                 Some(output) => output,
@@ -99,10 +98,9 @@ fn compile(compile_action: CompileAction) -> anyhow::Result<()> {
         } => {
             let lexer = Lexer::build_from_path(&lexer_path)?;
             let parser_grammar = EarleyGrammar::build_from_path(
-                &parser_grammar_path.as_path(),
+                parser_grammar_path.as_path(),
                 lexer.grammar(),
-            )?
-            ;
+            )?;
             let output = match output_path {
                 Some(output) => output,
                 None => {
@@ -131,8 +129,7 @@ fn main() -> anyhow::Result<()> {
             let mut stream = StringStream::from_file(source)?;
             let mut lexed_stream = lexer.lex(&mut stream);
             let mut output_buffer = BufWriter::new(stdout());
-            while let Some(token) = lexed_stream.next(Allowed::All)?
-            {
+            while let Some(token) = lexed_stream.next(Allowed::All)? {
                 write!(output_buffer, "{} {{ ", token.name())?;
                 for (key, value) in token.attributes().iter() {
                     write!(output_buffer, "{}: {}, ", key, value)?;
@@ -158,7 +155,6 @@ fn main() -> anyhow::Result<()> {
                 deserialize(&buffer)?
             } else {
                 EarleyGrammar::build_from_path(parser_grammar_path.as_path(), lexer.grammar())?
-                    
             };
             let parser = EarleyParser::new(parser_grammar);
             // let (table, raw_input) =
@@ -178,9 +174,7 @@ fn main() -> anyhow::Result<()> {
                 println!(" ### TABLE ###");
                 print_sets(&table, &parser, &lexer);
             }
-            let forest = parser
-                .to_forest(&table, &raw_input)?
-                ;
+            let forest = parser.to_forest(&table, &raw_input)?;
             if print_final_table {
                 println!(" ### FINAL TABLE ###");
                 print_final_sets(&forest, &parser, &lexer);

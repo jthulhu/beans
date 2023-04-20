@@ -88,8 +88,8 @@ pub trait Buildable: Sized {
                     .map_err(|error| ErrorKind::IllformedAst { error, path })?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
-                let string =
-                    String::from_utf8(blob.to_vec()).map_err(|_| -> Error { todo!() })?;
+                let string = String::from_utf8(blob.to_vec())
+                    .map_err(|error| Error::with_file(error, actual_path.clone()))?;
                 let stream = StringStream::new(actual_path, string);
                 let result = Self::build_from_plain(stream)?;
                 return Ok(result);

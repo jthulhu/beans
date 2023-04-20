@@ -3,6 +3,7 @@
 //! This module contains error related primitives.
 
 use crate::span::Span;
+use either::Either;
 use fragile::Fragile;
 use std::ffi::OsString;
 use std::fmt::{self, Display, Formatter};
@@ -72,7 +73,7 @@ pub enum ErrorKind {
     },
     NonUtf8Content {
         path: PathBuf,
-        error: Utf8Error,
+        error: Either<Utf8Error, FromUtf8Error>,
     },
     GrammarNotFound {
         path: PathBuf,
@@ -180,7 +181,7 @@ impl From<(PathBuf, std::io::Error)> for ErrorKind {
 
 impl From<(PathBuf, Utf8Error)> for ErrorKind {
     fn from((path, error): (PathBuf, Utf8Error)) -> Self {
-        Self::NonUtf8Content { path, error }
+        Self::NonUtf8Content { path, error: Either::Left(error) }
     }
 }
 
@@ -191,8 +192,8 @@ impl From<(PathBuf, bincode::Error)> for ErrorKind {
 }
 
 impl From<(PathBuf, FromUtf8Error)> for ErrorKind {
-    fn from((_path, _error): (PathBuf, FromUtf8Error)) -> Self {
-        todo!()
+    fn from((path, error): (PathBuf, FromUtf8Error)) -> Self {
+        Self::NonUtf8Content { path, error: Either::Right(error) }
     }
 }
 

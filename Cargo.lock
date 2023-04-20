@@ -98,6 +98,7 @@ dependencies = [
  "bincode",
  "clap",
  "const_format",
+ "either",
  "fixedbitset",
  "fragile",
  "itertools",

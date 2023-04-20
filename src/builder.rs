@@ -83,7 +83,7 @@ pub trait Buildable: Sized {
             }
             FileResult::Valid((path, Format::Ast)) => {
                 let string = std::str::from_utf8(blob)
-                    .map_err(|error| ErrorKind::NonUtf8Content { path: path.clone(), error })?;
+                    .map_err(|error| Error::with_file(error, path.clone()))?;
                 serde_json::from_str(string)
                     .map_err(|error| ErrorKind::IllformedAst { error, path })?
             }

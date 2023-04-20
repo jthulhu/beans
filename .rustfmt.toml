@@ -1,1 +1,2 @@
 max_width = 96
+skip_macro_invocations = ["All"]

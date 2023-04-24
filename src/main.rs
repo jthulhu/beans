@@ -130,11 +130,25 @@ fn main() -> anyhow::Result<()> {
             let mut lexed_stream = lexer.lex(&mut stream);
             let mut output_buffer = BufWriter::new(stdout());
             while let Some(token) = lexed_stream.next(Allowed::All)? {
-                write!(output_buffer, "{} {{ ", token.name())?;
-                for (key, value) in token.attributes().iter() {
-                    write!(output_buffer, "{}: {}, ", key, value)?;
-                }
-                writeln!(output_buffer, "}}")?;
+                write!(output_buffer, "{}", token.name())?;
+		let mut attrs: Vec<(usize, &str)> = token
+		    .attributes()
+		    .iter()
+		    .map(|(key, value)| (*key, &**value))
+		    .collect();
+		    attrs.sort_by_key(|(key, _)| *key);
+		match &attrs[..] {
+		    &[] => {},
+		    &[(key, value)] => write!(output_buffer, " {{{key}: {value}}}")?,
+		    &[ref firsts@.., (last_key, last_value)] => {
+			write!(output_buffer, " {{")?;
+			for (key, value) in firsts {
+			    write!(output_buffer, "{key}: {value}, ")?;
+			}
+			write!(output_buffer, "{last_key}: {last_value}}}")?;
+		    }
+		}
+		writeln!(output_buffer)?;
             }
             output_buffer.flush()?;
         }

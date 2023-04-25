@@ -1,0 +1,8 @@
+ignore SPACE ::= \s+
+ignore NEWLINE ::= \n+
+
+INTEGER ::= (\d+)
+ADD ::= \+
+MULTIPLY ::= \*
+SUBTRACT ::= -
+DIVIDE ::= /

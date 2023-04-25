@@ -1,0 +1,12 @@
+@Expression ::=
+  Expression@left MultDiv.variant@op Expression@right <Op>
+  Expression@left AddSub.variant@op Expression@right <Op>
+  INTEGER.0@value <Literal>;
+  
+MultDiv ::=
+  MULTIPLY <Mult>
+  DIVIDE <Div>;
+  
+AddSub ::=
+  ADD <Add>
+  SUBTRACT <Sub>;

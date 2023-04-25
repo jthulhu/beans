@@ -2,11 +2,11 @@
 
 The parser is given a stream of tokens, which is a "flat"
 representation of the input, in the sense that every part of it is at
-the same leve, and should transform it into a Concrete Syntax Tree
+the same level, and should transform it into a Concrete Syntax Tree
 (CST).
 
 > Note: a CST is a tree whose leaves are terminals, and no inner node
-> is a terminal. It represents a way the input was understood. For
+> is a terminal. It represents the way the input was understood. For
 > instance, given the input `1+2*3`, a CST could be
 > ```
 >           Expression
@@ -17,7 +17,7 @@ the same leve, and should transform it into a Concrete Syntax Tree
 > ```
 > Inner nodes of a syntax tree are called *non terminals*.
 
- In a Concrete Syntax Tree, every single token is remembered. This can
+In a Concrete Syntax Tree, every single token is remembered. This can
 be annoying, as we usually want to forget tokens: if a given token
 held some information, we can extract that information before dumping
 the token, but having the actual token is not very useful.
@@ -34,13 +34,13 @@ the useful information), we get an Abstract Syntax Tree (AST).
 >               2                 3
 > ```
 > All tokens have disappeared. From `INTEGER` tokens, we have
-> extracted the actual number that was lexed, and we have remember
+> extracted the actual number that was lexed, and we have remembered
 > that each `Expression` corresponds to a certain operation, but the
-> token corresponding to that operation has also been forgotten.
+> token corresponding to that operation has been forgotten.
  
 
 Similarly to terminals, non terminals are defined by telling Beans how
-to recognise them. Regulax expressions, however, are not powerful
+to recognise them. Regular expressions, however, are not powerful
 enough for general parsing. Therefore, non terminals use production
 rules instead.
 
@@ -48,8 +48,8 @@ rules instead.
 
 Production rules are at the core of the recognition and syntax-tree
 building steps of every parser, but there are several (equivalent)
-ways of understanding them. These different point of view in turn
-produce very different parsing algorithms.
+ways of understanding them. These different points of view produce in
+turn very different parsing algorithms.
 
 ## Production rules as recognisers (bottom-up)
 
@@ -68,14 +68,14 @@ production rules
   Expression -> INTEGER
 ```
 
-This matches the definition of an expression we gave earlier
+This matches the definition of an expression we gave <span style=color:red>earlier [Dove?]</span>
 > [expressions are] numbers or binary operations (addition,
 > multiplication, subtraction and division) on expressions.
 
 On the input `1+2*3`, which has been lexed to `INTEGER ADD INTEGER
 MULTIPLY INTEGER` (note that, at this step, we don't care about
 information that tokens hold, such as the actual value of an integer;
-these don't come into play when doing a syntaxic analysis), a parser
+these don't come into play when doing a syntactic analysis), a parser
 could analyze it in the following way.
 
 1. Every `INTEGER` token is a valid `Expression`, so we can replace
@@ -88,7 +88,7 @@ could analyze it in the following way.
 2. `Expression MULTIPLY Expression` is a *handle* for `Expression`, so
    we *reduce it*.  We get `Expression ADD Expression`.
 3. Finally, `Expression ADD Expression` is a handle `Expression` too,
-   so after reduction we have left `Expression`.
+   so after reduction we are left with `Expression`.
 
 Here, our recognition ends successfully: the input `1+2*3` is an
 arithmetic expression, or at least according to our definition.
@@ -98,17 +98,18 @@ There are several things to note on this example.
 > Note 1: at step 2., an `Expression` could have been recognised in
 > different places in the partially-recognised input `Expression ADD
 > Expression MULTIPLY Expression`. These recognition point are called
-> *handles*. There is a very important difference between choose
-> `Expression ADD Expression` as then handle to perform the
-> recognition of `Expression`, and choosing `Expression MULTIPLY
-> Expression`, because one would end up with a tree that matches the
-> parenthesing of `(1+2)*3` and the other `1+(2*3)`. If we were to,
-> say, evaluate these expression, we wouldn't get the same result.
-> So, for this grammar, Beans would have to choose between which rule
-> to apply, and this decision is crucial in the result. We will see
-> later on how to instruct Beans to apply the "good" rule (which, in
-> this case, would be the one that leads to parsing as `1+(2*3)`, if
-> we want to apply the usual operator precedence).
+> *handles*. There is a very important difference between choosing
+> `Expression ADD Expression` as the handle to perform the recognition
+> of `Expression`, and choosing `Expression MULTIPLY Expression`,
+> because in the first case we would end up with a tree that matches
+> the parenthesing of `(1+2)*3`; in the second one we would obtain
+> `1+(2*3)`. If we were to, say, evaluate these expression, we
+> wouldn't get the same result.  So, for this grammar, Beans would
+> have to choose between which rule to apply, and this decision is
+> crucial in the result. We will see later on how to instruct Beans to
+> apply the "good" rule (which, in this case, would be the one that
+> leads to parsing as `1+(2*3)`, if we want to apply the usual
+> operators precedence).
 
 > Note 2: in this example, we have limited ourselves to recognise the
 > input, not trying to parse it. It wouldn't be too hard to expand our
@@ -155,9 +156,11 @@ expanding forever, only ever applying the `Expression -> Expression
 ADD Expression` rule.
 
 While this seems a lot more complicated than its bottom-up
-counterpart, top-down algorithms are usually much easier to program,
+counterpart, top-down algorithms are usually much easier to implement,
 mainly because it often suffices to look at a few tokens to "guess"
 what the right expansion is at any moment.
+
+<span style=color:red>Paragrafo confuso. Non capito<span style=color:red>
 
 Correspondingly to the bottom-up strategy, if we were to look at how
 we traverse the syntax tree while building it, this strategy would
@@ -181,7 +184,7 @@ will appear. In `arith.gr`, write
   Expression DIVIDE Expression <>
   INTEGER <>;
 ```
-We have define the non terminal `Expression` with five production
+We have defined the non terminal `Expression` with five production
 rules. Each production rule ends with `<>` (you can ignore this for
 now), and the whole definition ends with a semicolon.
 
@@ -192,7 +195,7 @@ single non-terminal for now, this isn't very important (but don't
 forget it, or it won't work!).
 ```bash
 $ beans parse --lexer arith.lx --parser arith.gr input
-AST
+Expression
 $
 ```
 Yay! It works. Well, the output isn't very impressive, because Beans
@@ -206,11 +209,11 @@ to check it fails as it should.
 # Building a syntax tree
 
 Checking if a string is a valid arithmetic expression is a bit
-boring. We would like to get more information than just a certain
-string is valid or not. Furthermore, as pointed earlier, our grammar
-is currently ambiguous, meaning that the expression `1+2*3` could be
-understood in two different ways, and it would be interesting to see
-how Beans solves that ambiguity.
+boring. We would like to get more information than just whether a
+certain string is valid or not. Furthermore, as pointed earlier, our
+grammar is currently ambiguous, meaning that the expression `1+2*3`
+could be understood in two different ways, and it would be interesting
+to see how Beans solves that ambiguity.
 
 To do so, we need to expand our grammar a little bit. First of all, we
 might want to bind expressions that we use to recognise further
@@ -251,6 +254,8 @@ that particular instance of `Expression` was constructed.
   Expression@left DIVIDE Expression@right <Div>
   INTEGER.0@value <Literal>;
 ```
+
+<span style=color:red>NB: Il mio albero è stampato in ordine inverso: prima i left e poi i right</span>
 
 Let's see what the tree looks like now.
 ```bash
@@ -295,8 +300,8 @@ something else, as we will see.
 > grammar in unambiguous, and even better if it belongs to a more
 > restrictive class of grammars called `LR(k)`. If you have ever used
 > tools like Bison, Menhir or Yacc, and you are trying to port
-> grammars from them to Beans, good new!  These tools force your
-> grammars to be in such a restricted class (to have excellent
+> grammars from them to Beans, good news!  These tools force your
+> grammars to be in that restricted class (for the sake of
 > performance), and so will also lead to fast parsing with Beans.
 
 ## Priority
@@ -378,6 +383,10 @@ They correspond, respectively, to `(1/2)*3` and `(1*2)/3`. Victory!
 > Note that makes the information a little more nested, which is fine
 > for now, but will make some pretty ugly pattern matching in the
 > future. In fact, this technique produces some artifacts of
+
+<span style=color:red>of?..</span>
+
+<span style=color:red>E il prossimo esempio che è?</span>
 
 ```beans-gr
 @Expression ::=

@@ -1,11 +1,14 @@
 # Compilation
 
 Beans can be used in two ways, which are very much related but, in
-practice, will require entierly different approaches.
+practice, will require entirely different approaches.
 
-Beans can be used as a on-the-fly parser-generator, meaning that you
+<span style=color:red>Il paragrafo seguente non lo capisco.  Chi è
+"you"?  Chi è lo end user?</span>
+
+Beans can be used as an on-the-fly parser-generator, meaning that you
 expect your end user to give you a grammar for a language they just
-though of, and you have to parse files written in that language. This
+thought of, and you have to parse files written in that language. This
 is mainly useful for [domain-specific
 languages](https://en.wikipedia.org/wiki/Domain-specific_language). An
 example of this is Beans itself, which has to parse the grammars you

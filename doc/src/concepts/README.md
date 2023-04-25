@@ -9,7 +9,7 @@ are performed, in this order:
 The first step, lexing, operates directly on plain text inputs, while
 the last is in charge of producing the abstract syntax tree. For more
 details on the operations that can be performed on the latter, please
-refer to the [Rewriting the AST Chapter](ast/README.md).
+refer to the chapter [Rewriting the AST](ast/README.md).
 
 # Simple arithmetic expression
 

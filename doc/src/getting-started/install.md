@@ -1,11 +1,11 @@
 # Installation
 
 Using Beans as a library in Rust is done as with any other library:
-adding it in the dependencies in the Cargo manifest is
+adding it in the dependencies of the Cargo manifest is
 enough. However, as explained in the [Compiling Section](compile.md),
-a command line tool is also required to use Beans. It allows
+its command line tool is also required to use Beans. It allows
 compilation of Beans grammars, some introspection and debugging
-information.  There are ways to install `beans`:
+information.  There are several ways to install `beans`:
  * Installing with [Nix](https://nixos.org). This is the preferred way
    if you already have nix.
  * Installing with Cargo. This is the preferred way is you don't have
@@ -48,5 +48,8 @@ Once the `beans` directory entered, you simply need to run
 make install
 ```
 This will install a single binary at `/usr/local/bin/beans`. You can
-overwrite the target destination using the environment variables
-`DESTDIR` and `PREFIX`.
+overwrite the target destination using the environment variable
+`PREFIX`, e.g.:
+```bash
+make PREFIX=$HOME install
+```

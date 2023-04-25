@@ -3,7 +3,7 @@
 ## What does a lexer do?
 
 A lexer performs the initial, important step of grouping together
-characters that couldn't be morphologically split, while removing
+characters that <span style=color:red>couldn't be morphologically split [Eh?]</span>, while removing
 useless ones. For instance, in most programming languages, spaces are
 only useful to split words, they do not have any intrinsic
 meaning. Therefore, they should be dumped by the lexer, whereas all
@@ -15,33 +15,35 @@ together to form a single *token*.
 > identified meaning. For instance, any identifier, keyword or
 > operator would be considered a token.
 
-Both the parser and the lexer in Beans use online algorithms, meaning
+Both the parser and the lexer in Beans use <span style=color:red>online [Con degli URL?!?]</span> algorithms, meaning
 that they will consume their input as they process it. Beans' lexer
 will consume the input string one unicode character at a time. The
 lexer might backtrack, but this is, in practice, very
 rare. Non-degenerate grammars will never trigger such backtracking.
 
 As the lexer reads the input, it will produce tokens. Sometimes (as
-with whitespace), it will discard them. Other times, it might forget
-what the exact characters where, it will just remember which token has
+with whitespace), it will discard them. Other times, it <span style=color:red>might [Oppure?]</span> forget
+what the exact characters where and will just remember which token has
 been read.
 
 ## Regular expression
 
 Each terminal in Beans is recognized by matching its associated
 regular expression. Prior knowledge of regular expressions is
-assumed. Since regular expressions have loads of different
+assumed. Since regular expressions have many different
 specifications, here is an exhaustive list of features allowed in
 Beans regular expressions, besides the usual disjunction operator `|`,
 character classes `[...]` or `[^...]` and repetition with `+`, `*` and
 `?`.
 
+<span style=color:red>Che cos'è ϵ?</span>
+
 | Escaped character | Name           | Meaning                                                                   |
 |-------------------|----------------|---------------------------------------------------------------------------|
-| `\b`              | Word bounary   | matches `ϵ` if the previous or the next character are not word characters |
+| `\b`              | Word boundary  | matches `ϵ` if the previous or the next character are not word characters |
 | `\w`              | Word character | equivalent to [a-zA-Z0-9]                                                 |
 | `\t`              | Tabulation     | matches a tabulation                                                      |
-| `\Z` or `\z`      | End of file    | matches `ϵ` at the end of the line                                        |
+| `\Z` or `\z`      | End of file    | matches `ϵ` at the end of the <span style=color:red>line [file?]</span>                                        |
 | `\d`              | Digit          | equivalent to [0-9]                                                       |
 | `\n`              | Newline        | matches an end of line                                                    |
 | `\s`              | Whitespace     | matches whatever unicode considers whitespace                             |

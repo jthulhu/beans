@@ -1,7 +1,8 @@
 # Tradeoffs
 
 Several tradeoffs have been made while developping Beans. You can find
-here some I remembered to write down.
+here some of them that I remembered to write down.
+<span style=color:red>Er...</span>
 
 # Scannerless parsing
 
@@ -23,11 +24,11 @@ regex library which is tailored for the lexing use case.
 
 Usually, lexing errors are very much different than syntax
 errors. It's quite rare to encounter a lexing error in practice,
-because it's quite hard to write invalid token. This means that lexing
+because it's quite hard to write invalid tokens. This means that lexing
 errors should be reported differently than syntax errors, and this
 would be harder (if not impossible) in scannerless parsers.
 
-An other aspect to be taken into account is that parsers may have a
+Another aspect to be taken into account is that parsers may have a
 recovery mode, which triggers when encountering a syntax error. In
 this special mode, the parser cannot fully understand the input but
 will try to guess how to correct the input so that it can provide
@@ -38,6 +39,6 @@ works on tokens, rather than characters.
 
 Parsing and lexing are two logically distinct steps, even though there
 is quite some interleaving in Beans. Having them kept as different
-steps make it easier to debug a grammar one is writing, as it's easier
-to see what happens step by step, where each step is easier than the
+steps makes it easier to debug a grammar one is writing, as it's easier
+to see what happens step by step, where each step is simpler than the
 whole parsing operation.

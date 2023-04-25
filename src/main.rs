@@ -28,7 +28,7 @@ enum Action {
     Lex {
         #[arg(short = 'l', long = "lexer")]
         lexer_grammar: PathBuf,
-        source: PathBuf,
+        source: Option<PathBuf>,
     },
     Parse {
         /// Show the intermediate table used by the Earley parser
@@ -44,7 +44,7 @@ enum Action {
         #[arg(short, long = "parser")]
         parser_grammar: PathBuf,
         /// The file to parse
-        source: PathBuf,
+        source: Option<PathBuf>,
     },
 }
 
@@ -126,7 +126,11 @@ fn main() -> anyhow::Result<()> {
             source,
         } => {
             let lexer = Lexer::build_from_path(&lexer_grammar_path)?;
-            let mut stream = StringStream::from_file(source)?;
+            let mut stream = if let Some(source) = source {
+		StringStream::from_file(source)?
+	    } else {
+		StringStream::from_stdin()?
+	    };
             let mut lexed_stream = lexer.lex(&mut stream);
             let mut output_buffer = BufWriter::new(stdout());
             while let Some(token) = lexed_stream.next(Allowed::All)? {
@@ -181,7 +185,11 @@ fn main() -> anyhow::Result<()> {
             //     )?
             //     ;
             // println!("{:#?}\n{}", table, raw_input.len());
-            let mut stream = StringStream::from_file(source)?;
+            let mut stream = if let Some(source) = source {
+		StringStream::from_file(source)?
+	    } else {
+		StringStream::from_stdin()?
+	    };
             let mut input = lexer.lex(&mut stream);
             let (table, raw_input) = parser.recognise(&mut input)?;
             if print_table {

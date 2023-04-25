@@ -1,7 +1,7 @@
 use crate::error::{Error, Result};
 use crate::span::{Location, Span};
 use std::fs::File;
-use std::io::prelude::*;
+use std::io::{prelude::*, stdin};
 use std::path::Path;
 use std::rc::Rc;
 use std::result::Result as StdResult;
@@ -138,7 +138,8 @@ impl StringStream {
         }
     }
 
-    /// Create a [`StringStream`] directly from a file. This will try to read the content of the file right away.
+    /// Create a [`StringStream`] directly from a file. This will try to read the content of the
+    /// file right away.
     pub fn from_file(file: impl Into<Rc<Path>>) -> Result<Self> {
         let file = file.into();
         let mut file_stream =
@@ -148,6 +149,15 @@ impl StringStream {
             .read_to_string(&mut stream_buffer)
             .map_err(|err| Error::with_file(err, &*file))?;
         Ok(StringStream::new(file, stream_buffer))
+    }
+
+    pub fn from_stdin() -> Result<Self> {
+        let mut buffer = String::new();
+        stdin()
+            .read_to_string(&mut buffer)
+            .map_err(|error| Error::with_file(error, Path::new("<stdin>")))?;
+	let path = Path::new("<stdin>");
+	Ok(Self::new(path, buffer))
     }
 
     pub fn pos(&self) -> usize {

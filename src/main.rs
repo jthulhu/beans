@@ -194,7 +194,7 @@ fn main() -> anyhow::Result<()> {
                 print_final_sets(&forest, &parser, &lexer);
             }
             let ast = parser.select_ast(&forest, &raw_input, input.last_span());
-            print_ast(&ast)?;
+            print_ast(&ast, parser.grammar())?;
         }
     }
     Ok(())

@@ -1,48 +1,42 @@
-use crate::parser::{Value, AST};
+use crate::parser::{Value, AST, earley::EarleyGrammar};
 use ptree::{print_tree, TreeBuilder};
 
-fn build_tree(tree: &mut TreeBuilder, ast: &AST) {
+fn name(ast: &AST, grammar: &EarleyGrammar) -> String {
     match ast {
-        AST::Node { attributes, .. } => {
-            for (key, value) in attributes.iter() {
-                tree.begin_child(key.to_string());
-                build_tree(tree, value);
-                tree.end_child();
-            }
-        }
-        AST::Literal {
-            value: Value::Int(i),
-            ..
-        } => {
-            tree.add_empty_child(i.to_string());
-        }
-        AST::Literal {
-            value: Value::Str(string),
-            ..
-        } => {
-            tree.add_empty_child(string.to_string());
-        }
-        AST::Literal {
-            value: Value::Float(f),
-            ..
-        } => {
-            tree.add_empty_child(f.to_string());
-        }
-        AST::Literal {
-            value: Value::Bool(b),
-            ..
-        } => {
-            tree.add_empty_child(b.to_string());
-        }
-        AST::Terminal(ter) => {
-            tree.add_empty_child(ter.name().to_string());
+	AST::Node { nonterminal, attributes, .. } => {
+	    let mut name = String::new();
+	    name.push_str(&grammar.name_of(*nonterminal));
+	    if let Some(AST::Literal { value: Value::Str(variant), .. }) = attributes.get("variant") {
+		name.push_str("(");
+		name.push_str(&variant);
+		name.push_str(")");
+	    }
+	    name
+	}
+	AST::Literal { value: Value::Int(i), .. } => i.to_string(),
+	AST::Literal { value: Value::Str(string), .. } => string.to_string(),
+	AST::Literal { value: Value::Float(f), .. } => f.to_string(),
+	AST::Literal { value: Value::Bool(b), .. } => b.to_string(),
+	AST::Terminal(terminal) => terminal.name().to_string(),
+    }
+}
+
+fn build_tree(tree: &mut TreeBuilder, ast: &AST, grammar: &EarleyGrammar) {
+    if let AST::Node { attributes, .. } = ast {
+        for (key, value) in attributes.iter() {
+	    if &**key == "variant" {
+		continue;
+	    }
+            tree.begin_child(format!("{key}: {}", name(value, grammar)));
+            build_tree(tree, value, grammar);
+            tree.end_child();
         }
     }
 }
 
-pub fn print_ast(ast: &AST) -> std::io::Result<()> {
-    let mut tree = TreeBuilder::new(String::from("AST"));
-    build_tree(&mut tree, ast);
+pub fn print_ast(ast: &AST, grammar: &EarleyGrammar) -> std::io::Result<()> {
+    let mut tree = TreeBuilder::new(name(ast, grammar));
+    build_tree(&mut tree, ast, grammar);
     let tree = tree.build();
     print_tree(&tree)
 }

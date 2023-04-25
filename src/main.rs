@@ -1,13 +1,14 @@
-use anyhow::Context;
 use beans::builder::Buildable;
+use beans::error::Error;
 use beans::error::ErrorKind;
+use beans::error::Result;
 use beans::lexer::{Grammar as LexerGrammar, Lexer};
 use beans::parser::earley::{print_final_sets, print_sets, EarleyGrammar, EarleyParser};
 use beans::parser::Parser;
 use beans::printer::print_ast;
 use beans::regex::Allowed;
 use beans::stream::StringStream;
-use bincode::{deserialize, serialize};
+use bincode::serialize;
 use clap::{Parser as CliParser, Subcommand};
 use std::fs::File;
 use std::io::{prelude::*, stdout, BufWriter};
@@ -69,14 +70,15 @@ enum CompileAction {
     },
 }
 
-fn compile(compile_action: CompileAction) -> anyhow::Result<()> {
+fn compile(compile_action: CompileAction) -> Result<()> {
     match compile_action {
         CompileAction::Lexer {
             lexer_grammar: mut lexer_grammar_path,
             output_path,
         } => {
             let lexer_grammar = LexerGrammar::build_from_path(lexer_grammar_path.as_path())?;
-            let res = serialize(&lexer_grammar)?;
+            let res = serialize(&lexer_grammar)
+                .map_err(|error| Error::with_file(error, lexer_grammar_path.as_path()))?;
             let output = match output_path {
                 Some(output) => output,
                 None => {
@@ -86,10 +88,11 @@ fn compile(compile_action: CompileAction) -> anyhow::Result<()> {
                     lexer_grammar_path
                 }
             };
-            let mut output_fs = File::create(output.as_path())?;
+            let mut output_fs = File::create(output.as_path())
+                .map_err(|error| Error::with_file(error, output.as_path()))?;
             output_fs
                 .write_all(&res)
-                .context(format!("Could not write to file {}", output.display()))?;
+                .map_err(|error| Error::with_file(error, output))?;
         }
         CompileAction::Parser {
             parser_grammar: mut parser_grammar_path,
@@ -97,27 +100,30 @@ fn compile(compile_action: CompileAction) -> anyhow::Result<()> {
             lexer_path,
         } => {
             let lexer = Lexer::build_from_path(&lexer_path)?;
-            let parser_grammar = EarleyGrammar::build_from_path(
-                parser_grammar_path.as_path(),
-                lexer.grammar(),
-            )?;
+            let parser_grammar =
+                EarleyGrammar::build_from_path(parser_grammar_path.as_path(), lexer.grammar())?;
             let output = match output_path {
                 Some(output) => output,
                 None => {
                     if !parser_grammar_path.set_extension("cgr") {
                         return Err(ErrorKind::SameOutputAndInput.into());
                     }
-                    parser_grammar_path
+                    parser_grammar_path.clone()
                 }
             };
-            let mut output_fd = File::create(output)?;
-            output_fd.write_all(&serialize(&parser_grammar)?)?;
+            let mut output_fd = File::create(output.as_path())
+                .map_err(|error| Error::with_file(error, output.as_path()))?;
+            output_fd.write_all(
+                &serialize(&parser_grammar)
+                    .map_err(|error| Error::with_file(error, parser_grammar_path.as_path()))?,
+            )
+		.map_err(|error| Error::with_file(error, output.as_path()))?;
         }
     }
     Ok(())
 }
 
-fn main() -> anyhow::Result<()> {
+fn run() -> Result<()> {
     let Cli { action } = Cli::parse();
     match action {
         Action::Compile(compile_action) => compile(compile_action)?,
@@ -127,34 +133,41 @@ fn main() -> anyhow::Result<()> {
         } => {
             let lexer = Lexer::build_from_path(&lexer_grammar_path)?;
             let mut stream = if let Some(source) = source {
-		StringStream::from_file(source)?
-	    } else {
-		StringStream::from_stdin()?
-	    };
+                StringStream::from_file(source)?
+            } else {
+                StringStream::from_stdin()?
+            };
             let mut lexed_stream = lexer.lex(&mut stream);
             let mut output_buffer = BufWriter::new(stdout());
             while let Some(token) = lexed_stream.next(Allowed::All)? {
-                write!(output_buffer, "{}", token.name())?;
-		let mut attrs: Vec<(usize, &str)> = token
-		    .attributes()
-		    .iter()
-		    .map(|(key, value)| (*key, &**value))
-		    .collect();
-		    attrs.sort_by_key(|(key, _)| *key);
-		match &attrs[..] {
-		    &[] => {},
-		    &[(key, value)] => write!(output_buffer, " {{{key}: {value}}}")?,
-		    &[ref firsts@.., (last_key, last_value)] => {
-			write!(output_buffer, " {{")?;
-			for (key, value) in firsts {
-			    write!(output_buffer, "{key}: {value}, ")?;
-			}
-			write!(output_buffer, "{last_key}: {last_value}}}")?;
-		    }
-		}
-		writeln!(output_buffer)?;
+                write!(output_buffer, "{}", token.name())
+                    .map_err(|error| Error::with_file(error, "<stdout>"))?;
+                let mut attrs: Vec<(usize, &str)> = token
+                    .attributes()
+                    .iter()
+                    .map(|(key, value)| (*key, &**value))
+                    .collect();
+                attrs.sort_by_key(|(key, _)| *key);
+                match &attrs[..] {
+                    &[] => {}
+                    &[(key, value)] => write!(output_buffer, " {{{key}: {value}}}")
+                        .map_err(|error| Error::with_file(error, "<stdout>"))?,
+                    &[ref firsts @ .., (last_key, last_value)] => {
+                        write!(output_buffer, " {{")
+                            .map_err(|error| Error::with_file(error, "<stdout>"))?;
+                        for (key, value) in firsts {
+                            write!(output_buffer, "{key}: {value}, ")
+                                .map_err(|error| Error::with_file(error, "<stdout>"))?;
+                        }
+                        write!(output_buffer, "{last_key}: {last_value}}}")
+                            .map_err(|error| Error::with_file(error, "<stdout>"))?;
+                    }
+                }
+                writeln!(output_buffer).map_err(|error| Error::with_file(error, "<stdout>"))?;
             }
-            output_buffer.flush()?;
+            output_buffer
+                .flush()
+                .map_err(|error| Error::with_file(error, "<stdout>"))?;
         }
         Action::Parse {
             table: print_table,
@@ -164,16 +177,8 @@ fn main() -> anyhow::Result<()> {
             source,
         } => {
             let lexer = Lexer::build_from_path(&lexer_grammar_path)?;
-            let parser_grammar = if let Some("cgr") =
-                parser_grammar_path.extension().and_then(|x| x.to_str())
-            {
-                let mut buffer = Vec::new();
-                let mut fd = File::open(parser_grammar_path.as_path())?;
-                fd.read_to_end(&mut buffer)?;
-                deserialize(&buffer)?
-            } else {
-                EarleyGrammar::build_from_path(parser_grammar_path.as_path(), lexer.grammar())?
-            };
+            let parser_grammar =
+                EarleyGrammar::build_from_path(parser_grammar_path.as_path(), lexer.grammar())?;
             let parser = EarleyParser::new(parser_grammar);
             // let (table, raw_input) =
             //     EarleyParser::recognise(
@@ -186,10 +191,10 @@ fn main() -> anyhow::Result<()> {
             //     ;
             // println!("{:#?}\n{}", table, raw_input.len());
             let mut stream = if let Some(source) = source {
-		StringStream::from_file(source)?
-	    } else {
-		StringStream::from_stdin()?
-	    };
+                StringStream::from_file(source)?
+            } else {
+                StringStream::from_stdin()?
+            };
             let mut input = lexer.lex(&mut stream);
             let (table, raw_input) = parser.recognise(&mut input)?;
             if print_table {
@@ -206,4 +211,10 @@ fn main() -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+fn main() {
+    if let Err(error) = run() {
+	println!("{error}");
+    }
 }

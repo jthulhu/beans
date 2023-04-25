@@ -1,4 +1,4 @@
-use crate::parser::{Value, AST, earley::EarleyGrammar};
+use crate::{parser::{Value, AST, earley::EarleyGrammar}, error::{Result, Error}};
 use ptree::{print_tree, TreeBuilder};
 
 fn name(ast: &AST, grammar: &EarleyGrammar) -> String {
@@ -34,9 +34,10 @@ fn build_tree(tree: &mut TreeBuilder, ast: &AST, grammar: &EarleyGrammar) {
     }
 }
 
-pub fn print_ast(ast: &AST, grammar: &EarleyGrammar) -> std::io::Result<()> {
+pub fn print_ast(ast: &AST, grammar: &EarleyGrammar) -> Result<()> {
     let mut tree = TreeBuilder::new(name(ast, grammar));
     build_tree(&mut tree, ast, grammar);
     let tree = tree.build();
     print_tree(&tree)
+	.map_err(|error| Error::with_file(error, "<stdout>"))
 }

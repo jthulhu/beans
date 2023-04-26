@@ -18,12 +18,16 @@ TARGET := out/beans-debug
 ACTUAL_LOCATION := target/debug/beans
 endif
 
+# This stinks.  I found those directories in
+#     /usr/share/bash-completion/bash_completion
+#   (search for '__load_completion' and 'compat_dir').
+# The third case in particular is just tossing the dies in the air.
 ifeq ($(PREFIX),/usr/local)
-	BASH_COMP_DIR := /usr/local/share/bash-completion/completions
+    BASH_COMPLETION_DIR := /usr/local/share/bash-completion/completions
 else ifeq ($(PREFIX),$(HOME))
-	BASH_COMP_DIR := $(HOME)/.local/share/bash-completion/completions
+    BASH_COMPLETION_DIR := $(HOME)/.local/share/bash-completion/completions
 else
-	BASH_COMP_DIR := $(PREFIX)/etc/bash_completion.d
+    BASH_COMPLETION_DIR := $(PREFIX)/etc/bash_completion.d
 endif
 
 all: build

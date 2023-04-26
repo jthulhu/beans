@@ -1,11 +1,28 @@
 # mala 2023-04-25
 # bash completion for beans
 
+# Reference: [1] /usr/share/bash-completion/bash_completion
+
 function _beans () {
     local cur prev words cword split
 
+    # This is defined in [1].  It populates the local variables above.
+    # By the way:
+    #   cur is the current word (as typed so far);
+    #   prev is the previous one;
+    #   words is an array, 0 is the command name, 1 the first argument, etc.;
+    #   cword is the index of the current word (I think);
+    #   split is ?.
     _init_completion -s || return
 
+    # Notice the 'return' statements: in general each case is short-circuiting.
+    # So, the most general cases are at *bottom*.  In fact, you should read
+    #   what follows from the bottom up.
+
+    # This only applies after the first (for 'compile', the second) beans
+    #   command.
+    # If the user has typed a '-', then complete switches; else a file
+    #   completion will apply later on
     if [[ $cur == -* ]]; then
         case ${words[1]} in
             compile )
@@ -34,6 +51,8 @@ function _beans () {
         esac
     fi
 
+    # This apply after bean commands;  for lex, parse, etc. we complete
+    # on filenames.  This is overridden above if the user type a hyphen.
     case $prev in
         compile )
             COMPREPLY=(`compgen -W 'lexer parser' -- $cur`)
@@ -46,7 +65,12 @@ function _beans () {
             ;;
     esac
 
-    if [[ $cword -gt 2 ]]; then
+    # The catch-alls.
+    # If there are already 2 words, than by default we complete on filenames
+    #   (for example, this does not apply to the 'compile' command which
+    #   requires a subcommand and is handled above).
+    # If not, we can complete on the principal beans commands.
+    if [[ $cword -ge 2 ]]; then
         compopt -o filenames
         COMPREPLY=(`compgen -f -- $cur`)
         return

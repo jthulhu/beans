@@ -1,0 +1,59 @@
+# mala 2023-04-25
+# bash completion for beans
+
+function _beans () {
+    local cur prev words cword split
+
+    _init_completion -s || return
+
+    if [[ $cur == -* ]]; then
+        case ${words[1]} in
+            compile )
+                case $prev in
+                    lexer )
+                        COMPREPLY=(`compgen -W '-o --output' -- $cur`)
+                        return
+                        ;;
+                    parser )
+                        COMPREPLY=(`compgen -W '-o --output -l --lexer' -- $cur`)
+                        return
+                        ;;
+                esac
+                ;;
+            lex )
+                COMPREPLY=(`compgen -W '-l --lexer' -- $cur`)
+                return
+                ;;
+            parse )
+                COMPREPLY=(`compgen -W '-t --table
+                                        -f --final-table
+                                        -l --lexer
+                                        -p --parser' -- $cur`)
+                return
+                ;;
+        esac
+    fi
+
+    case $prev in
+        compile )
+            COMPREPLY=(`compgen -W 'lexer parser' -- $cur`)
+            return
+            ;;
+        lex | parse | lexer | parser | -o | --output | -l | --lexer | -p | --parser )
+            compopt -o filenames
+            COMPREPLY=(`compgen -f -- $cur`)
+            return
+            ;;
+    esac
+
+    if [[ $cword -gt 2 ]]; then
+        compopt -o filenames
+        COMPREPLY=(`compgen -f -- $cur`)
+        return
+    else
+        COMPREPLY=(`compgen -W 'compile lex parse help' -- $cur`)
+        return
+    fi
+}
+
+complete -F _beans beans

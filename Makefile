@@ -18,6 +18,14 @@ TARGET := out/beans-debug
 ACTUAL_LOCATION := target/debug/beans
 endif
 
+ifeq ($(PREFIX),/usr/local)
+	BASH_COMP_DIR := /usr/local/share/bash-completion/completions
+else ifeq ($(PREFIX),$(HOME))
+	BASH_COMP_DIR := $(HOME)/.local/share/bash-completion/completions
+else
+	BASH_COMP_DIR := $(PREFIX)/etc/bash_completion.d
+endif
+
 all: build
 build: $(TARGET)
 
@@ -30,8 +38,21 @@ clean:
 
 grammars: $(PARSER_GRAMMAR_TARGETS) $(LEXER_GRAMMAR_TARGETS)
 
-install: out/beans
-	install -D -m755 $< $(BINDIR)/beans 
+install: install-exe install-bash-completion
+
+install-exe: out/beans
+	install -D -m755 $< $(BINDIR)/beans
+
+# Ahem.  install does not know how to both create the directories
+#   *and* copy the file in there, unless you use -D and also specify
+#   the name of the destination file.  Now, I do not want to specify
+#   the destination filename, because it is already in the
+#   prerequisites. Nor do I want to play with make functions in order
+#   to extract the base name.
+# install sucks.
+install-bash-completion: bash/beans
+	install -m755 -d $(BASH_COMP_DIR)
+	install -m644 $< $(BASH_COMP_DIR)/
 
 run: build
 	@./$(TARGET)

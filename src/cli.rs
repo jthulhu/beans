@@ -14,8 +14,10 @@ pub enum Action {
     #[command(subcommand)]
     Compile(CompileAction),
     Lex {
-        #[arg(short = 'l', long = "lexer")]
+	/// Specify the lexer's grammar
+	#[arg(id = "lexer")]
         lexer_grammar: PathBuf,
+	/// The file to lex
         source: Option<PathBuf>,
     },
     Parse {
@@ -26,10 +28,10 @@ pub enum Action {
         #[arg(short, long)]
         final_table: bool,
         /// Specify the lexer's grammar
-        #[arg(short, long = "lexer")]
+        #[arg(id = "lexer")]
         lexer_grammar: PathBuf,
         /// Specify the parser's grammar
-        #[arg(short, long = "parser")]
+        #[arg(id = "parser")]
         parser_grammar: PathBuf,
         /// The file to parse
         source: Option<PathBuf>,
@@ -40,19 +42,21 @@ pub enum Action {
 pub enum CompileAction {
     /// Compile a lexer grammar
     Lexer {
-        lexer_grammar: PathBuf,
         #[arg(short = 'o', long = "output")]
         output_path: Option<PathBuf>,
+	#[arg(id = "source")]
+	lexer_grammar: PathBuf,
     },
     /// Compile a parser grammar
     Parser {
-        /// The path to the grammar
-        parser_grammar: PathBuf,
         /// The path of the resulting compiled blob
         #[arg(short = 'o', long = "output")]
         output_path: Option<PathBuf>,
         /// The path to the lexer grammar on top of which the parser relies
-        #[arg(short = 'l', long = "lexer")]
+        #[arg(id = "lexer")]
         lexer_path: PathBuf,
+	/// The path to the grammar
+	#[arg(id = "source")]
+        parser_grammar: PathBuf,
     },
 }

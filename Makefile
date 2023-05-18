@@ -73,10 +73,10 @@ out/%: target/release/% | out
 out/%-debug: target/debug/% | out
 	@cp $< $@
 
-target/release/beans: $(SOURCES)
+target/release/beans: $(SOURCES) Cargo.lock
 	cargo build --release
 
-target/debug/beans: $(SOURCES)
+target/debug/beans: $(SOURCES) Cargo.lock
 	cargo build
 
 %.clx: %.lx $(TARGET)

@@ -9,6 +9,7 @@ fn main() -> Result<(), Error> {
     let Some(outdir) = env::var_os("OUT_DIR") else {
 	return Ok(())
     };
+    println!("cargo:rerun-if-changed=src/cli.rs");
     let mut cmd = Cli::command();
     let name = cmd.get_name().to_string();
     let path = generate_to(Bash, &mut cmd, name, outdir)?;

@@ -45,8 +45,8 @@ pub type Location = (usize, usize);
 ///     (0, 0),
 ///     0,
 ///     0,
-/// # //    "a",
-/// # //    vec![0],
+///     "a",
+///     vec![0],
 /// );
 /// ```
 ///
@@ -68,8 +68,8 @@ pub type Location = (usize, usize);
 ///   (1, 2),
 ///   4,
 ///   8,
-/// # //  "abcde\nbel",
-/// # //  vec![0, 6],
+///   "abcde\nbel",
+///   vec![0, 6],
 /// )
 /// # ;
 /// ```

@@ -83,7 +83,16 @@ target/debug/beans: $(SOURCES) Cargo.lock
 	$(TARGET) compile lexer -o $@ $<
 
 %.cgr: %.gr %.clx $(TARGET)
-	$(TARGET) compile parser --lexer $(word 2,$^) -o $@ $<
+	$(TARGET) compile parser -o $@ $(word 2,$^) $<
 
-.PHONY: all build check clean grammars run test
+migrate-step1: out/beans
+	@scripts/migration.sh step1
+
+migrate-step2:
+	@scripts/migration.sh step2
+
+migrate-step3:
+	@scripts/migration.sh step3
+
+.PHONY: all ast build check clean grammars migrate-step1 migrate-step2 migrate-step3 run test
 .SUFFIXES:

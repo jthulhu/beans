@@ -82,10 +82,7 @@ pub trait Buildable: Sized {
                 return Ok(result);
             }
             FileResult::Valid((path, Format::Ast)) => {
-                let string = std::str::from_utf8(blob)
-                    .map_err(|error| Error::with_file(error, path.clone()))?;
-                serde_json::from_str(string)
-                    .map_err(|error| ErrorKind::IllformedAst { error, path })?
+                bincode::deserialize(blob).map_err(|error| Error::with_file(error, path))?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
                 let string = String::from_utf8(blob.to_vec())
@@ -132,10 +129,8 @@ pub trait Buildable: Sized {
             FileResult::Valid((actual_path, Format::Ast)) => {
                 let file = File::open(&actual_path)
                     .map_err(|err| Error::with_file(err, actual_path.clone()))?;
-                serde_json::from_reader(file).map_err(|error| ErrorKind::IllformedAst {
-                    error,
-                    path: actual_path,
-                })?
+                bincode::deserialize_from(file)
+                    .map_err(|error| Error::with_file(error, actual_path))?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
                 let stream = StringStream::from_file(actual_path)?;

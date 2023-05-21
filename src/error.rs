@@ -60,10 +60,6 @@ pub enum ErrorKind {
         error: bincode::Error,
         path: PathBuf,
     },
-    IllformedAst {
-        error: serde_json::Error,
-        path: PathBuf,
-    },
     UnrecognisedExtension {
         extension: OsString,
         path: PathBuf,
@@ -181,7 +177,10 @@ impl From<(PathBuf, std::io::Error)> for ErrorKind {
 
 impl From<(PathBuf, Utf8Error)> for ErrorKind {
     fn from((path, error): (PathBuf, Utf8Error)) -> Self {
-        Self::NonUtf8Content { path, error: Either::Left(error) }
+        Self::NonUtf8Content {
+            path,
+            error: Either::Left(error),
+        }
     }
 }
 
@@ -193,13 +192,10 @@ impl From<(PathBuf, bincode::Error)> for ErrorKind {
 
 impl From<(PathBuf, FromUtf8Error)> for ErrorKind {
     fn from((path, error): (PathBuf, FromUtf8Error)) -> Self {
-        Self::NonUtf8Content { path, error: Either::Right(error) }
-    }
-}
-
-impl From<(PathBuf, serde_json::Error)> for ErrorKind {
-    fn from((path, error): (PathBuf, serde_json::Error)) -> Self {
-        Self::IllformedAst { error, path }
+        Self::NonUtf8Content {
+            path,
+            error: Either::Right(error),
+        }
     }
 }
 
@@ -210,11 +206,6 @@ impl Display for ErrorKind {
             Self::SerializationError { error, path } => writeln!(
                 f,
                 "ICE: while trying to serialize {}, the following error occured\n{error}",
-                path.display(),
-            ),
-            Self::IllformedAst { error, path } => writeln!(
-                f,
-                "File {} contains an illformed AST.\n{error}",
                 path.display(),
             ),
             Self::UnrecognisedExtension { extension, path } => {

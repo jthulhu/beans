@@ -236,7 +236,7 @@ impl EarleyGrammar {
 impl EarleyGrammar {
     const PLAIN_EXTENSION: &str = "gr";
     const COMPILED_EXTENSION: &str = "cgr";
-    const AST_EXTENSION: &str = "gr.ast";
+    const AST_EXTENSION: &str = "ast";
 
     pub fn build_from_compiled(
         blob: &[u8],
@@ -666,10 +666,8 @@ impl EarleyGrammar {
             FileResult::Valid((actual_path, Format::Ast)) => {
                 let file = File::open(&actual_path)
                     .map_err(|error| Error::with_file(error, &actual_path))?;
-                serde_json::from_reader(file).map_err(|error| ErrorKind::IllformedAst {
-                    error,
-                    path: actual_path,
-                })?
+		bincode::deserialize_from(file)
+                    .map_err(|error| Error::with_file(error, actual_path))?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
                 let stream = StringStream::from_file(actual_path)?;
@@ -721,9 +719,8 @@ impl EarleyGrammar {
                 return Ok(result);
             }
             FileResult::Valid((actual_path, Format::Ast)) => {
-                let string = std::str::from_utf8(blob)
-		    .map_err(|error| Error::with_file(error, actual_path.clone()))?;
-                serde_json::from_str(string).map_err(|error| Error::with_file(error, actual_path))?
+		bincode::deserialize(blob)
+		    .map_err(|error| Error::with_file(error, actual_path))?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
                 let string = String::from_utf8(blob.to_vec())
@@ -1164,6 +1161,7 @@ impl EarleyParser {
                     parent_has_been_shown,
                 })
             });
+	
         let mut raw_input = Vec::new();
         sets.push(first_state);
         let mut pos = 0;

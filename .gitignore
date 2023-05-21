@@ -2,3 +2,6 @@
 
 target/
 out/
+
+**/*.ast
+.migration/

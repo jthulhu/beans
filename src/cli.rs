@@ -36,6 +36,7 @@ pub enum Action {
         /// The file to parse
         source: Option<PathBuf>,
     },
+    Introspect,
 }
 
 #[derive(Subcommand)]

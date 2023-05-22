@@ -1,3 +1,5 @@
+use crate::cli::*;
+use beans::build_system;
 use beans::builder::Buildable;
 use beans::error::Error;
 use beans::error::ErrorKind;
@@ -9,10 +11,10 @@ use beans::printer::print_ast;
 use beans::regex::Allowed;
 use beans::stream::StringStream;
 use bincode::serialize;
+use clap::Parser as CliParser;
 use std::fs::File;
 use std::io::{prelude::*, stdout, BufWriter};
-use clap::Parser as CliParser;
-use crate::cli::*;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
 mod cli;
@@ -60,11 +62,13 @@ fn compile(compile_action: CompileAction) -> Result<()> {
             };
             let mut output_fd = File::create(output.as_path())
                 .map_err(|error| Error::with_file(error, output.as_path()))?;
-            output_fd.write_all(
-                &serialize(&parser_grammar)
-                    .map_err(|error| Error::with_file(error, parser_grammar_path.as_path()))?,
-            )
-		.map_err(|error| Error::with_file(error, output.as_path()))?;
+            output_fd
+                .write_all(
+                    &serialize(&parser_grammar).map_err(|error| {
+                        Error::with_file(error, parser_grammar_path.as_path())
+                    })?,
+                )
+                .map_err(|error| Error::with_file(error, output.as_path()))?;
         }
     }
     Ok(())
@@ -117,6 +121,7 @@ fn run() -> Result<()> {
                 .map_err(|error| Error::with_file(error, "<stdout>"))?;
         }
         Action::Parse {
+            dump,
             table: print_table,
             final_table: print_final_table,
             lexer_grammar: lexer_grammar_path,
@@ -127,17 +132,7 @@ fn run() -> Result<()> {
             let parser_grammar =
                 EarleyGrammar::build_from_path(parser_grammar_path.as_path(), lexer.grammar())?;
             let parser = EarleyParser::new(parser_grammar);
-            // let (table, raw_input) =
-            //     EarleyParser::recognise(
-            // 	    &parser,
-            //         &mut lexer.lex(
-            //             &mut StringStream::from_file(source)?
-            //                 ,
-            //         ),
-            //     )?
-            //     ;
-            // println!("{:#?}\n{}", table, raw_input.len());
-            let mut stream = if let Some(source) = source {
+            let mut stream = if let Some(source) = source.clone() {
                 StringStream::from_file(source)?
             } else {
                 StringStream::from_stdin()?
@@ -154,7 +149,59 @@ fn run() -> Result<()> {
                 print_final_sets(&forest, &parser, &lexer);
             }
             let ast = parser.select_ast(&forest, &raw_input, input.last_span());
-            print_ast(&ast, parser.grammar())?;
+            if dump {
+                let output_path = if let Some(source_path) = source.as_ref() {
+                    let mut file_name = source_path.file_name().unwrap().to_owned();
+                    file_name.push(".ast");
+                    source_path.with_file_name(file_name)
+                } else {
+                    PathBuf::from("a.gr.ast")
+                };
+                println!("Dumping to {}", output_path.display());
+                let mut fd = File::create(&output_path)
+                    .map_err(|error| Error::with_file(error, output_path.as_path()))?;
+                bincode::serialize_into(&mut fd, &ast)
+                    .map_err(|error| Error::with_file(error, output_path.as_path()))?;
+            } else {
+                print_ast(&ast, parser.grammar())?;
+            }
+        }
+        Action::Introspect => {
+            println!("Precompiled: {:?}", beans::PRECOMPILED);
+            #[cfg(feature = "_from-ast")]
+            let lexer = build_system!(
+		lexer => "lexer/lexer.lx.ast",
+		parser => "lexer/lexer.gr.ast",
+            )
+            .unwrap();
+
+            #[cfg(not(feature = "_from-ast"))]
+            let lexer = build_system!(
+		lexer => "lexer/lexer.clx",
+		parser => "lexer/lexer.cgr",
+	    )
+            .unwrap();
+
+            println!(" === LEXER ===");
+            println!("{:?}", lexer.0);
+            println!("{:?}", lexer.1);
+            #[cfg(feature = "_from-ast")]
+            let parser = build_system!(
+		lexer => "parser/parser.lx.ast",
+		parser => "parser/parser.gr.ast",
+            )
+            .unwrap();
+
+            #[cfg(not(feature = "_from-ast"))]
+            let parser = build_system!(
+		lexer => "parser/parser.clx",
+		parser => "parser/parser.cgr",
+	    )
+            .unwrap();
+
+            println!(" === PARSER ===");
+            println!("{:#?}", parser.0);
+            println!("{:#?}", parser.1);
         }
     }
     Ok(())

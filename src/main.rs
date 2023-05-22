@@ -13,6 +13,7 @@ use std::fs::File;
 use std::io::{prelude::*, stdout, BufWriter};
 use clap::Parser as CliParser;
 use crate::cli::*;
+use std::process::ExitCode;
 
 mod cli;
 
@@ -159,8 +160,11 @@ fn run() -> Result<()> {
     Ok(())
 }
 
-fn main() {
+fn main() -> ExitCode {
     if let Err(error) = run() {
-	println!("{error}");
+        eprintln!("{error}");
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
     }
 }

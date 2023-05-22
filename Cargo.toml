@@ -10,6 +10,9 @@ repository = "https://github.com/jthulhu/beans"
 
 build = "build.rs"
 
+[features]
+_from-ast = []
+
 [workspace]
 members = [ "macros" ]
 

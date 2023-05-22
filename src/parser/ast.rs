@@ -189,7 +189,7 @@ impl Tree for Spanned<Associativity> {
 
 impl From<Associativity> for bool {
     fn from(assoc: Associativity) -> bool {
-	matches!(assoc, Associativity::Left)
+        matches!(assoc, Associativity::Left)
     }
 }
 

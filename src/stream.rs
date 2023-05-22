@@ -156,8 +156,8 @@ impl StringStream {
         stdin()
             .read_to_string(&mut buffer)
             .map_err(|error| Error::with_file(error, Path::new("<stdin>")))?;
-	let path = Path::new("<stdin>");
-	Ok(Self::new(path, buffer))
+        let path = Path::new("<stdin>");
+        Ok(Self::new(path, buffer))
     }
 
     pub fn pos(&self) -> usize {

@@ -25,8 +25,8 @@ use itertools::Itertools;
 use newty::{newty, nvec};
 use serde::{Deserialize, Serialize};
 use std::cmp::{Ordering, Reverse};
-use std::collections::VecDeque;
 use std::collections::hash_map::Entry;
+use std::collections::VecDeque;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs::File;
@@ -338,10 +338,7 @@ impl EarleyGrammar {
                 )?;
                 new_elements.push(el);
             }
-            let proxy = eval_proxy(
-                &rule.proxy,
-                found_nonterminals,
-            )?;
+            let proxy = eval_proxy(&rule.proxy, found_nonterminals)?;
             Ok(Rule::new(
                 macro_id,
                 new_elements,
@@ -464,7 +461,9 @@ impl EarleyGrammar {
                         args.push(evaled);
                     }
                     let args: Rc<[_]> = Rc::from(args);
-                    if let Entry::Vacant(e) = invoked_macros.entry((name.inner.clone(), args.clone())) {
+                    if let Entry::Vacant(e) =
+                        invoked_macros.entry((name.inner.clone(), args.clone()))
+                    {
                         let id = available_id.next();
                         let mut complete_name = name.inner.to_string();
                         complete_name.push('[');
@@ -591,10 +590,7 @@ impl EarleyGrammar {
                             items: children.clone(),
                             span: expression.span.clone(),
                         };
-                        let attributes = eval_proxy(
-                            &fake_proxy,
-                            found_nonterminals,
-                        )?;
+                        let attributes = eval_proxy(&fake_proxy, found_nonterminals)?;
                         ValueTemplate::InlineRule {
                             non_terminal: *nonterminal,
                             attributes,
@@ -644,10 +640,17 @@ impl EarleyGrammar {
         mut source: StringStream,
         lexer_grammar: &LexerGrammar,
     ) -> Result<Self> {
+        #[cfg(feature = "_from-ast")]
         let (lexer, parser) = build_system!(
-            lexer => "parser.clx",
-            parser => "parser.cgr",
+		lexer => "parser.lx.ast",
+		parser => "parser.gr.ast",
+            )?;
+        #[cfg(not(feature = "_from-ast"))]
+        let (lexer, parser) = build_system!(
+	    lexer => "parser.clx",
+	    parser => "parser.cgr",
         )?;
+
         let mut input = lexer.lex(&mut source);
         let result = parser.parse(&mut input)?;
         let grammar = Self::build_from_ast(result.tree, lexer_grammar)?;
@@ -666,7 +669,7 @@ impl EarleyGrammar {
             FileResult::Valid((actual_path, Format::Ast)) => {
                 let file = File::open(&actual_path)
                     .map_err(|error| Error::with_file(error, &actual_path))?;
-		bincode::deserialize_from(file)
+                bincode::deserialize_from(file)
                     .map_err(|error| Error::with_file(error, actual_path))?
             }
             FileResult::Valid((actual_path, Format::Plain)) => {
@@ -718,13 +721,11 @@ impl EarleyGrammar {
                 let result = Self::build_from_compiled(blob, actual_path)?;
                 return Ok(result);
             }
-            FileResult::Valid((actual_path, Format::Ast)) => {
-		bincode::deserialize(blob)
-		    .map_err(|error| Error::with_file(error, actual_path))?
-            }
+            FileResult::Valid((actual_path, Format::Ast)) => bincode::deserialize(blob)
+                .map_err(|error| Error::with_file(error, actual_path))?,
             FileResult::Valid((actual_path, Format::Plain)) => {
                 let string = String::from_utf8(blob.to_vec())
-		    .map_err(|error| Error::with_file(error, &actual_path))?;
+                    .map_err(|error| Error::with_file(error, &actual_path))?;
                 let stream = StringStream::new(actual_path, string);
                 let result = Self::build_from_plain(stream, lexer_grammar)?;
                 return Ok(result);
@@ -1161,7 +1162,7 @@ impl EarleyParser {
                     parent_has_been_shown,
                 })
             });
-	
+
         let mut raw_input = Vec::new();
         sets.push(first_state);
         let mut pos = 0;

@@ -492,14 +492,14 @@ mod tests {
 
     #[test]
     fn default_parser_grammar() {
-        let lexer = Lexer::build_from_path(Path::new("src/parser/gmrs/earley.lx")).unwrap();
+        let lexer = Lexer::build_from_path(Path::new("src/parser/parser.lx")).unwrap();
         let mut input = StringStream::from_file(Path::new("src/parser/gmrs/dummy.gr")).unwrap();
         let mut lexed_input = lexer.lex(&mut input);
 
         let result = [
             // IfStatement
             id_token!(IfStatement),
-            test_token!(ASSIGNMENT),
+            test_token!(DEF),
             id_token!(IF),
             id_token!(Expression),
             test_token!(AT),

@@ -237,15 +237,7 @@ mod tests {
         assert_eq!(span.end_byte(), 11);
         // assert_eq!(span.text(), &*input);
         // assert_eq!(span.lines(), &*lines);
-        let span = Span::new(
-            Path::new(""),
-            (0, 0),
-            (0, 0),
-            0,
-            0,
-            input,
-            lines,
-        );
+        let span = Span::new(Path::new(""), (0, 0), (0, 0), 0, 0, input, lines);
         assert_eq!(&*span.file(), Path::new(""));
         assert_eq!(span.start(), (0, 0));
         assert_eq!(span.end(), (0, 0));

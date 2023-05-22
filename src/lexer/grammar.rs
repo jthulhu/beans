@@ -108,7 +108,7 @@ impl Grammar {
 impl Buildable for Grammar {
     const RAW_EXTENSION: &'static str = "lx";
     const COMPILED_EXTENSION: &'static str = "clx";
-    const AST_EXTENSION: &'static str = "lx.ast";
+    const AST_EXTENSION: &'static str = "ast";
 
     fn build_from_ast(ast: AST) -> Result<Self> {
         let typed_ast = Ast::read(ast)?;
@@ -140,8 +140,8 @@ impl Buildable for Grammar {
             }
             names.push(terminal.name.inner.to_string());
 
-            if let Some(span) =
-                found_identifiers.insert(terminal.name.inner.clone(), terminal.name.span.clone())
+            if let Some(span) = found_identifiers
+                .insert(terminal.name.inner.clone(), terminal.name.span.clone())
             {
                 return ErrorKind::GrammarDuplicateDefinition {
                     name: terminal.name.inner.to_string(),
@@ -173,10 +173,18 @@ impl Buildable for Grammar {
     }
 
     fn build_from_plain(mut source: StringStream) -> Result<Self> {
+        #[cfg(feature = "_from-ast")]
         let (lexer, parser) = build_system!(
-            lexer => "lexer.clx",
-            parser => "lexer.cgr",
+	    lexer => "lexer.lx.ast",
+	    parser => "lexer.gr.ast",
         )?;
+
+        #[cfg(not(feature = "_from-ast"))]
+        let (lexer, parser) = build_system!(
+	    lexer => "lexer.clx",
+	    parser => "lexer.cgr",
+	)?;
+
         let mut input = lexer.lex(&mut source);
         let result = parser.parse(&mut input)?;
         let grammar = Self::build_from_ast(result.tree)?;

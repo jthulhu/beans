@@ -14,13 +14,16 @@ pub enum Action {
     #[command(subcommand)]
     Compile(CompileAction),
     Lex {
-	/// Specify the lexer's grammar
-	#[arg(id = "lexer")]
+        /// Specify the lexer's grammar
+        #[arg(id = "lexer")]
         lexer_grammar: PathBuf,
-	/// The file to lex
+        /// The file to lex
         source: Option<PathBuf>,
     },
     Parse {
+        /// Dump the result in a JSON file instead of printing to stdout
+        #[arg(short)]
+        dump: bool,
         /// Show the intermediate table used by the Earley parser
         #[arg(short, long)]
         table: bool,
@@ -45,8 +48,8 @@ pub enum CompileAction {
     Lexer {
         #[arg(short = 'o', long = "output")]
         output_path: Option<PathBuf>,
-	#[arg(id = "source")]
-	lexer_grammar: PathBuf,
+        #[arg(id = "source")]
+        lexer_grammar: PathBuf,
     },
     /// Compile a parser grammar
     Parser {
@@ -56,8 +59,8 @@ pub enum CompileAction {
         /// The path to the lexer grammar on top of which the parser relies
         #[arg(id = "lexer")]
         lexer_path: PathBuf,
-	/// The path to the grammar
-	#[arg(id = "source")]
+        /// The path to the grammar
+        #[arg(id = "source")]
         parser_grammar: PathBuf,
     },
 }

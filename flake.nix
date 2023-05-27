@@ -30,16 +30,20 @@
           cargo = rust;
           rustc = rust;
         };
-      in {
-        defaultPackage = naersk-lib.buildPackage {
-          pname = "Beans";
-          root = ./.;
+      in rec {
+        packages = {
+          beans = naersk-lib.buildPackage {
+            pname = "Beans";
+            root = ./.;
+          };
         };
+        defaultPackage = packages.beans;
         defaultApp = utils.lib.mkApp {
             drv = self.defaultPackage.${system};
         };
         devShell = pkgs.mkShell {
           buildInputs = with pkgs; [
+            shellcheck
             gdb
             rust
             cargo

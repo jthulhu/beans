@@ -85,14 +85,5 @@ target/debug/beans: $(SOURCES) Cargo.lock
 %.cgr: %.gr %.clx $(TARGET)
 	$(TARGET) compile parser -o $@ $(word 2,$^) $<
 
-migrate-step1: out/beans
-	@scripts/migration.sh step1
-
-migrate-step2:
-	@scripts/migration.sh step2
-
-migrate-step3:
-	@scripts/migration.sh step3
-
 .PHONY: all ast build check clean grammars migrate-step1 migrate-step2 migrate-step3 run test
 .SUFFIXES:

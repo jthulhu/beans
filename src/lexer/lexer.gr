@@ -1,24 +1,24 @@
 Option[content] ::=
-  content@value <Some>
-  <None>;
+  content@value -> {Some}
+  -> {None};
 
 NonEmptyList[content, separation] ::=
-  content@head <Nil>
-  content@head separation NonEmptyList[content, separation]@tail <Cons>;
+  content@head -> {Nil}
+  content@head separation NonEmptyList[content, separation]@tail -> {Cons};
 
 List[content, separation] ::=
-  Option[NonEmptyList[content, separation]]@value <>;
+  Option[NonEmptyList[content, separation]]@value -> {};
 
 
 Empty ::=
-  <>;
+  -> {};
   
 @File ::=
-  List[Terminal, Empty]@terminals <>;
+  List[Terminal, Empty]@terminals -> {};
 
 Terminal ::=
   Option[Comment]@comment Option[IGNORE]@ignore Option[KEYWORD]@keyword
-  Option[UNWANTED]@unwanted ID.0@name DEF REGEX.0@value <>;
+  Option[UNWANTED]@unwanted ID.0@name DEF REGEX.0@value -> {};
 
 Comment ::=
-  COMMENT.0@value <>;
+  COMMENT.0@value -> {};

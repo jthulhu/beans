@@ -1377,14 +1377,17 @@ RPAR ::= \)
 "#;
 
     const GRAMMAR_NUMBERS: &str = r#"
-@Sum ::= Sum@left PM Product@right <>
- Product@self <>;
+@Sum ::=
+ Sum@left PM Product@right -> {}
+ Product@self -> {};
 
-Product ::= Product@left TD Factor@right <>
- Factor.self@self <>;
+Product ::=
+ Product@left TD Factor@right -> {}
+ Factor.self@self -> {};
 
-Factor ::= LPAR Sum@self RPAR <>
- NUMBER.0@self <>;"#;
+Factor ::=
+ LPAR Sum@self RPAR -> {}
+ NUMBER.0@self -> {};"#;
 
     const GRAMMAR_PROXY_LEXER: &str = r#"
 NUMBER ::= ([0-9]+)
@@ -1394,38 +1397,38 @@ RPAR ::= \)
 "#;
     const GRAMMAR_NUMBERS_IMPROVED: &str = r#"
 @Expr ::=
-  NUMBER.0@value <Literal>
-  (left-assoc) Expr@left TD Expr@right <MulDiv>
-  (right-assoc) Expr@left PM Expr@right <AddSub>
-  LPAR Expr@value RPAR <Through>;
+  NUMBER.0@value -> {Literal}
+  (left-assoc) Expr@left TD Expr@right -> {MulDiv}
+  (right-assoc) Expr@left PM Expr@right -> {AddSub}
+  LPAR Expr@value RPAR -> {Through};
 "#;
 
     const GRAMMAR_PROXY: &str = r#"
 @Expression ::=
-  NUMBER.0@value <Literal>
-  Expression@left OP Expression@right <Operation>
-  OP Expression@right <Operation, left: Expression {Literal, value: "0"}>
-  LPAR Expression@value RPAR <Parenthesized>;
+  NUMBER.0@value -> {Literal}
+  Expression@left OP Expression@right -> {Operation}
+  OP Expression@right -> {Operation, left: Expression {Literal, value: "0"}}
+  LPAR Expression@value RPAR -> {Parenthesized};
 "#;
     const GRAMMAR_PROXY_WRONG_1: &str = r#"
 @Expression ::=
-  NUMBER.0@value <Literal>
-  Expression@left OP Expression@right <Operation>
-  OP Expression@right <
+  NUMBER.0@value -> {Literal}
+  Expression@left OP Expression@right -> {Operation}
+  OP Expression@right -> {
     Operation,
     left: Expression {variant: Literal value: "0"}
-  >
-  LPAR Expression@value RPAR <Parenthesized>;
+  }
+  LPAR Expression@value RPAR -> {Parenthesized};
 "#;
     const GRAMMAR_PROXY_WRONG_2: &str = r#"
 @Expression ::=
-  NUMBER.0@value <Literal>
-  Expression@left OP Expression@right <Operation>
-  OP Expression@right <
+  NUMBER.0@value -> {Literal}
+  Expression@left OP Expression@right -> {Operation}
+  OP Expression@right -> {
     Operation
     left: Expression {Literal value: "0"}
-  >
-  LPAR Expression@value RPAR <Parenthesized>;
+  }
+  LPAR Expression@value RPAR -> {Parenthesized};
 "#;
 
     const GRAMMAR_C_LEXER: &str = include_str!("gmrs/petitc.lx");
@@ -1705,9 +1708,10 @@ RPAR ::= \)
     fn recognise_handle_empty_rules() {
         let lexer_input = r#""#;
         let grammar_input = r#"
-@A ::= <>
- B <>;
-B ::= A <>;"#;
+@A ::=
+ -> {}
+ B -> {};
+B ::= A -> {};"#;
         let input = r#""#;
         let lexer =
             Lexer::build_from_plain(StringStream::new(Path::new("<lexer input>"), lexer_input))

@@ -1,83 +1,83 @@
 Option[content] ::=
-  content@value <Some>
-  <None>;
+  content@value -> {Some}
+  -> {None};
 
 NonEmptyList[content, separation] ::=
-  content@head <Nil>
-  content@head separation NonEmptyList[content, separation]@tail <Cons>;
+  content@head -> {Nil}
+  content@head separation NonEmptyList[content, separation]@tail -> {Cons};
 
 List[content, separation] ::=
-  Option[NonEmptyList[content, separation]]@value <>;
+  Option[NonEmptyList[content, separation]]@value -> {};
 
 Empty ::=
-  <>;
+  -> {};
 
 "a file"
 @File ::=
-  List[ToplevelDeclaration, Empty]@decls <>;
+  List[ToplevelDeclaration, Empty]@decls -> {};
 
 "a declaration"
 ToplevelDeclaration ::=
-  Declaration@decl <Decl>
-  MacroDecl@decl <Macro>;
+  Declaration@decl -> {Decl}
+  MacroDecl@decl -> {Macro};
 
 "a declaration"
 Declaration ::=
   Option[Comment]@comment Option[AT]@axiom ID.0@name DEF
-  List[Rule, Empty]@rules SEMICOLON <>;
+  List[Rule, Empty]@rules SEMICOLON -> {};
 
 "a comment"
 Comment ::=
-  STRING.0@through <>;
+  STRING.0@through -> {};
 
 "a declaration"
 MacroDecl ::=
   ID.0@name LBRACKET List[FormalArgument, COMMA]@args RBRACKET DEF
-  List[Rule, Empty]@rules SEMICOLON <>;
+  List[Rule, Empty]@rules SEMICOLON -> {};
 
 "a rule"
 Rule ::=
-  Option[Associativity]@assoc List[Element, Empty]@elements Proxy@proxy <>;
+  Option[Associativity]@assoc List[Element, Empty]@elements ARROW Proxy@proxy -> {};
 
 "an associativity specifier"
 Associativity ::=
-  LPAR LEFT RPAR <Left>
-  LPAR RIGHT RPAR <Right>;
+  LPAR LEFT RPAR -> {Left}
+  LPAR RIGHT RPAR -> {Right};
 
 "a proxy"
 Proxy ::=
-  LPROXY List[ProxyItem, COMMA]@through RPROXY <>;
+  LBRACE List[ProxyItem, COMMA]@through RBRACE -> {};
 
 "a proxy item"
 ProxyItem ::=
-  ID.0@var <Variant>
-  ID.0@key COLON Expression@value <Entry>;
+  ID.0@var -> {Variant}
+  ID.0@key COLON Expression@value -> {Entry};
 
 "an argument"
 FormalArgument ::=
-  ID.0@name <>;
+  ID.0@name -> {};
 
 "an element"
 Element ::=
-  Item@item Option[Attribute]@attribute Option[Key]@key <>;
+  Item@item Option[Attribute]@attribute Option[Key]@key -> {};
 
 "an attribute"
 Attribute ::=
-  DOT ID.0@attribute <Named>
-  DOT INT.0@attribute <Indexed>;
+  DOT ID.0@attribute -> {Named}
+  DOT INT.0@attribute -> {Indexed};
 
 "a key"
 Key ::=
-  AT ID.0@key <>;
+  AT ID.0@key -> {};
 
 "an item"
 Item ::=
-  SELF <SelfNonTerminal>
-  ID.0@name <Regular>
-  ID.0@name LBRACKET List[Item, COMMA]@args RBRACKET <MacroInvocation>;
+  SELF -> {SelfNonTerminal}
+  ID.0@name -> {Regular}
+  ID.0@name LBRACKET List[Item, COMMA]@args RBRACKET -> {MacroInvocation};
 
 "an expression"
 Expression ::=
-  STRING.0@value <String>
-  ID.0@name <Id>
-  ID.0@name LBRACE List[ProxyItem, COMMA]@children RBRACE <Instanciation>;
+  STRING.0@value -> {String}
+  ID.0@name -> {Id}
+  ID.0@name LBRACE List[ProxyItem, COMMA]@children RBRACE -> {Instanciation};

@@ -1,42 +1,42 @@
 IfStatement ::=
   IF Expression@condition LBRACE
     StatementList@then
-  RBRACE <NoElse>
+  RBRACE -> {NoElse}
   IF Expression@condition LBRACE
     StatementList@then
   RBRACE ELSE LBRACE
     StatementList@else
-  RBRACE <Else>;
+  RBRACE -> {Else};
 
 WhileStatement ::=
   WHILE Expression@condition LBRACE
     StatementList@do
-  RBRACE <>;
+  RBRACE -> {};
 
 Assignment ::=
-  ID.0@key EQUALS Expression@value <>;
+  ID.0@key EQUALS Expression@value -> {};
 
 BuiltinType ::=
-  INT.0@value <Int>
-  STRING.0@value <String>
-  ID.0@value <Id>
-  TRUE <True>
-  FALSE <False>;
+  INT.0@value -> {Int}
+  STRING.0@value -> {String}
+  ID.0@value -> {Id}
+  TRUE -> {True}
+  FALSE -> {False};
 
 Atom ::=
-  BuiltinType@this <Builtin>
-  LPAR Expression@this RPAR <Through>;
+  BuiltinType@this -> {Builtin}
+  LPAR Expression@this RPAR -> {Through};
 
 Expression ::=
-  Expression@left PLUS Expression@right <Add>
-  Expression@left ASTERISK Expression@right <Mul>
-  Atom@this <Through>;
+  Expression@left PLUS Expression@right -> {Add}
+  Expression@left ASTERISK Expression@right -> {Mul}
+  Atom@this -> {Through};
 
 Statement ::=
-  Assignment@this SEMICOLON <Assign>
-  IfStatement@this <If>
-  WhileStatement@this <While>;
+  Assignment@this SEMICOLON -> {Assign}
+  IfStatement@this -> {If}
+  WhileStatement@this -> {While};
 
 @StatementList ::=
-  StatementList@left Statement@right <Concat>
-  Statement@this <Through>;
+  StatementList@left Statement@right -> {Concat}
+  Statement@this -> {Through};

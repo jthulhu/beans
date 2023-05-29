@@ -76,11 +76,14 @@ macro_rules! spanned_value {
 
 macro_rules! match_variant {
     (($node:expr) {
-	$($variant:ident => $code:expr),* $(,)?
+	$($variant:ident $(($($key:ident),* $(,)?))? => $code:expr),* $(,)?
     }) => {{
 	let variant = value!($node => variant);
 	let result = match &*variant {
-	    $(stringify!($variant) => $code,)*
+	    $(stringify!($variant) => {
+		$($(let $key = get!($node => $key);)*)*
+		$code
+	    })*
 		found_variant => panic!("Unexpected variant {found_variant}, expected {:?}", [$(stringify!($variant)),*]),
 	};
 	$crate::typed::Spanned {

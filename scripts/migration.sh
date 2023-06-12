@@ -2,6 +2,8 @@
 # shellcheck disable=SC2034,SC2016,SC2219
 # author: jthulhu
 
+shopt -s nullglob
+
 GREEN=$'\e[1;32m'
 ORANGE=$'\e[1;33m'
 RED=$'\e[1;31m'
@@ -18,15 +20,17 @@ GRAMMARS=(lexer/lexer parser/parser)
 
 PARSER_EXT=gr
 LEXER_EXT=lx
-EXTS=(LEXER_EXT PARSER_EXT)
+EXTS=($LEXER_EXT $PARSER_EXT)
 
 PREC_PARSER_EXT=cgr
 PREC_LEXER_EXT=clx
-PREC_EXTS=(PREC_PARSER_EXT PREC_LEXER_EXT)
+PREC_EXTS=($PREC_PARSER_EXT $PREC_LEXER_EXT)
 
 AST_EXT=ast
 
 MAX_STEP=2
+
+HAS_ADVANCED=0
 
 usage() {
     echo 'migration -- modify the grammar of Beans'
@@ -81,11 +85,18 @@ clean_file() {
 }
 
 abort() {
+    if [[ -n "$1" ]]; then
+	echo "  on line $1:"
+    fi
     echo "${RED}error:${END} aborted due to previous error."
-    backtrack
+    if [[ "$HAS_ADVANCED" == 1 ]]; then
+	backtrack
+    fi
     status
     exit 1
 }
+
+trap 'abort "$LINENO"' ERR
 
 step0_actions() {
     echo ' * Edit the lexer and parser grammars to expression the new syntax.'
@@ -105,7 +116,7 @@ step1() {
     "$MIGR_DIR/step0/beans" parse -d src/lexer/lexer.c{lx,gr} src/parser/parser.lx || abort
     "$MIGR_DIR/step0/beans" parse -d src/parser/parser.c{lx,gr} src/parser/parser.gr || abort
     cargo build --release --features _from-ast || abort
-    cp "$TARGET/release/beans" "$MIGR_DIR/step1/beans-migration"
+    cp "$TARGET/release/beans" "$MIGR_DIR/step1/beans-migration" || abort
     rm -f "$SOURCE"/{parser,lexer}/*."$AST_EXT"
 }
 
@@ -132,7 +143,7 @@ commit_new_step() {
     mkdir -p "$MIGR_DIR/step$STEP"/{lexer,parser}
     for path in "${GRAMMARS[@]}"; do
 	for extension in "${EXTS[@]}" "${PREC_EXTS[@]}"; do
-	    cp "$SOURCE/$path.$extension" ".migration/step$STEP/$path.$extension"
+	    cp "$SOURCE/$path.$extension" ".migration/step$STEP/$path.$extension" || abort
 	done
     done
 
@@ -148,7 +159,7 @@ start() {
     commit_new_step
     cd "$ROOT" || fatal "the root directory cannot be entered"
     make out/beans
-    cp "$OUT/beans" "$MIGR_DIR/step0/"
+    cp "$OUT/beans" "$MIGR_DIR/step0/" || abort
     echo "Migration successfully started."
 }
 
@@ -159,7 +170,7 @@ cancel() {
 }
 
 get_step() {
-    read -r STEP <.migration/step || fatal 'Migration has not started yet, try `make migration help`.'
+    read -r STEP <.migration/step || fatal 'Migration has not started yet, try `migration --help`.'
 }
 
 status() {
@@ -174,9 +185,9 @@ advance() {
  migration with `migration end`'
     fi
 
-    mkdir ".migration/step$STEP"
-
     let 'STEP++'
+    mkdir ".migration/step$STEP"
+    HAS_ADVANCED=1
     eval "step$STEP"
     
     commit_new_step
@@ -184,8 +195,8 @@ advance() {
 
 restore() {
     for path in "$MIGR_DIR/step$STEP"/**/*; do
-	target="$SOURCE"/${path#.migration/}
-	cp "$path" "$target"
+	target="$SOURCE"/${path#"$MIGR_DIR/step$STEP"}
+	cp "$path" "$target" || abort
     done
 }
 
@@ -197,7 +208,7 @@ backtrack() {
     rm -rf "$MIGR_DIR/step$STEP"
     
     let 'STEP--'
-
+    echo "$STEP" >|"$MIGR_DIR/step"
     restore
 }
 
@@ -228,7 +239,7 @@ while [ $# -gt 0 ]; do
 	    advance
 	    exit 0
 	    ;;
-	backtrace )
+	backtrack )
 	    get_step
 	    backtrack
 	    exit 0
@@ -237,11 +248,16 @@ while [ $# -gt 0 ]; do
 	    get_step
 	    exit 0
 	    ;;
+	status )
+	    get_step
+	    status
+	    exit 0
+	    ;;
 	-* )
-	    fatal 'Unknown options `$1`.'
+	    fatal 'Unknown options `'"$1"'`.'
 	    ;;
 	* )
-	    fatal 'Unkown step `$1`. Please try with `--help` to see the available steps.'
+	    fatal 'Unkown step `'"$1"'`. Please try with `--help` to see the available steps.'
 	    ;;
     esac
 done

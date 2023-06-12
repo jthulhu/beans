@@ -8,13 +8,28 @@ description = "A parser generator library based on the Earley parser"
 homepage = "https://github.com/jthulhu/beans"
 repository = "https://github.com/jthulhu/beans"
 
-build = "build.rs"
+[profile.dev]
+opt-level = 1
+
+[profile.release]
+lto = "thin"
+
+[profile.dev.package."*"]
+opt-level = 3
 
 [features]
 _from-ast = []
 
 [workspace]
 members = [ "macros" ]
+
+[[bin]]
+name = "beans-completions"
+test = false
+bench = false
+doc = false
+doctest = false
+path = "src/completions.rs"
 
 [dependencies]
 newty = "0.5"
@@ -24,6 +39,7 @@ bincode = "1"
 thiserror = "1"
 fixedbitset = "0.4"
 clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
 anyhow = "1"
 fragile = "2"
 itertools = "0.10"
@@ -31,7 +47,3 @@ ptree = "0.4"
 const_format = "0.2"
 beans-derive = "7"
 either = "1.8.1"
-
-[build-dependencies]
-clap = { version = "4", features = ["derive"] }
-clap_complete = "4"

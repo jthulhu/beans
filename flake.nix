@@ -2,9 +2,12 @@
   description = "Beans";
   
   inputs = {
-    naersk.url = "github:nmattia/naersk/master";
-    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
-    utils.url = "github:numtide/flake-utils";
+    naersk = {
+      url = github:nmattia/naersk/master;
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+    nixpkgs.url = github:nixos/nixpkgs/nixpkgs-unstable;
+    utils.url = github:numtide/flake-utils;
     rust-overlay = {
       url = github:oxalica/rust-overlay;
       inputs = {
@@ -33,7 +36,7 @@
       in rec {
         packages = {
           beans = naersk-lib.buildPackage {
-            pname = "Beans";
+            pname = "beans";
             root = ./.;
           };
         };

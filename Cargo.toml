@@ -15,5 +15,6 @@ authors = [ "jthulhu <jthulhu@posteo.net>" ]
 license = "AGPL-3.0-or-later"
 version = "9.0.0"
 edition = "2024"
+repository = "https://github.com/jthulhu/beans"
 
 [dependencies]

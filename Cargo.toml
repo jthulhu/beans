@@ -7,8 +7,7 @@ repository = "https://github.com/jthulhu/beans"
 
 [workspace]
 resolver = "3"
-members = [ "dlsl" ]
-version = "9.0.0"
+members = [ "dlsl", "dlsl-regex" ]
 
 [workspace.package]
 authors = [ "jthulhu <jthulhu@posteo.net>" ]
@@ -16,5 +15,14 @@ license = "AGPL-3.0-or-later"
 version = "9.0.0"
 edition = "2024"
 repository = "https://github.com/jthulhu/beans"
+
+[profile.test]
+# This is the minimum optimization level that makes the tests run in a reasonable amount of time.
+opt-level = 1
+
+[profile.dev.package."*"]
+# This is to avoid having heavy dependencies not being optimized.  It's ok because we rarely need
+# to rebuild dependencies in the feedback loop.
+opt-level = 3
 
 [dependencies]

@@ -1,0 +1,11 @@
+[package]
+name = "dlsl-regex"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Regex library for Dura Lex Sed Lex."
+
+[dependencies]
+fixedbitset = "0.5.7"

@@ -1,13 +1,22 @@
-use std::{
-    borrow::Borrow,
-    collections::HashMap,
-    iter::once,
-    ops::{RangeBounds, RangeInclusive},
-};
+//! # Unicode module
+//!
+//! This module takes care of generating `u8` based automata for decoding utf-8 strings.  This
+//! permits recognizing utf-8 strings with a byte automaton.  It's important, because:
+//! - We want to handle unicode.  ASCII only lexers are outdated.
+//! - We want automata that process the input stream byte per byte, not character per character.
+//!   This way, the automaton can still have a fully table driven processing, while having a
+//!   reasonable memory footprint.
+//! Because adding a unicode class to an automaton can be somewhat expensive, this module offers
+//! a cache driven API.  You can limit the amount of entries in the cache.
+
+use std::{borrow::Borrow, collections::HashMap, iter::once, ops::RangeInclusive};
 
 use fixedbitset::FixedBitSet;
 
-use crate::{NDState, StateId, TokenId};
+use crate::{
+    nfa::{NDState, NdStateId, TokenId},
+    syntax::{Class, ClassElement},
+};
 
 const ONE_BYTE_MAX_BITS: u8 = 7;
 const ONE_BYTE_MIN: char = char::from_u32(0).unwrap();
@@ -21,7 +30,6 @@ const THREE_BYTES_MAX_BITS: u8 = 4 + 6 + 6;
 const THREE_BYTES_MIN: char = char::from_u32(TWO_BYTES_MAX as u32 + 1).unwrap();
 const THREE_BYTES_MAX: char = char::from_u32((1 << THREE_BYTES_MAX_BITS) - 1).unwrap();
 
-const FOUR_BYTES_MAX_BITS: u8 = 3 + 6 + 6 + 6;
 const FOUR_BYTES_MIN: char = char::from_u32(THREE_BYTES_MAX as u32 + 1).unwrap();
 const FOUR_BYTES_MAX: char = char::MAX;
 
@@ -45,7 +53,7 @@ fn intersect<T: Ord>(left: RangeInclusive<T>, right: RangeInclusive<T>) -> Range
 struct PreStateId(u32);
 
 impl PreStateId {
-    const SINK: Self = Self(StateId::SINK.into_inner());
+    const SINK: Self = Self(NdStateId::SINK.into_inner());
     const END: Self = Self(0);
 
     #[inline]
@@ -55,12 +63,12 @@ impl PreStateId {
     }
 
     #[inline]
-    pub fn offset(self, offset: usize) -> StateId {
+    pub fn offset(self, offset: usize) -> NdStateId {
         debug_assert!(offset <= u32::MAX as usize);
         if self == Self::SINK {
-            StateId::SINK
+            NdStateId::SINK
         } else {
-            StateId::new(self.0 as usize + offset)
+            NdStateId::new(self.0 as usize + offset)
         }
     }
 }
@@ -148,8 +156,7 @@ impl UnicodeClass {
             // may have holes.  Ranges are aware of that, and hence they are a reliable way to
             // detect mergeability.
             if let Some(last) = ranges.last_mut()
-                && (*last.start()..=*range.end()).count()
-                    <= last.count() + range.clone().count()
+                && (*last.start()..=*range.end()).count() <= last.count() + range.clone().count()
             {
                 *last = *last.start()..=*range.end();
             } else {
@@ -194,6 +201,25 @@ impl UnicodeClass {
     pub fn union(&self, other: &UnicodeClass) -> UnicodeClass {
         Self::new_ranges(self.ranges.iter().chain(other.ranges.iter()))
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.ranges.is_empty()
+    }
+}
+
+impl From<Class> for UnicodeClass {
+    fn from(value: Class) -> Self {
+        let res = UnicodeClass::new_ranges(value.elements.into_iter().flat_map(|element| match element {
+            ClassElement::Char(chr) => UnicodeClass::new_char(chr),
+            ClassElement::Range { start, end } => UnicodeClass::new_range(start..=end),
+            ClassElement::Word => todo!(),
+            ClassElement::NoWord => todo!(),
+            ClassElement::Space => todo!(),
+            ClassElement::NoSpace => todo!(),
+            ClassElement::Class(class) => class.into(),
+        }.ranges));
+        if value.negate { res.negate() } else { res }
+    }
 }
 
 impl Default for PreStateId {
@@ -226,9 +252,9 @@ impl RegexCache {
         &mut self,
         class: UnicodeClass,
         states: &mut Vec<NDState>,
-        start: StateId,
+        start: NdStateId,
         token: TokenId,
-    ) -> StateId {
+    ) -> NdStateId {
         let result = self
             .cache
             .entry(class.clone())
@@ -240,6 +266,10 @@ impl RegexCache {
             self.cache.clear();
         }
         result
+    }
+
+    pub fn clear(&mut self) {
+        self.cache.clear();
     }
 }
 
@@ -486,37 +516,34 @@ impl ComputedRange {
 
     /// Add the automaton that recognizes the computed range, to the states, starting from
     /// `start`, and returning the ending state.
-    fn execute(&self, states: &mut Vec<NDState>, start: usize, token: TokenId) -> StateId {
+    fn execute(&self, states: &mut Vec<NDState>, start: usize, token: TokenId) -> NdStateId {
         let offset = states.len();
 
         for i in 0..256 {
             states[start].transitions[i] = self.start.transitions[i].offset(offset);
-            // states[start]
-            //     .empty
-            //     .extend(self.start.empty.iter().map(|x| x.offset(offset)));
         }
 
         states.extend(self.states.iter().map(|state| NDState {
             transitions: state.transitions.map(|id| id.offset(offset)),
-            // empty: state.empty.iter().map(|id| id.offset(offset)).collect(),
             empty: Vec::new(),
-            token,
+            token: Some(token),
+            accepting: false,
         }));
 
-        StateId::new(offset)
+        NdStateId::new(offset)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{ComputedRange, UnicodeClass};
-    use crate::{NDState, StateId, TokenId};
+    use crate::{NDState, NdStateId};
 
     #[test]
     fn build_all() {
         let cr = ComputedRange::new(&[char::MIN..=char::MAX]);
-        let mut states = vec![NDState::new(TokenId::new(0))];
-        cr.execute(&mut states, 0, TokenId::new(0));
+        let mut states = vec![NDState::new(NdStateId::new(0))];
+        cr.execute(&mut states, 0, NdStateId::new(0));
         assert_eq!(states.len(), 9);
     }
 
@@ -525,9 +552,9 @@ mod tests {
         for c in char::MIN..=char::MAX {
             let cr = ComputedRange::new(&[c..=c]);
             assert_eq!(cr, ComputedRange::new_char(c));
-            let mut states = vec![NDState::new(TokenId::new(0))];
-            let end = cr.execute(&mut states, 0, TokenId(0));
-            assert_eq!(end, StateId::new(1));
+            let mut states = vec![NDState::new(NdStateId::new(0))];
+            let end = cr.execute(&mut states, 0, NdStateId(0));
+            assert_eq!(end, NdStateId::new(1));
             assert_eq!(states.len(), 1 + c.len_utf8());
             assert!(states[0].empty.is_empty());
         }

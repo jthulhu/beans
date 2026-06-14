@@ -9,3 +9,4 @@ description = "Regex library for Dura Lex Sed Lex."
 
 [dependencies]
 fixedbitset = "0.5.7"
+qp-trie = "0.8.2"

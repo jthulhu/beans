@@ -1,2 +1,2 @@
-max_width = 96
-skip_macro_invocations = ["All"]
+max_width = 97
+edition = "2024"
